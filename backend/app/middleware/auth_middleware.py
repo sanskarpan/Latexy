@@ -26,6 +26,7 @@ from ..database.connection import get_db
 
 if TYPE_CHECKING:
     from ..database.models import DeveloperAPIKey
+    from ..services.admin_audit_service import AdminActor
 
 logger = logging.getLogger(__name__)
 
@@ -308,6 +309,72 @@ async def require_admin(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin privileges required",
+    )
+
+
+async def require_admin_actor(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> "AdminActor":
+    """Admin gate that also returns the audited actor identity."""
+    from ..services.admin_audit_service import AdminActor
+
+    user_id = await require_admin(request, credentials, db)
+    row = (
+        await db.execute(
+            text("SELECT email, role FROM users WHERE id = :uid"),
+            {"uid": user_id},
+        )
+    ).fetchone()
+    email = row[0] if row else None
+    role = (row[1] if row else None) or "admin"
+    if role != "admin" and email and email.lower() in _admin_emails(settings):
+        role = "admin"
+    return AdminActor(user_id=user_id, email=email, role=role)
+
+
+async def require_support_actor(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> "AdminActor":
+    """Read-mostly support gate. Support never gains admin mutation rights.
+
+    A verified ADMIN_EMAIL account is treated as an admin actor even when its
+    stored role is still ``user``, matching ``require_admin``.
+    """
+    from ..services.admin_audit_service import AdminActor
+
+    token = _extract_token(request, credentials)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user_id = await get_current_user_optional(request, credentials, db)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    row = (
+        await db.execute(
+            text("SELECT email, role, email_verified FROM users WHERE id = :uid"),
+            {"uid": user_id},
+        )
+    ).fetchone()
+    if row:
+        email, role, verified = row[0], row[1], bool(row[2])
+        if role in {"support", "admin"}:
+            return AdminActor(user_id=user_id, email=email, role=role)
+        if email and email.lower() in _admin_emails(settings) and verified:
+            return AdminActor(user_id=user_id, email=email, role="admin")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Support or admin privileges required",
     )
 
 

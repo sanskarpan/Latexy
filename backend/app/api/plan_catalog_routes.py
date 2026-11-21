@@ -1,18 +1,23 @@
 """Admin-only catalog edits. Commercial identities remain operator-managed."""
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..middleware.auth_middleware import require_admin
+from ..database.models import PlanCatalog
+from ..middleware.auth_middleware import require_admin, require_admin_actor
+from ..services.admin_audit_service import AdminActor, record_admin_audit
 from ..services.feature_flag_service import feature_flag_service
 from ..services.payment_service import payment_service
 from ..services.plan_catalog_service import CatalogConflict, plan_catalog_service
 from ..services.quota_policy_service import MAX_QUOTA_LIMIT, QuotaPolicyConflict, quota_policy_service
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 class PlanCatalogUpdate(BaseModel):
@@ -39,20 +44,50 @@ async def get_plan_catalog(db: AsyncSession = Depends(get_db), _: str = Depends(
 
 @router.patch("/admin/plan-catalog/{sku}")
 async def update_plan_catalog(
-    sku: str, body: PlanCatalogUpdate, db: AsyncSession = Depends(get_db), admin_id: str = Depends(require_admin)
+    sku: str,
+    body: PlanCatalogUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> dict:
     changes = body.model_dump(exclude_unset=True, exclude={"version"})
     if any(value is None for value in changes.values()):
         raise HTTPException(status_code=422, detail="Catalog values cannot be null")
+    before_row = await db.scalar(select(PlanCatalog).where(PlanCatalog.sku == sku))
+    before = (
+        {
+            "name": before_row.name,
+            "description": before_row.description,
+            "visible": before_row.visible,
+            "purchase_enabled": before_row.purchase_enabled,
+            "display_order": before_row.display_order,
+            "version": before_row.version,
+        }
+        if before_row is not None else None
+    )
     try:
-        await plan_catalog_service.update(db, sku, changes, version=body.version, admin_id=admin_id)
+        await plan_catalog_service.update(db, sku, changes, version=body.version, admin_id=actor.user_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown plan SKU")
     except CatalogConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return await get_plan_catalog(db, admin_id)
+    try:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="plan_catalog.update",
+            target_type="plan_sku",
+            target_id=sku,
+            before=before,
+            after={**changes, "version": body.version + 1},
+            request=request,
+            commit=True,
+        )
+    except Exception:
+        logger.critical("Plan catalog audit write failed", exc_info=True)
+    return await get_plan_catalog(db, actor.user_id)
 
 
 class PlanQuotaUpdate(BaseModel):
@@ -63,15 +98,36 @@ class PlanQuotaUpdate(BaseModel):
 
 @router.patch("/admin/plan-catalog/{sku}/quotas/{dimension}")
 async def update_plan_quota(
-    sku: str, dimension: str, body: PlanQuotaUpdate,
-    db: AsyncSession = Depends(get_db), admin_id: str = Depends(require_admin),
+    sku: str,
+    dimension: str,
+    body: PlanQuotaUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> dict:
+    before_policy = (await quota_policy_service.resolve(sku)).get(dimension)
     try:
-        await quota_policy_service.update(db, sku, dimension, limit=body.limit, version=body.version, admin_id=admin_id)
+        await quota_policy_service.update(
+            db, sku, dimension, limit=body.limit, version=body.version, admin_id=actor.user_id
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown plan SKU or quota dimension")
     except QuotaPolicyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return await get_plan_catalog(db, admin_id)
+    try:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="plan_catalog.quota.update",
+            target_type="plan_quota",
+            target_id=f"{sku}:{dimension}",
+            before=before_policy,
+            after={"limit": body.limit, "version": body.version + 1},
+            request=request,
+            commit=True,
+        )
+    except Exception:
+        logger.critical("Plan quota audit write failed", exc_info=True)
+    return await get_plan_catalog(db, actor.user_id)

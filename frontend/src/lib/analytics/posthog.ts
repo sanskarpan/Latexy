@@ -158,6 +158,9 @@ async function loadClient(): Promise<PostHogClient | null> {
         session_recording: {
           maskAllInputs: true,
           maskTextSelector: '*',
+          // In this SDK generation the top-level attribute flag is an
+          // autocapture setting; replay reads this object instead.
+          maskAllElementAttributes: true,
           blockSelector: '.ph-no-capture, [data-ph-no-capture]',
           recordCrossOriginIframes: false,
           collectFonts: false,

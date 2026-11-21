@@ -230,7 +230,11 @@ def test_catalog_guard_only_covers_new_checkout_not_subscription_lifecycle():
 def test_catalog_admin_routes_always_require_admin():
     for endpoint in (get_plan_catalog, update_plan_catalog):
         dependencies = [value.default for value in __import__("inspect").signature(endpoint).parameters.values()]
-        assert any(getattr(value, "dependency", None).__name__ == "require_admin" for value in dependencies if getattr(value, "dependency", None))
+        assert any(
+            getattr(value, "dependency", None).__name__ in {"require_admin", "require_admin_actor"}
+            for value in dependencies
+            if getattr(value, "dependency", None)
+        )
 
 
 @pytest.mark.asyncio

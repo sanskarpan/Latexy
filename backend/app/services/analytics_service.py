@@ -638,7 +638,7 @@ class AnalyticsService:
             registrations = registrations_result.scalar() or 0
 
             # Subscriptions
-            subscriptions_query = select(func.count(Subscription.id)).where(
+            subscriptions_query = select(func.count(func.distinct(Subscription.user_id))).where(
                 and_(
                     Subscription.created_at >= start_date,
                     Subscription.status.in_(['active', 'cancel_scheduled', 'past_due'])
@@ -648,10 +648,13 @@ class AnalyticsService:
             subscriptions = subscriptions_result.scalar() or 0
 
             # Calculate conversion rates
-            trial_conversion = (trial_starts / landing_visits * 100) if landing_visits > 0 else 0
-            registration_conversion = (registrations / trial_starts * 100) if trial_starts > 0 else 0
-            subscription_conversion = (subscriptions / registrations * 100) if registrations > 0 else 0
-            overall_conversion = (subscriptions / landing_visits * 100) if landing_visits > 0 else 0
+            # These are bounded period-count ratios, not cohort conversions.
+            # Distinct subscription owners plus a visible cap avoid impossible
+            # >100% funnel steps when the two sides cover different cohorts.
+            trial_conversion = min((trial_starts / landing_visits * 100), 100.0) if landing_visits > 0 else 0
+            registration_conversion = min((registrations / trial_starts * 100), 100.0) if trial_starts > 0 else 0
+            subscription_conversion = min((subscriptions / registrations * 100), 100.0) if registrations > 0 else 0
+            overall_conversion = min((subscriptions / landing_visits * 100), 100.0) if landing_visits > 0 else 0
 
             funnel_result = {
                 "period_days": days,
@@ -754,13 +757,19 @@ class AnalyticsService:
             )
         ).all()
 
-        refund_day = func.date_trunc("day", PaymentRefund.created_at).label("day")
+        # Match the KPI: subtract only INR refunds belonging to INR payments,
+        # bucketed by the original payment date. A refund created after the
+        # period must not rewrite a prior day's revenue, and a non-INR refund
+        # must not reduce INR revenue.
+        refund_day = func.date_trunc("day", Payment.created_at).label("day")
         refund_rows = (
             await db.execute(
                 select(refund_day, func.coalesce(func.sum(PaymentRefund.amount), 0).label("amount"))
+                .join(Payment, PaymentRefund.payment_id == Payment.id)
                 .where(
                     and_(
-                        PaymentRefund.created_at >= start_date,
+                        Payment.created_at >= start_date,
+                        Payment.currency == "INR",
                         PaymentRefund.status == "succeeded",
                     )
                 )

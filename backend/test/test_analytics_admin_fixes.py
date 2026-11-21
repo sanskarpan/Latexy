@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.analytics_routes import EventTrackingRequest
+from app.core.telemetry_metadata import validate_metadata
 from app.services.analytics_service import analytics_service
 
 
@@ -45,6 +46,26 @@ class TestMetadataValidation:
             current = child
         with pytest.raises(ValueError):
             EventTrackingRequest(event_type="x", metadata=nested)
+
+    def test_sensitive_substring_keys_redacted(self):
+        redacted = validate_metadata({
+            "job_description": "secret role text",
+            "cover_letter": "dear hiring manager",
+            "full_name": "Private Person",
+            "raw_text": "resume body",
+            "candidate_email": "a@example.com",
+            "feature": "compile",
+            "duration_ms": 42,
+        })
+        assert redacted == {
+            "job_description": "[redacted]",
+            "cover_letter": "[redacted]",
+            "full_name": "[redacted]",
+            "raw_text": "[redacted]",
+            "candidate_email": "[redacted]",
+            "feature": "compile",
+            "duration_ms": 42,
+        }
 
 
 class TestTrackReturnValues:
@@ -149,6 +170,74 @@ class TestSystemAnalyticsMetrics:
 
 class TestAdminAnalyticsQueries:
     """The admin overview must compose cleanly from the first-party tables."""
+
+    @pytest.mark.asyncio
+    async def test_admin_timeseries_ignores_non_inr_refunds(self, db_session: AsyncSession):
+        series = await analytics_service.get_admin_timeseries(db=db_session, days=7)
+        today = series[-1]["date"]
+        baseline = series[-1]["revenue_inr"]
+        user_id = uuid4()
+        inr_payment = uuid4()
+        usd_payment = uuid4()
+        await db_session.execute(
+            text(
+                "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+                "subscription_status, trial_used) VALUES (:id, :email, 'Currency User', "
+                "true, 'free', 'active', false)"
+            ),
+            {"id": str(user_id), "email": f"test_currency_{user_id.hex}@example.com"},
+        )
+        for payment_id, amount, refund_amount, currency in (
+            (inr_payment, 1000, 400, "INR"),
+            (usd_payment, 5000, 5000, "USD"),
+        ):
+            await db_session.execute(
+                text(
+                    "INSERT INTO payments (id, user_id, provider, provider_payment_id, amount, currency, status) "
+                    "VALUES (:id, :uid, 'dodo', :provider_id, :amount, :currency, 'paid')"
+                ),
+                {
+                    "id": str(payment_id),
+                    "uid": str(user_id),
+                    "provider_id": f"pay_{payment_id.hex}",
+                    "amount": amount,
+                    "currency": currency,
+                },
+            )
+            await db_session.execute(
+                text(
+                    "INSERT INTO payment_refunds (id, payment_id, provider, provider_refund_id, amount, currency, status) "
+                    "VALUES (:id, :payment_id, 'dodo', :provider_id, :amount, :currency, 'succeeded')"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "payment_id": str(payment_id),
+                    "provider_id": f"refund_{payment_id.hex}",
+                    "amount": refund_amount,
+                    "currency": currency,
+                },
+            )
+        await db_session.commit()
+
+        try:
+            updated = await analytics_service.get_admin_timeseries(db=db_session, days=7)
+            assert updated[-1]["date"] == today
+            # Only the INR payment/refund pair changes INR revenue; the USD pair
+            # is ignored even though its refund is fully settled.
+            assert updated[-1]["revenue_inr"] == pytest.approx(baseline + 6.0)
+        finally:
+            await db_session.execute(
+                text(
+                    "DELETE FROM payment_refunds WHERE payment_id IN (:inr, :usd)"
+                ),
+                {"inr": str(inr_payment), "usd": str(usd_payment)},
+            )
+            await db_session.execute(
+                text("DELETE FROM payments WHERE id IN (:inr, :usd)"),
+                {"inr": str(inr_payment), "usd": str(usd_payment)},
+            )
+            await db_session.execute(text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)})
+            await db_session.commit()
 
     @pytest.mark.asyncio
     async def test_admin_overview_sections(self, db_session: AsyncSession):

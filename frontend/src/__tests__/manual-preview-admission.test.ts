@@ -32,7 +32,7 @@ type Admission = { success: boolean; job_id?: string; message?: string }
 function harness(page: keyof typeof pages) {
   let content = 'A', busy = false, jobId: string | null = null
   const admissions: Array<{ resolve: (value: Admission) => void; reject: (error: Error) => void }> = []
-  const submit = vi.fn(() => new Promise<Admission>((resolve, reject) => admissions.push({ resolve, reject })))
+  const submit = vi.fn((_body?: Record<string, unknown>) => new Promise<Admission>((resolve, reject) => admissions.push({ resolve, reject })))
   const editor = { getValue: () => content, markAutoCompileCompiled: vi.fn() }
   const incrementUsage = vi.fn(), recordPreviewAction = vi.fn()
   const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn() }

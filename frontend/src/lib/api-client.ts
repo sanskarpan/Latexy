@@ -856,6 +856,305 @@ export interface AdminUsersResponse {
   total: number
 }
 
+export interface AdminBillingPlanMix {
+  plan_id: string
+  subscriptions: number
+  mrr: number
+}
+
+export interface AdminRefundRequest {
+  id: string
+  payment_id: string
+  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'executed' | 'failed' | 'cancelled'
+  amount: number | null
+  currency: string | null
+  provider_item_id: string | null
+  tax_inclusive: boolean
+  reason: string
+  decision_note: string | null
+  requested_by: string
+  requested_email: string | null
+  approved_by: string | null
+  approved_email: string | null
+  executed_by: string | null
+  provider_refund_id: string | null
+  last_error: string | null
+  requested_at: string | null
+  decided_at: string | null
+  executed_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminBillingSummary {
+  period_days: number
+  generated_at: string
+  currency: string
+  mrr: number
+  arr: number
+  active_subscriptions: number
+  past_due_subscriptions: number
+  gross_revenue: number
+  refunded: number
+  net_revenue: number
+  open_refund_requests: number
+  unacknowledged_webhook_failures: number
+  webhooks_24h: number
+  webhook_failures_24h: number
+  plan_mix: AdminBillingPlanMix[]
+  recent_refund_requests: AdminRefundRequest[]
+}
+
+export interface AdminBillingWebhook {
+  id: string
+  provider: string
+  event_id: string
+  event_type: string
+  event_resource_id: string | null
+  status: string
+  attempts: number
+  last_error: string | null
+  event_at: string | null
+  received_at: string | null
+  processed_at: string | null
+  acknowledged_at: string | null
+  acknowledged_by: string | null
+  acknowledgement_note: string | null
+  reconcile_attempts: number
+  last_reconcile_at: string | null
+  last_reconcile_error: string | null
+  last_reconcile_outcome: string | null
+  local_link: {
+    linked: boolean
+    local_type: string
+    local_id: string | null
+    subscription_id?: string | null
+    user_id?: string | null
+    payment_id?: string | null
+  }
+}
+
+export interface AdminBillingWebhookList {
+  items: AdminBillingWebhook[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminRefundList {
+  items: AdminRefundRequest[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminUser360 {
+  user: {
+    id: string
+    email: string | null
+    name: string | null
+    pii_masked: boolean
+    role: UserRole
+    subscription_plan: string | null
+    subscription_status: string | null
+    email_verified: boolean
+    two_factor_enabled: boolean
+    trial_used: boolean
+    created_at: string | null
+    updated_at: string | null
+    public_username: string | null
+    portfolio_enabled: boolean
+    default_tenant_id: string | null
+  }
+  activation: {
+    has_resume: boolean
+    has_compile: boolean
+    has_optimization: boolean
+    has_export: boolean
+    has_paid: boolean
+    last_activity_at: string | null
+  }
+  usage: {
+    events_30d: number
+    actions: Array<{ action: string; count: number; last_at: string | null }>
+    recent_events: Array<{ action: string; resource_type: string | null; created_at: string | null }>
+  }
+  production: {
+    resumes: number
+    recent_resumes: Array<{
+      id: string
+      title: string
+      document_type: string | null
+      created_at: string | null
+      updated_at: string | null
+    }>
+    compilations: number
+    successful_compilations: number
+    last_compilation_at: string | null
+    optimizations: number
+    last_optimization_at: string | null
+  }
+  integrations: Record<string, boolean>
+  billing: {
+    subscriptions: Array<Record<string, unknown>>
+    payments: Array<{
+      id: string
+      provider_payment_id: string | null
+      amount: number
+      currency: string
+      status: string
+      payment_method: string | null
+      created_at: string | null
+    }>
+    refunds: Array<Record<string, unknown>>
+    refund_requests: Array<{
+      id: string
+      payment_id: string
+      status: string
+      amount: number | null
+      requested_at: string | null
+      decided_at: string | null
+      executed_at: string | null
+    }>
+  }
+  security: {
+    sessions: Array<{
+      id: string
+      created_at: string | null
+      expires_at: string | null
+      user_agent: string | null
+    }>
+    session_count: number
+    passkey_count: number
+    byok_keys: Array<Record<string, unknown>>
+    developer_keys: Array<Record<string, unknown>>
+  }
+  recent_admin_actions: AdminAuditEntry[]
+}
+
+export interface AdminAuditEntry {
+  id: string
+  actor_user_id: string | null
+  actor_email: string | null
+  action: string
+  target_type: string
+  target_id: string | null
+  reason: string | null
+  request_id: string | null
+  ip_address: string | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  created_at: string | null
+}
+
+export interface AdminAuditList {
+  items: AdminAuditEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminActivationStep {
+  key: string
+  label: string
+  count: number
+  from_previous: number
+  from_signup: number
+}
+
+export interface AdminActivationResponse {
+  period_days: number
+  activation_window_days: number
+  cohort_size: number
+  steps: AdminActivationStep[]
+  by_plan: Array<{
+    label: string
+    users: number
+    steps: Record<string, number>
+  }>
+  by_provider: Array<{
+    label: string
+    users: number
+    steps: Record<string, number>
+  }>
+  generated_at: string
+}
+
+export interface AdminRetentionResponse {
+  weeks: number
+  cohorts: Array<{
+    week_start: string
+    cohort_size: number
+    d1: { count: number; rate: number | null }
+    d7: { count: number; rate: number | null }
+    d30: { count: number; rate: number | null }
+  }>
+  overall: {
+    cohort_size: number
+    d1: { count: number; rate: number }
+    d7: { count: number; rate: number }
+    d30: { count: number; rate: number }
+  }
+  minimum_cohort_size: number
+  generated_at: string
+}
+
+export interface AdminAiCostResponse {
+  period_days: number
+  generated_at: string
+  estimated: boolean
+  price_note: string
+  usd_inr_rate: number
+  monthly_spend_cap_usd: number | null
+  total_tokens: number
+  total_cost_usd: number
+  total_cost_inr: number
+  optimizations: number
+  by_model: Array<{
+    provider: string
+    model: string
+    runs: number
+    tokens: number
+    cost_usd: number
+  }>
+  by_plan: Array<{ plan: string; runs: number; tokens: number; cost_usd: number }>
+  by_day: Array<{ date: string; runs: number; tokens: number; cost_usd: number }>
+  top_users: Array<{
+    user_id: string
+    plan: string
+    runs: number
+    tokens: number
+    cost_usd: number
+  }>
+  margin_by_plan: Array<{
+    plan: string
+    revenue_inr: number
+    ai_cost_inr: number
+    ai_cost_usd: number
+    gross_margin_inr: number
+    estimated: boolean
+  }>
+  alerts: Array<{
+    severity: string
+    code: string
+    message: string
+    value: number
+    threshold: number
+    user_id?: string
+    date?: string
+  }>
+}
+
+export interface AdminFilteredTimeseriesResponse {
+  metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
+  dimension: 'plan' | 'provider' | 'feature' | null
+  value: string | null
+  points: Array<{ date: string; value: number }>
+  breakdown: Array<{ label: string; value: number }>
+  total: number
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
@@ -3805,6 +4104,209 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     })
+  }
+
+  async getAdminActivation(params?: {
+    days?: number
+    plan?: string
+    provider?: string
+    activation_window_days?: number
+  }): Promise<AdminActivationResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.activation_window_days != null) {
+      qs.set('activation_window_days', String(params.activation_window_days))
+    }
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminActivationResponse>(`/admin/analytics/activation${suffix}`)
+  }
+
+  async getAdminRetention(weeks = 8): Promise<AdminRetentionResponse> {
+    return this.request<AdminRetentionResponse>(`/admin/analytics/retention?weeks=${weeks}`)
+  }
+
+  async getAdminAiCost(days = 30): Promise<AdminAiCostResponse> {
+    return this.request<AdminAiCostResponse>(`/admin/analytics/ai-cost?days=${days}`)
+  }
+
+  async getAdminFilteredTimeseries(params: {
+    days?: number
+    metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
+    dimension?: 'plan' | 'provider' | 'feature'
+    value?: string
+  }): Promise<AdminFilteredTimeseriesResponse> {
+    const qs = new URLSearchParams({ metric: params.metric })
+    if (params.days != null) qs.set('days', String(params.days))
+    if (params.dimension) qs.set('dimension', params.dimension)
+    if (params.value) qs.set('value', params.value)
+    return this.request<AdminFilteredTimeseriesResponse>(`/admin/analytics/timeseries?${qs}`)
+  }
+
+  async getAdminBillingSummary(days = 30): Promise<AdminBillingSummary> {
+    return this.request<AdminBillingSummary>(`/admin/billing/summary?days=${days}`)
+  }
+
+  async getAdminBillingWebhooks(params?: {
+    status?: string
+    event_type?: string
+    acknowledged?: boolean
+    q?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminBillingWebhookList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.event_type) qs.set('event_type', params.event_type)
+    if (params?.acknowledged != null) qs.set('acknowledged', String(params.acknowledged))
+    if (params?.q) qs.set('q', params.q)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminBillingWebhookList>(`/admin/billing/webhooks${suffix}`)
+  }
+
+  async acknowledgeAdminWebhook(id: string, note: string): Promise<AdminBillingWebhook> {
+    return this.request<AdminBillingWebhook>(
+      `/admin/billing/webhooks/${encodeURIComponent(id)}/acknowledge`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    )
+  }
+
+  async reconcileAdminWebhook(id: string, note?: string): Promise<{
+    status: string
+    message: string
+    event: AdminBillingWebhook
+  }> {
+    return this.request<{ status: string; message: string; event: AdminBillingWebhook }>(
+      `/admin/billing/webhooks/${encodeURIComponent(id)}/reconcile`, {
+      method: 'POST',
+      body: JSON.stringify({ note: note || undefined }),
+    })
+  }
+
+  async getAdminRefundRequests(params?: {
+    status?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminRefundList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminRefundList>(`/admin/billing/refunds${suffix}`)
+  }
+
+  async createAdminRefundRequest(body: {
+    payment_id: string
+    amount?: number | null
+    provider_item_id?: string | null
+    tax_inclusive?: boolean
+    reason: string
+  }): Promise<AdminRefundRequest> {
+    return this.request<AdminRefundRequest>('/admin/billing/refunds', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async decideAdminRefund(id: string, decision: 'approve' | 'reject', note: string): Promise<AdminRefundRequest> {
+    return this.request<AdminRefundRequest>(
+      `/admin/billing/refunds/${encodeURIComponent(id)}/${decision}`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    )
+  }
+
+  async executeAdminRefund(id: string, note?: string): Promise<AdminRefundRequest> {
+    return this.request<AdminRefundRequest>(
+      `/admin/billing/refunds/${encodeURIComponent(id)}/execute`,
+      { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+    )
+  }
+
+  async getAdminUser360(id: string): Promise<AdminUser360> {
+    return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360`)
+  }
+
+  async revealAdminUserPii(id: string, reason: string): Promise<{ email: string | null; name: string | null }> {
+    return this.request<{ email: string | null; name: string | null }>(
+      `/admin/users/${encodeURIComponent(id)}/pii/reveal`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async changeAdminUserPlan(
+    id: string,
+    body: { plan: string; status: string; reason: string },
+  ): Promise<{ subscription_plan: string; subscription_status: string }> {
+    return this.request<{ subscription_plan: string; subscription_status: string }>(
+      `/admin/users/${encodeURIComponent(id)}/plan`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async resetAdminUserTrial(id: string, reason: string): Promise<{ trial_used: boolean; device_trials_reset: number }> {
+    return this.request<{ trial_used: boolean; device_trials_reset: number }>(
+      `/admin/users/${encodeURIComponent(id)}/trial/reset`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async resetAdminUserQuota(
+    id: string,
+    body: { reason: string; dimension?: 'compilations' | 'optimizations' | 'ai_assists' },
+  ): Promise<{ dimensions: string[]; deleted_keys: number }> {
+    return this.request<{ dimensions: string[]; deleted_keys: number }>(
+      `/admin/users/${encodeURIComponent(id)}/quota/reset`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async revokeAdminUserSessions(id: string, reason: string): Promise<{ revoked_sessions: number }> {
+    return this.request<{ revoked_sessions: number }>(
+      `/admin/users/${encodeURIComponent(id)}/sessions/revoke`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async revokeAdminUserPasskeys(id: string, reason: string): Promise<{ revoked_passkeys: number }> {
+    return this.request<{ revoked_passkeys: number }>(
+      `/admin/users/${encodeURIComponent(id)}/passkeys/revoke`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async revokeAdminUserApiKeys(
+    id: string,
+    body: { reason: string; scope: 'byok' | 'developer' | 'all' },
+  ): Promise<{ revoked_byok_keys: number; revoked_developer_keys: number }> {
+    return this.request<{ revoked_byok_keys: number; revoked_developer_keys: number }>(
+      `/admin/users/${encodeURIComponent(id)}/api-keys/revoke`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async getAdminAudit(params?: {
+    actor_user_id?: string
+    action?: string
+    target_type?: string
+    target_id?: string
+    created_after?: string
+    created_before?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminAuditList> {
+    const qs = new URLSearchParams()
+    for (const key of ['actor_user_id', 'action', 'target_type', 'target_id', 'created_after', 'created_before'] as const) {
+      const value = params?.[key]
+      if (value) qs.set(key, value)
+    }
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAuditList>(`/admin/audit${suffix}`)
   }
 
   // ---------------------------------------------------------------- //

@@ -41,6 +41,30 @@ _SENSITIVE_KEY_PARTS = (
     "cover_letter",
 )
 _SAFE_KEY_ALLOWLIST = frozenset({"feature_key", "plan_key", "event_type", "surface", "route"})
+# Client-originated events may only mirror a finite vocabulary. Without this,
+# any authenticated caller could create unlimited PostHog event names (data
+# poisoning / billable cardinality) through one generic tracking endpoint.
+_MIRRORED_EVENT_TYPES = frozenset(
+    {
+        "page_view",
+        "feature_usage",
+        "compile",
+        "optimize",
+        "resume_created",
+        "resume_forked",
+        "academic_cv_converted",
+        "export",
+        "signup",
+        "login",
+        "share_viewed",
+        "checkout_started",
+        "upgrade_clicked",
+        "ats_score",
+        "cover_letter",
+        "interview_prep",
+        "error",
+    }
+)
 
 
 def sanitize_posthog_properties(properties: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -53,6 +77,10 @@ def sanitize_posthog_properties(properties: Optional[Dict[str, Any]]) -> Dict[st
             break
         key = str(raw_key)[:80]
         lowered = key.casefold()
+        # Never accept SDK-reserved or client-supplied dollar properties. This
+        # is what makes the forced geoip/service assignment below authoritative.
+        if lowered.startswith("$"):
+            continue
         if key not in _SAFE_KEY_ALLOWLIST and any(part in lowered for part in _SENSITIVE_KEY_PARTS):
             continue
         if value is None or isinstance(value, bool):
@@ -119,9 +147,9 @@ class PostHogService:
         if client is None:
             return
         payload = sanitize_posthog_properties(properties)
-        payload.setdefault("service", "backend")
-        payload.setdefault("environment", settings.ENVIRONMENT)
-        payload.setdefault("$geoip_disable", True)
+        payload["service"] = "backend"
+        payload["environment"] = settings.ENVIRONMENT
+        payload["$geoip_disable"] = True
         try:
             client.capture(event, distinct_id=str(distinct_id), properties=payload, groups=groups)
         except Exception as exc:  # pragma: no cover - network/SDK failure
@@ -142,6 +170,10 @@ class PostHogService:
             character if character.isalnum() or character in "_.:-" else "_"
             for character in str(event_type)
         )[:100]
+        if safe_event not in _MIRRORED_EVENT_TYPES:
+            # Keep arbitrary first-party event names out of the PostHog event
+            # namespace. The first-party table remains available for audits.
+            return
         properties = dict(metadata or {})
         properties["event_type"] = safe_event
         properties["source"] = source

@@ -25,6 +25,8 @@ def test_sanitizer_drops_identifiers_and_document_content():
             "success": True,
             "nested": {"unsafe": "value"},
             "list": ["unsafe"],
+            "$geoip_disable": False,
+            "$current_url": "https://latexy.xyz/r/secret?token=x",
         }
     )
 
@@ -63,7 +65,12 @@ def test_capture_uses_distinct_id_and_geoip_guard(monkeypatch):
     posthog_service.capture(
         "user-1",
         "backend_test_event",
-        {"plan_key": "pro", "email": "person@example.com"},
+        {
+            "plan_key": "pro",
+            "email": "person@example.com",
+            "$geoip_disable": False,
+            "service": "spoofed",
+        },
     )
 
     assert len(fake.calls) == 1
@@ -72,7 +79,35 @@ def test_capture_uses_distinct_id_and_geoip_guard(monkeypatch):
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"]["plan_key"] == "pro"
     assert kwargs["properties"]["$geoip_disable"] is True
+    assert kwargs["properties"]["service"] == "backend"
     assert "email" not in kwargs["properties"]
+
+
+def test_capture_event_mirrors_only_known_event_vocabulary(monkeypatch):
+    monkeypatch.setattr(settings, "POSTHOG_API_KEY", "phc_test")
+    monkeypatch.setattr(settings, "POSTHOG_ENABLED", True)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    fake = _FakeClient()
+    monkeypatch.setattr(posthog_service, "_client", fake)
+    monkeypatch.setattr(posthog_service, "_attempted", True)
+
+    posthog_service.capture_event(
+        user_id="user-1",
+        event_type="compile",
+        metadata={"status": "completed", "$current_url": "https://latexy.xyz/r/secret"},
+    )
+    posthog_service.capture_event(
+        user_id="user-1",
+        event_type="attacker.event.12345",
+        metadata={"status": "completed"},
+    )
+
+    assert len(fake.calls) == 1
+    event, kwargs = fake.calls[0]
+    assert event == "backend_compile"
+    assert kwargs["properties"]["status"] == "completed"
+    assert "$current_url" not in kwargs["properties"]
+    assert kwargs["properties"]["$geoip_disable"] is True
 
 
 def test_capture_is_noop_without_a_configured_key(monkeypatch):

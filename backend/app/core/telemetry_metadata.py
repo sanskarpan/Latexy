@@ -30,6 +30,48 @@ REDACTED_METADATA_KEYS = frozenset(
         "prompt",
     }
 )
+# Case-insensitive substring families. Exact-key matching alone let keys such
+# as ``job_description``, ``cover_letter``, ``full_name``, and ``raw_text``
+# persist in the first-party analytics table even though the PostHog boundary
+# rejected them. These keys are never required for an aggregate metric.
+REDACTED_METADATA_KEY_PARTS = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "authorization",
+    "cookie",
+    "api_key",
+    "apikey",
+    "credential",
+    "email",
+    "phone",
+    "full_name",
+    "first_name",
+    "last_name",
+    "address",
+    "resume",
+    "latex",
+    "content",
+    "prompt",
+    "job_description",
+    "cover_letter",
+    "raw_text",
+    "birth",
+    "salary",
+    "ssn",
+    "company",
+    "skills",
+    "experience",
+    "summary",
+)
+
+
+def _sensitive_key(key: Any) -> bool:
+    folded = str(key).casefold()
+    if folded in REDACTED_METADATA_KEYS:
+        return True
+    return any(part in folded for part in REDACTED_METADATA_KEY_PARTS)
 
 
 def payload_depth(value: Any, depth: int = 1) -> int:
@@ -50,11 +92,7 @@ def redact_metadata(value: Any) -> Any:
     """Strip credentials and direct identifiers recursively before persistence."""
     if isinstance(value, dict):
         return {
-            key: (
-                "[redacted]"
-                if str(key).casefold() in REDACTED_METADATA_KEYS
-                else redact_metadata(item)
-            )
+            key: "[redacted]" if _sensitive_key(key) else redact_metadata(item)
             for key, item in value.items()
         }
     if isinstance(value, list):

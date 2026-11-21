@@ -3,6 +3,14 @@
 Status: current-state review + prioritized build plan.
 Owner surface: `/admin` and `/admin/tenant`.
 
+> Phase 1 and the first Phase 2 growth slice (2026-11-22): the billing/webhook
+> control room, User 360, audited support actions, immutable audit log, refund
+> approval workflow, activation/retention cohorts, AI cost/margin, and
+> dimension-filtered timeseries are implemented. See
+> `docs/ADMIN_CONTROL_ROOM.md`. The tracker issues remain open for the
+> remaining Phase 1 follow-ups (needs-attention queue, job actions, export)
+> and the rest of Phases 2-3.
+
 ## 1. What the admin dashboard holds today
 
 | Area | Current capability | Source | Gap |

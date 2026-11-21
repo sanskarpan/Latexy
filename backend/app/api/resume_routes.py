@@ -43,6 +43,7 @@ from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
+from ..services.analytics_service import analytics_service
 from ..services.ats_resume_schema import CanonicalATSResume, from_structured_resume
 from ..services.collab_manager import CLOSE_ROLE_CHANGED, collab_manager
 from ..services.entitlement_service import entitlement_service
@@ -717,6 +718,18 @@ async def create_resume(
     db.add(resume)
     await db.commit()
     await db.refresh(resume)
+
+    # First-party activation milestone, mirrored to PostHog by the analytics
+    # service. Tracking is best-effort and cannot fail resume creation.
+    await analytics_service.track_event(
+        db,
+        event_type="resume_created",
+        user_id=UUID(user_id),
+        metadata={
+            "resource_type": "resume",
+            "document_type": resume.document_type or "resume",
+        },
+    )
 
     if settings.OPENAI_API_KEY and await entitlement_service.has_feature("d21", user=user_id):
         try:

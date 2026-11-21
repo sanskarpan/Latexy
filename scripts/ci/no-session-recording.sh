@@ -102,6 +102,7 @@ else
     "mask_all_text: true"
     "maskTextSelector: '*'"
     "maskAllInputs: true"
+    "maskAllElementAttributes: true"
     "blockSelector: '.ph-no-capture, [data-ph-no-capture]'"
     "readAnalyticsConsent() !== 'granted'"
     "startSessionRecording()"
@@ -127,6 +128,16 @@ for relative in "${DOCUMENT_SURFACES[@]}"; do
     failures=$((failures + 1))
   fi
 done
+
+# The public share page renders sensitive text in its loading, error, and
+# anonymous-processing branches too. Require the marker on every branch, not
+# merely somewhere in the file.
+SHARE_PAGE="$SCAN_DIR/src/app/r/[token]/page.tsx"
+share_markers=$(grep -cF 'data-ph-no-capture' "$SHARE_PAGE" 2>/dev/null || true)
+if [ "${share_markers:-0}" -lt 4 ]; then
+  echo "❌ Public share page is missing a replay block on one of its branches" >&2
+  failures=$((failures + 1))
+fi
 
 if [ "$failures" -gt 0 ]; then
   echo >&2
