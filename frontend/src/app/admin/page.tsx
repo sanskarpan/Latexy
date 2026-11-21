@@ -727,7 +727,7 @@ export default function AdminPage() {
 function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
   const canAdmin = role === 'admin'
   const tabs = canAdmin ? ADMIN_TABS : SUPPORT_TABS
-  const [tab, setTab] = useState<TabId>(canAdmin ? 'billing' : 'customers')
+  const [tab, setTab] = useState<TabId>(canAdmin ? 'matrix' : 'customers')
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
