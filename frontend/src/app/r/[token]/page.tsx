@@ -137,7 +137,7 @@ export default function SharedResumePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-bg">
+    <div className="ph-no-capture flex min-h-screen flex-col bg-bg" data-ph-no-capture>
       {data.is_anonymous && (
         <div role="status" className="flex items-center justify-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-2 text-xs font-medium text-warn">
           <EyeOff size={13} aria-hidden="true" />

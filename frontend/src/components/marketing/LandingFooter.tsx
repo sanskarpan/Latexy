@@ -9,6 +9,7 @@ import { MarketingCTA } from './MarketingSections'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { reviewFonts } from './review-fonts'
 import { mailtoHref, SUPPORT_EMAIL } from '@/lib/contact'
+import PrivacyChoicesButton from '@/components/analytics/PrivacyChoicesButton'
 
 export default function LandingFooter({ year }: { year: number }) {
     const { billing } = useFeatureFlags()
@@ -87,6 +88,7 @@ export default function LandingFooter({ year }: { year: number }) {
                         <Link href="/privacy">Privacy</Link>
                         <Link href="/terms">Terms</Link>
                         <Link href="/accessibility">Accessibility</Link>
+                        <PrivacyChoicesButton />
                         <a href={mailtoHref(SUPPORT_EMAIL)}>Contact</a>
                     </nav>
                 </div>

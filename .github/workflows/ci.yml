@@ -91,12 +91,13 @@ jobs:
           done
 
   # ── Security and privacy guards ─────────────────────────────────────────────
-  # Enforces the "no session recording on document surfaces" principle (#1410):
-  # fails the build if a keystroke-capture / heatmap SDK (Clarity, Hotjar,
-  # FullStory, Inspectlet, LogRocket, Qualaroo, Smartlook, Mouseflow) is
-  # introduced into shipped frontend code. Pure grep — no deps, no services.
+  # Enforces the analytics and replay policy (#1410): PostHog may only run
+  # through the consent-gated, fully masked wrapper; document surfaces must stay
+  # blocked; and keystroke/heatmap vendors (Clarity, Hotjar, FullStory,
+  # Inspectlet, LogRocket, Qualaroo, Smartlook, Mouseflow) remain prohibited.
+  # Pure grep — no deps, no services.
   privacy-guard:
-    name: Privacy Guard (no session recording)
+    name: Privacy Guard (analytics & replay policy)
     needs: classify-changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -107,7 +108,7 @@ jobs:
           echo "Component classification failed; refusing to report privacy checks as passed."
           exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Assert no session-recording SDKs in shipped frontend code
+      - name: Assert analytics SDKs follow the consent/masking policy
         run: bash scripts/ci/no-session-recording.sh
       - name: Assert documentation contains no plaintext account credentials
         run: bash scripts/ci/no-plaintext-credentials.sh

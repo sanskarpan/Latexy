@@ -21,6 +21,7 @@ from ..database.models import User
 from ..middleware.auth_middleware import require_admin
 from ..services.entitlement_service import entitlement_service
 from ..services.feature_flag_service import feature_flag_service
+from ..services.posthog_service import posthog_service
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -106,6 +107,11 @@ async def update_feature_flag(
         "admin_feature_flag_updated",
         extra={"admin_user_id": sanitize_for_log(admin_user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
     )
+    posthog_service.capture(
+        admin_user_id,
+        "backend_admin_flag_changed",
+        {"feature_key": key, "enabled": body.enabled, "surface": "admin"},
+    )
     return FlagDetail(
         key=flag.key,
         enabled=flag.enabled,
@@ -170,6 +176,11 @@ async def update_kill_switch(
         "admin_kill_switch_updated",
         extra={"admin_user_id": sanitize_for_log(admin_user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
     )
+    posthog_service.capture(
+        admin_user_id,
+        "backend_admin_kill_switch_changed",
+        {"feature_key": key, "enabled": body.enabled, "surface": "admin"},
+    )
     return await entitlement_service.get_state(db)
 
 
@@ -215,6 +226,12 @@ async def update_matrix_cell(
             "enabled": body.enabled,
         },
     )
+    posthog_service.capture(
+        admin_user_id,
+        "backend_admin_entitlement_changed",
+        {"plan_key": body.plan_family, "feature_key": body.feature_key,
+         "enabled": body.enabled, "surface": "admin"},
+    )
     return await entitlement_service.get_state(db)
 
 
@@ -259,6 +276,11 @@ async def update_role_matrix_cell(
         role, feature.key, body.enabled, db, expected_enabled=body.expected_enabled,
     )
     _log_role_toggle(admin_user_id, role, feature.key, body.enabled)
+    posthog_service.capture(
+        admin_user_id,
+        "backend_admin_role_matrix_changed",
+        {"role": role, "feature_key": feature.key, "enabled": body.enabled, "surface": "admin"},
+    )
     return await entitlement_service.get_state(db)
 
 
@@ -395,5 +417,11 @@ async def update_user_role(
             "previous_role": sanitize_for_log(previous_role),
             "new_role": sanitize_for_log(new_role),
         },
+    )
+    posthog_service.capture(
+        admin_user_id,
+        "backend_admin_user_role_changed",
+        {"target_user_id": user_id, "previous_role": previous_role,
+         "new_role": new_role, "surface": "admin"},
     )
     return _user_summary(user)

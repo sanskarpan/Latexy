@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/components/brand/BrandLogo'
 import dynamic from 'next/dynamic'
 import { mailtoHref, SUPPORT_EMAIL } from '@/lib/contact'
+import PrivacyChoicesButton from '@/components/analytics/PrivacyChoicesButton'
 
 const LandingFooter = dynamic(() => import('./LandingFooter'))
 
@@ -46,6 +47,7 @@ export default function MarketingFooter() {
             <Link href="/privacy" className="transition hover:text-fg">Privacy</Link>
             <Link href="/terms" className="transition hover:text-fg">Terms</Link>
             <Link href="/accessibility" className="transition hover:text-fg">Accessibility</Link>
+            <PrivacyChoicesButton />
             <a href={mailtoHref(SUPPORT_EMAIL)} className="transition hover:text-fg">Contact</a>
           </nav>
         </div>

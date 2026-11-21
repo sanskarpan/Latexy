@@ -183,7 +183,7 @@ def test_fake_conflicting_secrets_cannot_override_held_or_released_choice() -> N
     _, tree = _source_tree()
     base_names = _secret_names(_assignment(tree, "_base_secrets"))
     assert base_names == [
-        "latexy-backend-secrets", "latexy-storage",
+        "latexy-backend-secrets", "latexy-storage", "latexy-posthog",
     ]
 
     # Fake opaque values deliberately conflict with both possible deployment

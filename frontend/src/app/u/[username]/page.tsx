@@ -53,7 +53,7 @@ export default async function PortfolioPage({ params }: PageProps) {
       : 'border-gray-200 bg-white/90 backdrop-blur'
 
   return (
-    <div className={`min-h-screen ${themeClass}`}>
+    <div className={`ph-no-capture min-h-screen ${themeClass}`} data-ph-no-capture>
       {/* Header */}
       <header className={`sticky top-0 z-50 border-b ${headerClass}`}>
         <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">

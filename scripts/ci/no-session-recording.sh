@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# no-session-recording.sh — CI guard for the "no session recording" principle.
+# analytics-privacy-guard.sh — CI guard for the analytics and replay policy.
 #
-# Part D of docs/FEATURES.md commits Latexy to NOT running session-recording or
-# heatmap SDKs on document-editing surfaces. LiveCareer and peers load Microsoft
-# Clarity, Inspectlet and Qualaroo — keystroke-level capture on pages where users
-# type their name, address, phone number and employment history. We refuse that.
+# The old rule was simple: no session recording anywhere. The product now uses
+# consent-based PostHog analytics and masked replay outside document surfaces.
+# This guard keeps the important part of the original promise:
 #
-# The distinction, for whoever revisits this: product analytics on *navigation*
-# is defensible; capturing *input* on a PII-bearing document is not. This guard
-# fails the build if a known session-recording / heatmap SDK is introduced, so a
-# future analytics decision cannot quietly reintroduce one. (#1410)
+#   * no keystroke/heatmap vendors on shipped document surfaces;
+#   * PostHog may only be imported through the approved wrapper;
+#   * the wrapper must keep consent gating, total text masking, and the
+#     `ph-no-capture` block selector;
+#   * résumé editors and public document pages must keep their block markers.
 #
-# It matches SDK-specific tokens (load URLs, init globals), NOT bare vendor words,
-# so ordinary identifiers like `bullet_clarity` do not trip it.
+# The distinction is deliberate: navigation analytics is defensible; capturing
+# input or document content on a PII-bearing résumé page is not. (#1410)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SCAN_DIR="$REPO_ROOT/frontend"
+POSTHOG_WRAPPER="$SCAN_DIR/src/lib/analytics/posthog.ts"
 
 # Directories that hold shipped client code. Tests may legitimately reference a
 # vendor name (e.g. to assert it is absent), so they are excluded from the scan.
@@ -49,7 +50,7 @@ PATTERNS=(
   '_mfq\b'                      # Mouseflow queue global
 )
 
-echo "🔒 Scanning shipped frontend code for session-recording / heatmap SDKs…"
+echo "🔒 Scanning shipped frontend code for prohibited capture SDKs…"
 
 existing_targets=()
 for t in "${TARGETS[@]}"; do
@@ -61,26 +62,77 @@ if [ ${#existing_targets[@]} -eq 0 ]; then
   exit 0
 fi
 
-hits=0
+failures=0
+
 for pat in "${PATTERNS[@]}"; do
-  # --include limits to shipped source; exclude test files (they may name a vendor
-  # precisely to prove its absence).
   if matches=$(grep -rniE "$pat" "${existing_targets[@]}" \
         --include='*.ts' --include='*.tsx' --include='*.js' \
         --include='*.jsx' --include='*.html' \
         2>/dev/null \
         | grep -viE '(/__tests__/|\.test\.|\.spec\.|no-session-recording)'); then
-    echo "❌ Forbidden session-recording SDK signature found (/$pat/):" >&2
+    echo "❌ Forbidden capture SDK signature found (/$pat/):" >&2
     echo "$matches" >&2
-    hits=$((hits + 1))
+    failures=$((failures + 1))
   fi
 done
 
-if [ "$hits" -gt 0 ]; then
+if [ ! -f "$POSTHOG_WRAPPER" ]; then
+  echo "❌ Approved PostHog wrapper is missing: ${POSTHOG_WRAPPER#$REPO_ROOT/}" >&2
+  failures=$((failures + 1))
+else
+  # PostHog may only be imported/initialized inside the approved wrapper.
+  if matches=$(grep -rniE \
+        "from ['\"](posthog-js|posthog-node)|require\(['\"](posthog-js|posthog-node)|import\(['\"]posthog-js|posthog\.init\(" \
+        "${existing_targets[@]}" \
+        --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
+        2>/dev/null \
+        | grep -viE '(/__tests__/|\.test\.|\.spec\.)' \
+        | grep -vF "$POSTHOG_WRAPPER"); then
+    echo "❌ PostHog imported or initialized outside the approved wrapper:" >&2
+    echo "$matches" >&2
+    failures=$((failures + 1))
+  fi
+
+  # The wrapper must keep the privacy controls that make replay acceptable.
+  required_tokens=(
+    "latexy-analytics-consent"
+    "disable_session_recording: true"
+    "capture_pageleave: false"
+    "before_send:"
+    "mask_all_text: true"
+    "maskTextSelector: '*'"
+    "maskAllInputs: true"
+    "blockSelector: '.ph-no-capture, [data-ph-no-capture]'"
+    "readAnalyticsConsent() !== 'granted'"
+    "startSessionRecording()"
+  )
+  for token in "${required_tokens[@]}"; do
+    if ! grep -qF "$token" "$POSTHOG_WRAPPER"; then
+      echo "❌ PostHog wrapper is missing required privacy control: $token" >&2
+      failures=$((failures + 1))
+    fi
+  done
+fi
+
+# Document surfaces must remain explicitly excluded from replay.
+DOCUMENT_SURFACES=(
+  "src/app/workspace/[resumeId]/edit/page.tsx"
+  "src/app/try/page.tsx"
+  "src/app/r/[token]/page.tsx"
+  "src/app/u/[username]/page.tsx"
+)
+for relative in "${DOCUMENT_SURFACES[@]}"; do
+  if ! grep -qF 'ph-no-capture' "$SCAN_DIR/$relative"; then
+    echo "❌ Document surface lost its replay block marker: $relative" >&2
+    failures=$((failures + 1))
+  fi
+done
+
+if [ "$failures" -gt 0 ]; then
   echo >&2
-  echo "Session recording captures user input on PII-bearing document pages and is" >&2
-  echo "prohibited (see docs/FEATURES.md Part D, issue #1410). Remove the SDK." >&2
+  echo "Analytics may not capture document input or run outside the approved," >&2
+  echo "consent-gated, fully masked PostHog wrapper (see docs/POSTHOG.md)." >&2
   exit 1
 fi
 
-echo "✅ No session-recording / heatmap SDKs found. Principle upheld."
+echo "✅ Analytics policy upheld: consent-gated wrapper, masked replay, document surfaces blocked."

@@ -23,11 +23,13 @@ describe('privacy policy accuracy', () => {
   })
 
   it('names the actual production processors and first-party telemetry', () => {
-    for (const provider of ['Vercel', 'Modal', 'Neon', 'Upstash', 'Cloudflare R2']) {
+    for (const provider of ['Vercel', 'Modal', 'Neon', 'Upstash', 'Cloudflare R2', 'PostHog']) {
       expect(publicPolicy).toContain(provider)
     }
     expect(publicPolicy).toContain('first-party Web Vitals')
-    expect(publicPolicy).toContain('does not currently embed Google Analytics')
+    expect(publicPolicy).toContain('Latexy uses PostHog for two distinct purposes')
+    expect(publicPolicy).toContain('optional browser analytics and session replay are loaded only after')
+    expect(publicPolicy).toContain('does not use advertising pixels')
   })
 
   it('does not make the previous unsupported certification or control claims', () => {

@@ -62,7 +62,7 @@ export default defineConfig({
             // select it explicitly rather than weakening the pin. New
             // variants must pass scripts/ci/review-react-chunk.mjs first.
             metadata: {
-                hydrationDiagnosticBundle: process.env.HYDRATION_DIAGNOSTIC_BUNDLE || 'react-3ea14a6d',
+                hydrationDiagnosticBundle: process.env.HYDRATION_DIAGNOSTIC_BUNDLE || 'react-b9318ce4',
             },
             use: { ...devices['Desktop Chrome'] },
         },

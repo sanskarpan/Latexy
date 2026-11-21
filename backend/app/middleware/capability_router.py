@@ -265,6 +265,7 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
         "track_event", "get_user_analytics", "get_system_analytics",
         "get_conversion_funnel", "track_compilation", "track_optimization",
         "track_page_view", "track_feature_usage", "get_analytics_dashboard",
+        "get_admin_analytics_overview",
     }),
     "application_routes": frozenset({
         "list_submissions", "get_submission",
