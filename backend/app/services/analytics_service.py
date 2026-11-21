@@ -2,6 +2,7 @@
 Analytics Service for tracking user behavior and system metrics.
 """
 
+import inspect
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -56,7 +57,12 @@ class AnalyticsService:
                 user_agent=user_agent
             )
 
-            db.add(analytics_record)
+            added = db.add(analytics_record)
+            # Real AsyncSession.add is synchronous. A few route-policy tests use
+            # an AsyncMock session; awaiting the returned coroutine keeps those
+            # harnesses warning-free without changing production behavior.
+            if inspect.isawaitable(added):
+                await added
             await db.commit()
 
             # Also cache in Redis for real-time analytics

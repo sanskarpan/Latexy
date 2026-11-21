@@ -402,12 +402,17 @@ async def export_resume(
 
         # Activation milestone used by the admin funnel. Best-effort only; the
         # export response must never depend on analytics availability.
-        await analytics_service.track_event(
-            db,
-            event_type="export",
-            user_id=UUID(user_id),
-            metadata={"resource_type": "resume", "format": fmt},
-        )
+        try:
+            analytics_user_id = UUID(user_id)
+        except (TypeError, ValueError):
+            analytics_user_id = None
+        if analytics_user_id is not None:
+            await analytics_service.track_event(
+                db,
+                event_type="export",
+                user_id=analytics_user_id,
+                metadata={"resource_type": "resume", "format": fmt},
+            )
 
         return Response(
             content=content_bytes,

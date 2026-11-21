@@ -721,15 +721,20 @@ async def create_resume(
 
     # First-party activation milestone, mirrored to PostHog by the analytics
     # service. Tracking is best-effort and cannot fail resume creation.
-    await analytics_service.track_event(
-        db,
-        event_type="resume_created",
-        user_id=UUID(user_id),
-        metadata={
-            "resource_type": "resume",
-            "document_type": resume.document_type or "resume",
-        },
-    )
+    try:
+        analytics_user_id = UUID(user_id)
+    except (TypeError, ValueError):
+        analytics_user_id = None
+    if analytics_user_id is not None:
+        await analytics_service.track_event(
+            db,
+            event_type="resume_created",
+            user_id=analytics_user_id,
+            metadata={
+                "resource_type": "resume",
+                "document_type": resume.document_type or "resume",
+            },
+        )
 
     if settings.OPENAI_API_KEY and await entitlement_service.has_feature("d21", user=user_id):
         try:
