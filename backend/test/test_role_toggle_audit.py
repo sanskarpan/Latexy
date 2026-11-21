@@ -35,7 +35,7 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
     assert update.call_args.args[1] is get_feature("b03").key
     logger.info.assert_called_once_with(
         "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
-        "synthetic-admin-id", role, "b03", False,
+        "synthetic-admin-id", role, "b03", "False",
     )
     record = logging.LogRecord("audit", logging.INFO, __file__, 1, logger.info.call_args.args[0], logger.info.call_args.args[1:], None)
     message = json.loads(JsonFormatter().format(record))["message"]

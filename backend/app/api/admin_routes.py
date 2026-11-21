@@ -121,10 +121,9 @@ async def update_feature_flag(
         )
     except Exception:
         logger.critical("Admin feature-flag audit write failed", exc_info=True)
-    # Do not put request-derived identifiers into log records; the immutable
-    # admin audit row above is the authoritative actor/target record. This also
-    # keeps CodeQL's log-injection sink unable to see tainted values.
-    logger.info("admin_feature_flag_updated", extra={"enabled": body.enabled})
+    # Keep every request-derived value out of the log sink. The immutable admin
+    # audit row above is the authoritative actor/target/state record.
+    logger.info("admin_feature_flag_updated")
     posthog_service.capture(
         actor.user_id,
         "backend_admin_flag_changed",
@@ -206,7 +205,7 @@ async def update_kill_switch(
         )
     except Exception:
         logger.critical("Admin kill-switch audit write failed", exc_info=True)
-    logger.info("admin_kill_switch_updated", extra={"enabled": body.enabled})
+    logger.info("admin_kill_switch_updated")
     posthog_service.capture(
         actor.user_id,
         "backend_admin_kill_switch_changed",
@@ -270,7 +269,6 @@ async def update_matrix_cell(
             "admin_user_id": sanitize_for_log(actor.user_id),
             "plan_family": sanitize_for_log(body.plan_family),
             "feature_key": sanitize_for_log(body.feature_key),
-            "enabled": body.enabled,
         },
     )
     posthog_service.capture(
@@ -294,7 +292,8 @@ def _log_role_toggle(admin_user_id: str, role: str, feature_key: str, enabled: b
     # Include bounded identifiers in the message so the audit is not empty.
     logger.info(
         "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
-        one_line(admin_user_id), one_line(role), one_line(feature_key), bool(enabled),
+        one_line(admin_user_id), one_line(role), one_line(feature_key),
+        one_line(str(bool(enabled))),
     )
 
 
