@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.api import admin_routes
 from app.core.feature_registry import CAPABILITY_ROLES, get_feature
 from app.core.logging import JsonFormatter
+from app.services.admin_audit_service import AdminActor
 
 
 @pytest.mark.parametrize("role", CAPABILITY_ROLES)
@@ -18,6 +19,7 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
     logger = Mock()
     monkeypatch.setattr(admin_routes.entitlement_service, "set_role_cell", update)
     monkeypatch.setattr(admin_routes.entitlement_service, "get_state", state)
+    monkeypatch.setattr(admin_routes, "record_admin_audit", AsyncMock())
     monkeypatch.setattr(admin_routes, "logger", logger)
     # Force equal values constructed at runtime rather than source constants.
     body = admin_routes.RoleMatrixUpdateRequest(
@@ -25,7 +27,8 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
         enabled=False, expected_enabled=True,
     )
     db = Mock()
-    result = await admin_routes.update_role_matrix_cell(body, db, "synthetic-admin-id")
+    actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
+    result = await admin_routes.update_role_matrix_cell(body, None, db, actor)
     assert result == {"verified": True}
     update.assert_awaited_once_with(role, "b03", False, db, expected_enabled=True)
     assert update.call_args.args[0] is next(known for known in CAPABILITY_ROLES if known == role)
@@ -55,10 +58,12 @@ async def test_invalid_role_toggle_cannot_write_or_emit_success_audit(monkeypatc
     logger = Mock()
     monkeypatch.setattr(admin_routes.entitlement_service, "set_role_cell", update)
     monkeypatch.setattr(admin_routes.entitlement_service, "get_state", state)
+    monkeypatch.setattr(admin_routes, "record_admin_audit", AsyncMock())
     monkeypatch.setattr(admin_routes, "logger", logger)
     body = admin_routes.RoleMatrixUpdateRequest(role=role, feature_key=feature, enabled=True)
+    actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
     with pytest.raises(HTTPException) as exc:
-        await admin_routes.update_role_matrix_cell(body, Mock(), "synthetic-admin-id")
+        await admin_routes.update_role_matrix_cell(body, None, Mock(), actor)
     assert exc.value.status_code == status
     update.assert_not_awaited()
     state.assert_not_awaited()

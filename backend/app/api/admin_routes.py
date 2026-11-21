@@ -121,10 +121,10 @@ async def update_feature_flag(
         )
     except Exception:
         logger.critical("Admin feature-flag audit write failed", exc_info=True)
-    logger.info(
-        "admin_feature_flag_updated",
-        extra={"admin_user_id": sanitize_for_log(actor.user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
-    )
+    # Do not put request-derived identifiers into log records; the immutable
+    # admin audit row above is the authoritative actor/target record. This also
+    # keeps CodeQL's log-injection sink unable to see tainted values.
+    logger.info("admin_feature_flag_updated", extra={"enabled": body.enabled})
     posthog_service.capture(
         actor.user_id,
         "backend_admin_flag_changed",
@@ -206,10 +206,7 @@ async def update_kill_switch(
         )
     except Exception:
         logger.critical("Admin kill-switch audit write failed", exc_info=True)
-    logger.info(
-        "admin_kill_switch_updated",
-        extra={"admin_user_id": sanitize_for_log(actor.user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
-    )
+    logger.info("admin_kill_switch_updated", extra={"enabled": body.enabled})
     posthog_service.capture(
         actor.user_id,
         "backend_admin_kill_switch_changed",
