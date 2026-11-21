@@ -933,6 +933,8 @@ export interface AdminBillingWebhook {
   }
 }
 
+export type AdminBillingWebhookMutation = Omit<AdminBillingWebhook, 'local_link'>
+
 export interface AdminBillingWebhookList {
   items: AdminBillingWebhook[]
   total: number
@@ -989,6 +991,7 @@ export interface AdminUser360 {
     }>
     compilations: number
     successful_compilations: number
+    failed_compilations: number
     last_compilation_at: string | null
     optimizations: number
     last_optimization_at: string | null
@@ -1011,6 +1014,7 @@ export interface AdminUser360 {
       payment_id: string
       status: string
       amount: number | null
+      currency: string | null
       requested_at: string | null
       decided_at: string | null
       executed_at: string | null
@@ -1085,15 +1089,15 @@ export interface AdminRetentionResponse {
   cohorts: Array<{
     week_start: string
     cohort_size: number
-    d1: { count: number; rate: number | null }
-    d7: { count: number; rate: number | null }
-    d30: { count: number; rate: number | null }
+    d1: { count: number; eligible: number; rate: number | null }
+    d7: { count: number; eligible: number; rate: number | null }
+    d30: { count: number; eligible: number; rate: number | null }
   }>
   overall: {
     cohort_size: number
-    d1: { count: number; rate: number }
-    d7: { count: number; rate: number }
-    d30: { count: number; rate: number }
+    d1: { count: number; eligible: number; rate: number | null }
+    d7: { count: number; eligible: number; rate: number | null }
+    d30: { count: number; eligible: number; rate: number | null }
   }
   minimum_cohort_size: number
   generated_at: string
@@ -1116,6 +1120,7 @@ export interface AdminAiCostResponse {
     runs: number
     tokens: number
     cost_usd: number
+    fallback_price?: boolean
   }>
   by_plan: Array<{ plan: string; runs: number; tokens: number; cost_usd: number }>
   by_day: Array<{ date: string; runs: number; tokens: number; cost_usd: number }>
@@ -4167,8 +4172,8 @@ class ApiClient {
     return this.request<AdminBillingWebhookList>(`/admin/billing/webhooks${suffix}`)
   }
 
-  async acknowledgeAdminWebhook(id: string, note: string): Promise<AdminBillingWebhook> {
-    return this.request<AdminBillingWebhook>(
+  async acknowledgeAdminWebhook(id: string, note: string): Promise<AdminBillingWebhookMutation> {
+    return this.request<AdminBillingWebhookMutation>(
       `/admin/billing/webhooks/${encodeURIComponent(id)}/acknowledge`,
       { method: 'POST', body: JSON.stringify({ note }) },
     )
@@ -4177,9 +4182,9 @@ class ApiClient {
   async reconcileAdminWebhook(id: string, note?: string): Promise<{
     status: string
     message: string
-    event: AdminBillingWebhook
+    event: AdminBillingWebhookMutation
   }> {
-    return this.request<{ status: string; message: string; event: AdminBillingWebhook }>(
+    return this.request<{ status: string; message: string; event: AdminBillingWebhookMutation }>(
       `/admin/billing/webhooks/${encodeURIComponent(id)}/reconcile`, {
       method: 'POST',
       body: JSON.stringify({ note: note || undefined }),

@@ -190,7 +190,9 @@ async function loadClient(): Promise<PostHogClient | null> {
 export async function initializeAnalytics(): Promise<boolean> {
   if (readAnalyticsConsent() !== 'granted') return false
   const loaded = await loadClient()
-  if (!loaded) return false
+  // Consent can be withdrawn while the SDK import is in flight. Re-check after
+  // the await so a pending activation cannot undo disableAnalytics().
+  if (!loaded || readAnalyticsConsent() !== 'granted') return false
   loaded.opt_in_capturing()
   loaded.startSessionRecording()
   return true

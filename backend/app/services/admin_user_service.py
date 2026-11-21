@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import QUOTA_DIMENSIONS, get_plan_config, get_plan_quota_window
+from ..core.config import QUOTA_DIMENSIONS, get_plan_quota_window, settings
 from ..database import models
 from .admin_audit_service import AdminActor, audit_row_summary, record_admin_audit
 
@@ -90,6 +90,7 @@ async def build_user_360(
             select(
                 func.count(),
                 func.count().filter(Compilation.status == "completed"),
+                func.count().filter(Compilation.status == "failed"),
                 func.max(Compilation.created_at),
             ).where(Compilation.user_id == user_id)
         )
@@ -254,7 +255,8 @@ async def build_user_360(
             ],
             "compilations": int(compilation_row[0] or 0),
             "successful_compilations": int(compilation_row[1] or 0),
-            "last_compilation_at": _iso(compilation_row[2]),
+            "failed_compilations": int(compilation_row[2] or 0),
+            "last_compilation_at": _iso(compilation_row[3]),
             "optimizations": int(optimization_row[0] or 0),
             "last_optimization_at": _iso(optimization_row[1]),
         },
@@ -305,6 +307,7 @@ async def build_user_360(
                     "payment_id": row.payment_id,
                     "status": row.status,
                     "amount": row.amount,
+                    "currency": row.currency,
                     "requested_at": _iso(row.requested_at),
                     "decided_at": _iso(row.decided_at),
                     "executed_at": _iso(row.executed_at),
@@ -392,8 +395,14 @@ async def set_user_plan(
     user = await db.get(User, user_id)
     if user is None:
         raise KeyError("User not found")
-    if get_plan_config(plan) is None:
+    normalized_plan = plan.strip().lower()
+    supported_plans = {
+        str(sku).strip().lower()
+        for sku in settings.SUBSCRIPTION_PLANS
+    }
+    if normalized_plan not in supported_plans:
         raise ValueError("Unknown plan SKU")
+    plan = normalized_plan
     cleaned_status = status.strip().lower()
     if cleaned_status not in {"active", "inactive", "trialing", "past_due", "cancelled", "comped"}:
         raise ValueError("Unsupported subscription status")
@@ -500,20 +509,51 @@ async def reset_user_quota(
         keys.append(f"latexy:quota:{item}:{user_id}:{period}")
     from ..core.redis import get_redis_cache_client
 
-    redis = await get_redis_cache_client()
-    deleted = int(await redis.delete(*keys)) if keys else 0
+    # Persist the intent before the external mutation. If Redis succeeds and
+    # the completion audit fails, the immutable started row still proves who
+    # reset what and why; a retry cannot erase that history.
+    intent = await record_admin_audit(
+        db,
+        actor=actor,
+        action="user.quota.reset.started",
+        target_type="user",
+        target_id=user_id,
+        reason=cleaned_reason,
+        before={"dimensions": dimensions, "counter_keys": len(keys)},
+        request=request,
+        commit=True,
+    )
+    try:
+        redis = await get_redis_cache_client()
+        deleted = int(await redis.delete(*keys)) if keys else 0
+    except Exception:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="user.quota.reset.failed",
+            target_type="user",
+            target_id=user_id,
+            reason=cleaned_reason,
+            before={"dimensions": dimensions, "counter_keys": len(keys)},
+            after={"deleted_keys": 0},
+            metadata={"operation_id": intent.id},
+            request=request,
+            commit=True,
+        )
+        raise
     await record_admin_audit(
         db,
         actor=actor,
-        action="user.quota.reset",
+        action="user.quota.reset.completed",
         target_type="user",
         target_id=user_id,
         reason=cleaned_reason,
         before={"dimensions": dimensions, "counter_keys": len(keys)},
         after={"deleted_keys": deleted},
+        metadata={"operation_id": intent.id},
         request=request,
+        commit=True,
     )
-    await db.commit()
     return {"dimensions": dimensions, "deleted_keys": deleted}
 
 

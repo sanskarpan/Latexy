@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   apiClient,
@@ -67,7 +67,7 @@ function WebhookHealth({
   onActionId: (id: string | null) => void
   onNote: (value: string) => void
   onReconcile: (id: string) => void
-  onAcknowledge: (id: string) => void
+  onAcknowledge: (id: string, quick?: boolean) => void
   busyId: string | null
 }) {
   const [draftQuery, setDraftQuery] = useState(filters.q)
@@ -205,11 +205,11 @@ function WebhookHealth({
                             {isOpen ? 'Cancel' : 'Review'}
                           </button>
                         )}
-                        {!row.acknowledged_at && row.status !== 'processed' && (
+                        {!row.acknowledged_at && row.status === 'failed' && (
                           <button
                             type="button"
-                            onClick={() => onAcknowledge(row.id)}
-                            disabled={busyId === row.id}
+                            onClick={() => onAcknowledge(row.id, true)}
+                            disabled={Boolean(busyId)}
                             className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
                           >
                             Quick ack
@@ -232,19 +232,21 @@ function WebhookHealth({
                             <button
                               type="button"
                               onClick={() => onReconcile(row.id)}
-                              disabled={busyId === row.id || !note.trim()}
+                              disabled={Boolean(busyId) || !note.trim()}
                               className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
                             >
                               Reconcile from Dodo
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => onAcknowledge(row.id)}
-                              disabled={busyId === row.id || !note.trim()}
-                              className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 disabled:opacity-40"
-                            >
-                              Acknowledge
-                            </button>
+                            {row.status === 'failed' && (
+                              <button
+                                type="button"
+                                onClick={() => onAcknowledge(row.id)}
+                                disabled={Boolean(busyId) || !note.trim()}
+                                className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 disabled:opacity-40"
+                              >
+                                Acknowledge
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -345,7 +347,7 @@ function RefundQueue({
               {data.items.map((row) => {
                 const isOpen = actionId === row.id
                 const awaitingDecision = row.status === 'pending'
-                const executable = row.status === 'approved' || row.status === 'failed'
+                const executable = row.status === 'approved'
                 return (
                   <tr key={row.id} className="border-t border-line align-top">
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-fg-3">
@@ -364,13 +366,16 @@ function RefundQueue({
                       {row.provider_refund_id && <p className="mt-1 font-mono text-[10px] text-ok">{row.provider_refund_id}</p>}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => onActionId(isOpen ? null : row.id)}
-                        className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 hover:bg-surface-2"
-                      >
-                        {isOpen ? 'Cancel' : awaitingDecision || executable ? 'Review' : 'Details'}
-                      </button>
+                      {(awaitingDecision || executable) && (
+                        <button
+                          type="button"
+                          onClick={() => onActionId(isOpen ? null : row.id)}
+                          disabled={Boolean(busyId)}
+                          className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                        >
+                          {isOpen ? 'Cancel' : 'Review'}
+                        </button>
+                      )}
                       {isOpen && (awaitingDecision || executable) && (
                         <div className="mt-2 space-y-2 rounded-md border border-line bg-surface-2/60 p-2">
                           <label className="block text-[10px] font-medium text-fg-2">
@@ -387,7 +392,7 @@ function RefundQueue({
                               <button
                                 type="button"
                                 onClick={() => onDecision(row.id, 'approve')}
-                                disabled={busyId === row.id || !note.trim()}
+                                disabled={Boolean(busyId) || !note.trim()}
                                 className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
                               >
                                 Approve
@@ -395,7 +400,7 @@ function RefundQueue({
                               <button
                                 type="button"
                                 onClick={() => onDecision(row.id, 'reject')}
-                                disabled={busyId === row.id || !note.trim()}
+                                disabled={Boolean(busyId) || !note.trim()}
                                 className="rounded border border-err/30 px-2 py-1 text-[10px] font-medium text-err disabled:opacity-40"
                               >
                                 Reject
@@ -405,7 +410,7 @@ function RefundQueue({
                             <button
                               type="button"
                               onClick={() => onExecute(row.id)}
-                              disabled={busyId === row.id}
+                              disabled={Boolean(busyId)}
                               className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
                             >
                               {row.status === 'failed' ? 'Retry refund' : 'Execute refund'}
@@ -457,32 +462,38 @@ export default function AdminBilling() {
   const [refundAmount, setRefundAmount] = useState('')
   const [refundItemId, setRefundItemId] = useState('')
   const [refundReason, setRefundReason] = useState('')
+  const requestGeneration = useRef(0)
+  const busyRef = useRef(false)
 
   const acknowledged = filters.acknowledged === 'all' ? undefined : filters.acknowledged === 'acknowledged'
 
   const load = useCallback(async () => {
+    const generation = ++requestGeneration.current
     setLoading(true)
     setError(null)
-    try {
-      const [nextSummary, nextWebhooks, nextRefunds] = await Promise.all([
-        apiClient.getAdminBillingSummary(days),
-        apiClient.getAdminBillingWebhooks({
-          status: filters.status === 'all' ? undefined : filters.status,
-          acknowledged,
-          q: filters.q || undefined,
-          limit: PAGE_SIZE,
-          offset: webhookOffset,
-        }),
-        apiClient.getAdminRefundRequests({ limit: PAGE_SIZE, offset: refundOffset }),
-      ])
-      setSummary(nextSummary)
-      setWebhooks(nextWebhooks)
-      setRefunds(nextRefunds)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load billing control room')
-    } finally {
-      setLoading(false)
+    const [summaryResult, webhookResult, refundResult] = await Promise.allSettled([
+      apiClient.getAdminBillingSummary(days),
+      apiClient.getAdminBillingWebhooks({
+        status: filters.status === 'all' ? undefined : filters.status,
+        acknowledged,
+        q: filters.q || undefined,
+        limit: PAGE_SIZE,
+        offset: webhookOffset,
+      }),
+      apiClient.getAdminRefundRequests({ limit: PAGE_SIZE, offset: refundOffset }),
+    ])
+    if (requestGeneration.current !== generation) return
+    const failures: string[] = []
+    if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value)
+    else failures.push('summary')
+    if (webhookResult.status === 'fulfilled') setWebhooks(webhookResult.value)
+    else failures.push('webhooks')
+    if (refundResult.status === 'fulfilled') setRefunds(refundResult.value)
+    else failures.push('refund queue')
+    if (failures.length) {
+      setError(`Could not load ${failures.join(', ')}. Other sections show their last successful data.`)
     }
+    setLoading(false)
   }, [acknowledged, days, filters.q, filters.status, refundOffset, webhookOffset])
 
   useEffect(() => {
@@ -491,9 +502,20 @@ export default function AdminBilling() {
 
   const planMix = useMemo(() => summary?.plan_mix ?? [], [summary])
 
-  const reconcile = async (id: string) => {
-    if (!note.trim()) return
+  const beginBusy = (id: string): boolean => {
+    if (busyRef.current) return false
+    busyRef.current = true
     setBusyId(id)
+    return true
+  }
+
+  const endBusy = () => {
+    busyRef.current = false
+    setBusyId(null)
+  }
+
+  const reconcile = async (id: string) => {
+    if (!note.trim() || !beginBusy(id)) return
     try {
       const result = await apiClient.reconcileAdminWebhook(id, note.trim())
       toast.success(result.message || 'Provider state reconciled')
@@ -503,13 +525,16 @@ export default function AdminBilling() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Reconciliation failed')
     } finally {
-      setBusyId(null)
+      endBusy()
     }
   }
 
-  const acknowledge = async (id: string) => {
-    const effectiveNote = note.trim() || 'Reviewed in the admin billing control room'
-    setBusyId(id)
+  const acknowledge = async (id: string, quick = false) => {
+    // Quick ack must never reuse another row's editable note.
+    const effectiveNote = quick
+      ? 'Quick acknowledgement from the billing control room'
+      : note.trim()
+    if (!effectiveNote || !beginBusy(id)) return
     try {
       await apiClient.acknowledgeAdminWebhook(id, effectiveNote)
       toast.success('Webhook acknowledged')
@@ -519,13 +544,12 @@ export default function AdminBilling() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Acknowledgement failed')
     } finally {
-      setBusyId(null)
+      endBusy()
     }
   }
 
   const decideRefund = async (id: string, decision: 'approve' | 'reject') => {
-    if (!refundNote.trim()) return
-    setBusyId(id)
+    if (!refundNote.trim() || !beginBusy(id)) return
     try {
       await apiClient.decideAdminRefund(id, decision, refundNote.trim())
       toast.success(decision === 'approve' ? 'Refund approved' : 'Refund rejected')
@@ -535,33 +559,42 @@ export default function AdminBilling() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Refund decision failed')
     } finally {
-      setBusyId(null)
+      endBusy()
     }
   }
 
   const executeRefund = async (id: string) => {
-    setBusyId(id)
+    if (!beginBusy(id)) return
     try {
       const updated = await apiClient.executeAdminRefund(id, refundNote.trim() || undefined)
-      toast.success(updated.status === 'executed' ? 'Refund submitted to Dodo' : 'Refund execution failed')
+      if (updated.status === 'executed') {
+        toast.success('Refund submitted to Dodo')
+      } else {
+        toast.error(updated.last_error || 'Refund execution failed')
+      }
       setRefundActionId(null)
       setRefundNote('')
       setRefreshKey((value) => value + 1)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Refund execution failed')
     } finally {
-      setBusyId(null)
+      endBusy()
     }
   }
 
   const createRefund = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!refundPaymentId.trim() || !refundReason.trim()) return
-    setBusyId('create-refund')
+    const amount = refundAmount.trim() ? Number(refundAmount) : null
+    if (amount !== null && (!Number.isInteger(amount) || amount <= 0)) {
+      toast.error('Refund amount must be a positive whole number')
+      return
+    }
+    if (!beginBusy('create-refund')) return
     try {
       await apiClient.createAdminRefundRequest({
         payment_id: refundPaymentId.trim(),
-        amount: refundAmount.trim() ? Number(refundAmount) : null,
+        amount,
         provider_item_id: refundItemId.trim() || null,
         reason: refundReason.trim(),
       })
@@ -575,7 +608,7 @@ export default function AdminBilling() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Refund request failed')
     } finally {
-      setBusyId(null)
+      endBusy()
     }
   }
 
@@ -703,7 +736,7 @@ export default function AdminBilling() {
               Reason
               <input value={refundReason} onChange={(event) => setRefundReason(event.target.value)} required minLength={3} maxLength={1000} className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-xs text-fg" />
             </label>
-            <button type="submit" disabled={busyId === 'create-refund'} className="min-h-[40px] rounded-md bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-40 sm:col-span-2 lg:col-span-1">
+            <button type="submit" disabled={Boolean(busyId)} className="min-h-[40px] rounded-md bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-40 sm:col-span-2 lg:col-span-1">
               Submit request
             </button>
           </form>

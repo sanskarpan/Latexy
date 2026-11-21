@@ -104,7 +104,7 @@ async def update_feature_flag(
     """Toggle a feature flag. Admin only."""
     try:
         before_enabled = await feature_flag_service.get_flag(key, db)
-        flag = await feature_flag_service.update_flag(key, body.enabled, db)
+        flag = await feature_flag_service.update_flag(key, body.enabled, db, commit=False)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Feature flag {key!r} not found")
     try:
@@ -117,10 +117,13 @@ async def update_feature_flag(
             before={"enabled": before_enabled},
             after={"enabled": flag.enabled},
             request=request,
-            commit=True,
         )
+        await db.commit()
     except Exception:
-        logger.critical("Admin feature-flag audit write failed", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
+    if key in PUBLIC_FLAG_KEYS:
+        await feature_flag_service.sync_flag_cache(key, flag.enabled)
     # Keep every request-derived value out of the log sink. The immutable admin
     # audit row above is the authoritative actor/target/state record.
     logger.info("admin_feature_flag_updated")
@@ -181,7 +184,9 @@ async def update_kill_switch(
     """Toggle a global feature kill-switch. Admin only. 404 if the key is not gateable."""
     before_state = await entitlement_service.get_state(db)
     try:
-        await entitlement_service.set_kill_switch(key, body.enabled, db, expected_enabled=body.expected_enabled)
+        await entitlement_service.set_kill_switch(
+            key, body.enabled, db, expected_enabled=body.expected_enabled, commit=False
+        )
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -201,10 +206,11 @@ async def update_kill_switch(
             before={"enabled": before_state["kill_switches"].get(key)},
             after={"enabled": body.enabled},
             request=request,
-            commit=True,
         )
+        await db.commit()
     except Exception:
-        logger.critical("Admin kill-switch audit write failed", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     logger.info("admin_kill_switch_updated")
     posthog_service.capture(
         actor.user_id,
@@ -247,7 +253,8 @@ async def update_matrix_cell(
         )
     before_state = await entitlement_service.get_state(db)
     await entitlement_service.set_matrix_cell(
-        body.plan_family, body.feature_key, body.enabled, db, expected_enabled=body.expected_enabled
+        body.plan_family, body.feature_key, body.enabled, db,
+        expected_enabled=body.expected_enabled, commit=False,
     )
     try:
         await record_admin_audit(
@@ -259,10 +266,11 @@ async def update_matrix_cell(
             before={"enabled": before_state["matrix"].get(body.plan_family, {}).get(body.feature_key)},
             after={"enabled": body.enabled},
             request=request,
-            commit=True,
         )
+        await db.commit()
     except Exception:
-        logger.critical("Admin entitlement-matrix audit write failed", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     logger.info(
         "admin_entitlement_matrix_updated",
         extra={
@@ -321,7 +329,8 @@ async def update_role_matrix_cell(
         ))
     before_state = await entitlement_service.get_state(db)
     await entitlement_service.set_role_cell(
-        role, feature.key, body.enabled, db, expected_enabled=body.expected_enabled,
+        role, feature.key, body.enabled, db,
+        expected_enabled=body.expected_enabled, commit=False,
     )
     try:
         await record_admin_audit(
@@ -333,10 +342,11 @@ async def update_role_matrix_cell(
             before={"enabled": (before_state.get("role_matrix") or {}).get(role, {}).get(feature.key)},
             after={"enabled": body.enabled},
             request=request,
-            commit=True,
         )
+        await db.commit()
     except Exception:
-        logger.critical("Admin role-matrix audit write failed", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     _log_role_toggle(actor.user_id, role, feature.key, body.enabled)
     posthog_service.capture(
         actor.user_id,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient, type AdminAuditList } from '@/lib/api-client'
 import { formatDateTime, formatNumber, shortId, summarize } from './admin-format'
 
@@ -13,10 +13,17 @@ export default function AdminAudit() {
   const [action, setAction] = useState('')
   const [targetType, setTargetType] = useState('')
   const [targetId, setTargetId] = useState('')
+  const [draftAction, setDraftAction] = useState('')
+  const [draftTargetType, setDraftTargetType] = useState('')
+  const [draftTargetId, setDraftTargetId] = useState('')
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const generation = useRef(0)
 
   const load = useCallback(async () => {
+    void reloadKey
+    const current = ++generation.current
     setLoading(true)
     setError(null)
     try {
@@ -27,13 +34,15 @@ export default function AdminAudit() {
         limit: PAGE_SIZE,
         offset,
       })
-      setData(next)
+      if (generation.current === current) setData(next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load audit log')
+      if (generation.current === current) {
+        setError(err instanceof Error ? err.message : 'Failed to load audit log')
+      }
     } finally {
-      setLoading(false)
+      if (generation.current === current) setLoading(false)
     }
-  }, [action, offset, targetId, targetType])
+  }, [action, offset, targetId, targetType, reloadKey])
 
   useEffect(() => {
     void load()
@@ -56,28 +65,37 @@ export default function AdminAudit() {
         className="grid gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4"
         onSubmit={(event) => {
           event.preventDefault()
+          setAction(draftAction.trim())
+          setTargetType(draftTargetType.trim())
+          setTargetId(draftTargetId.trim())
           setOffset(0)
+          setReloadKey((value) => value + 1)
         }}
       >
         <label className="text-[11px] text-fg-2">
           Action
-          <input value={action} onChange={(event) => setAction(event.target.value)} placeholder="billing.refund.approved" className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
+          <input value={draftAction} onChange={(event) => setDraftAction(event.target.value)} placeholder="billing.refund.approved" className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
         </label>
         <label className="text-[11px] text-fg-2">
           Target type
-          <input value={targetType} onChange={(event) => setTargetType(event.target.value)} placeholder="user, refund_request…" className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
+          <input value={draftTargetType} onChange={(event) => setDraftTargetType(event.target.value)} placeholder="user, refund_request…" className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
         </label>
         <label className="text-[11px] text-fg-2">
           Target ID
-          <input value={targetId} onChange={(event) => setTargetId(event.target.value)} className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
+          <input value={draftTargetId} onChange={(event) => setDraftTargetId(event.target.value)} className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
         </label>
         <div className="flex items-end gap-2">
           <button type="submit" className="min-h-[38px] flex-1 rounded border border-line px-3 py-2 text-xs font-medium text-fg-2 hover:bg-surface-2">Apply filters</button>
-          <button type="button" onClick={() => { setAction(''); setTargetType(''); setTargetId(''); setOffset(0) }} className="min-h-[38px] rounded border border-line px-3 py-2 text-xs text-fg-3 hover:bg-surface-2">Reset</button>
+          <button type="button" onClick={() => { setAction(''); setTargetType(''); setTargetId(''); setDraftAction(''); setDraftTargetType(''); setDraftTargetId(''); setOffset(0); setReloadKey((value) => value + 1) }} className="min-h-[38px] rounded border border-line px-3 py-2 text-xs text-fg-3 hover:bg-surface-2">Reset</button>
         </div>
       </form>
 
-      {error && <div role="alert" className="rounded-[var(--radius-md)] border border-err/20 bg-err/[0.06] px-4 py-3 text-xs text-err">{error}</div>}
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-err/20 bg-err/[0.06] px-4 py-3 text-xs text-err">
+          <span>{error}</span>
+          <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="rounded border border-err/30 px-2.5 py-1 font-medium">Retry</button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
         {loading && !data ? (

@@ -2,6 +2,7 @@
 Analytics Service for tracking user behavior and system metrics.
 """
 
+import asyncio
 import inspect
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -34,6 +35,7 @@ class AnalyticsService:
 
     def __init__(self):
         self.redis_key_prefix = "analytics:"
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def track_event(
         self,
@@ -83,6 +85,61 @@ class AnalyticsService:
             logger.error("Error tracking event %s (%s)", sanitize_for_log(event_type), type(e).__name__)
             await db.rollback()
             return False
+
+    def schedule_event(
+        self,
+        *,
+        event_type: str,
+        user_id: Optional[UUID],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record a milestone outside the response's database transaction.
+
+        Used by download/create handlers where the response must not wait for
+        analytics. The task owns its session and is bounded so a stalled
+        analytics store cannot hold the request open.
+        """
+        if not user_id:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(
+            self._track_event_in_background(
+                event_type=event_type,
+                user_id=user_id,
+                metadata=metadata,
+            )
+        )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _track_event_in_background(
+        self,
+        *,
+        event_type: str,
+        user_id: UUID,
+        metadata: Optional[Dict[str, Any]],
+    ) -> None:
+        try:
+            from ..database.connection import get_async_db_session
+
+            async with get_async_db_session() as background_db:
+                await asyncio.wait_for(
+                    self.track_event(
+                        background_db,
+                        event_type=event_type,
+                        user_id=user_id,
+                        metadata=metadata,
+                    ),
+                    timeout=5,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Background analytics milestone failed (%s)",
+                type(exc).__name__,
+            )
 
     async def _cache_event(
         self,

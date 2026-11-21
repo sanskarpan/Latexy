@@ -23,13 +23,17 @@ User = models.User
 
 def _monthly_amount(plan_id: str | None, quoted_amount: int | None) -> int:
     config = get_plan_config(plan_id) or {}
-    if type(quoted_amount) is int and quoted_amount >= 0:
+    is_annual = str(config.get("interval") or "").lower() == "year"
+    # Checkout stores the annual total in quoted_amount. Normalize annual
+    # subscriptions through the monthly-equivalent path instead of treating
+    # the whole year's price as one month of MRR.
+    if type(quoted_amount) is int and quoted_amount >= 0 and not is_annual:
         amount = quoted_amount
     elif type(config.get("monthly_equivalent_price")) is int:
         amount = int(config["monthly_equivalent_price"])
     else:
         amount = int(config.get("price") or 0)
-        if str(config.get("interval") or "").lower() == "year":
+        if is_annual:
             amount = round(amount / 12)
     return max(0, amount)
 
@@ -203,7 +207,7 @@ class AdminBillingService:
             (
                 await db.execute(
                     select(func.count()).select_from(AdminRefundRequest).where(
-                        AdminRefundRequest.status.in_(("pending", "approved"))
+                        AdminRefundRequest.status.in_(("pending", "approved", "executing"))
                     )
                 )
             ).scalar_one()
@@ -333,8 +337,8 @@ class AdminBillingService:
         )
         if row is None:
             raise KeyError("Webhook event not found")
-        if row.status == "processed":
-            raise ValueError("Processed webhook events do not need acknowledgement")
+        if row.status != "failed":
+            raise ValueError("Only failed/dead-letter webhook events can be acknowledged")
         before = {
             "status": row.status,
             "acknowledged_at": row.acknowledged_at.isoformat() if row.acknowledged_at else None,
@@ -373,7 +377,9 @@ class AdminBillingService:
         request=None,
     ) -> dict[str, Any]:
         row = await db.scalar(
-            select(BillingWebhookEvent).where(BillingWebhookEvent.id == event_id)
+            select(BillingWebhookEvent)
+            .where(BillingWebhookEvent.id == event_id)
+            .with_for_update()
         )
         if row is None:
             raise KeyError("Webhook event not found")
@@ -418,10 +424,10 @@ class AdminBillingService:
                     user_id = sub.user_id if sub else None
                 local_type = "refund"
 
-        row.reconcile_attempts = int(row.reconcile_attempts or 0) + 1
-        row.last_reconcile_at = datetime.now(timezone.utc)
         before = {"status": row.status, "last_reconcile_outcome": row.last_reconcile_outcome}
         if user_id is None:
+            row.reconcile_attempts = int(row.reconcile_attempts or 0) + 1
+            row.last_reconcile_at = datetime.now(timezone.utc)
             row.last_reconcile_outcome = "no_local_intent"
             row.last_reconcile_error = (
                 "No local checkout intent is linked to this provider resource. "
@@ -464,6 +470,10 @@ class AdminBillingService:
         )
         if row is None:
             raise KeyError("Webhook event disappeared during reconciliation")
+        # The helper may roll back; record the attempt only after re-locking so
+        # the durable counter reflects a linked-path attempt too.
+        row.reconcile_attempts = int(row.reconcile_attempts or 0) + 1
+        row.last_reconcile_at = datetime.now(timezone.utc)
         if result.get("success"):
             row.status = "processed"
             row.processed_at = datetime.now(timezone.utc)
@@ -646,7 +656,7 @@ class AdminBillingService:
         await record_admin_audit(
             db,
             actor=actor,
-            action=f"billing.refund.{decision}d",
+            action="billing.refund.approved" if decision == "approve" else "billing.refund.rejected",
             target_type="refund_request",
             target_id=row.id,
             reason=cleaned_note,
@@ -671,11 +681,35 @@ class AdminBillingService:
         row = await self.get_refund_request(db, request_id)
         if row is None:
             raise KeyError("Refund request not found")
-        if row.status not in {"approved", "failed"}:
-            raise ValueError("Only an approved or retryable failed refund can be executed")
+        if row.status != "approved":
+            # A failed attempt may have reached the provider even when the
+            # response was lost. Never guess by resubmitting; the operator must
+            # reconcile with Dodo before creating a new request.
+            raise ValueError(
+                "Only an approved refund can be executed. A failed attempt must be reconciled with Dodo first."
+            )
         payment = await db.get(Payment, row.payment_id)
         if payment is None or not payment.provider_payment_id:
             raise ValueError("The payment has no provider identifier")
+        already_refunded = int(
+            (
+                await db.execute(
+                    select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(
+                        PaymentRefund.payment_id == payment.id,
+                        PaymentRefund.status == "succeeded",
+                    )
+                )
+            ).scalar_one()
+        )
+        remaining = max(0, int(payment.amount) - already_refunded)
+        if remaining <= 0:
+            raise ValueError("This payment has already been fully refunded")
+        if row.amount is None and already_refunded > 0:
+            raise ValueError(
+                "This payment was partially refunded after approval; specify the remaining amount and item ID"
+            )
+        if row.amount is not None and row.amount > remaining:
+            raise ValueError("The approved refund now exceeds the remaining payment balance")
         if not payment_service.is_service_available():
             raise ValueError("Billing is unavailable; no refund was attempted")
         if not payment_service.provider.available:

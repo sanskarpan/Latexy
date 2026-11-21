@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.admin_billing_service import _monthly_amount
 from app.services.payment_service import payment_service
 
 
@@ -156,6 +157,10 @@ class TestAuditLog:
 
 
 class TestBillingSummary:
+    def test_annual_mrr_uses_monthly_equivalent(self):
+        assert _monthly_amount("pro_annual", 575000) == 47917
+        assert _monthly_amount("pro", 59900) == 59900
+
     async def test_summary_mrr_and_refunds(self, client: AsyncClient, db_session: AsyncSession):
         admin_headers = await _headers(db_session)
         user_id, _ = await _create_user(db_session)
@@ -258,6 +263,18 @@ class TestBillingWebhooks:
         assert "billing.webhook.acknowledge" in actions
         assert "billing.webhook.reconcile" in actions
 
+    async def test_processed_event_cannot_be_acknowledged(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        admin_headers = await _headers(db_session)
+        event_id, _ = await self._insert_event(db_session, status="processed")
+        response = await client.post(
+            f"/admin/billing/webhooks/{event_id}/acknowledge",
+            json={"note": "Should not be allowed"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+
 
 class TestRefundWorkflow:
     async def test_dual_control_and_provider_execution(
@@ -326,6 +343,48 @@ class TestRefundWorkflow:
         assert "billing.refund.requested" in actions
         assert "billing.refund.approved" in actions
         assert "billing.refund.executed" in actions
+
+    async def test_failed_provider_refund_cannot_be_resubmitted(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        admin_a = await _headers(db_session, "admin")
+        admin_b = await _headers(db_session, "admin")
+        user_id, _ = await _create_user(db_session)
+        _, payment_id = await _create_paid_subscription(db_session, user_id=user_id)
+
+        created = await client.post(
+            "/admin/billing/refunds",
+            json={"payment_id": payment_id, "reason": "Provider failure test"},
+            headers=admin_a,
+        )
+        request_id = created.json()["id"]
+        approved = await client.post(
+            f"/admin/billing/refunds/{request_id}/approve",
+            json={"note": "Approved for provider failure test"},
+            headers=admin_b,
+        )
+        assert approved.status_code == 200
+
+        monkeypatch.setattr(payment_service, "is_service_available", lambda: True)
+        monkeypatch.setattr(type(payment_service.provider), "available", property(lambda _self: True))
+        failing = AsyncMock(side_effect=RuntimeError("provider unavailable"))
+        monkeypatch.setattr(payment_service.provider, "create_refund", failing)
+
+        first = await client.post(
+            f"/admin/billing/refunds/{request_id}/execute",
+            json={"note": "Attempt once"},
+            headers=admin_b,
+        )
+        assert first.status_code == 200
+        assert first.json()["status"] == "failed"
+
+        second = await client.post(
+            f"/admin/billing/refunds/{request_id}/execute",
+            json={"note": "Must not resubmit an unknown outcome"},
+            headers=admin_b,
+        )
+        assert second.status_code == 422
+        failing.assert_awaited_once()
 
 
 class TestUser360:
@@ -463,7 +522,8 @@ class TestUser360:
             headers=admin_headers,
         )
         actions = {row["action"] for row in audit.json()["items"]}
-        assert "user.quota.reset" in actions
+        assert "user.quota.reset.started" in actions
+        assert "user.quota.reset.completed" in actions
         assert "user.sessions.revoke" in actions
         assert "user.api_keys.revoke" in actions
 

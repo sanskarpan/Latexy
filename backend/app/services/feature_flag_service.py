@@ -89,17 +89,20 @@ class FeatureFlagService:
         result = await db.execute(select(FeatureFlag))
         return result.scalars().all()
 
-    async def update_flag(self, key: str, enabled: bool, db: AsyncSession) -> FeatureFlag:
+    async def update_flag(
+        self, key: str, enabled: bool, db: AsyncSession, *, commit: bool = True,
+    ) -> FeatureFlag:
         """Update a flag in DB, push to Redis, and clear in-memory cache."""
         feature = get_feature(key)
         if feature is not None:
             if not feature.gateable:
                 raise KeyError(f"Always-on capability: {key!r}")
             from .entitlement_service import entitlement_service
-            await entitlement_service.set_kill_switch(key, enabled, db)
+            await entitlement_service.set_kill_switch(key, enabled, db, commit=commit)
             result = await db.execute(select(FeatureFlag).where(FeatureFlag.key == key))
             flag = result.scalar_one()
-            await db.refresh(flag)
+            if commit:
+                await db.refresh(flag)
             return flag
         result = await db.execute(
             select(FeatureFlag).where(FeatureFlag.key == key)
@@ -109,16 +112,24 @@ class FeatureFlagService:
             raise KeyError(f"Unknown feature flag: {key!r}")
 
         flag.enabled = enabled
-        await db.commit()
-        await db.refresh(flag)
+        if commit:
+            await db.commit()
+            await db.refresh(flag)
+        else:
+            await db.flush()
 
-        # Clear local cache immediately
+        # Clear local cache immediately. When the caller defers the DB commit
+        # for an audit write, the route calls sync_flag_cache after committing.
         _cache.pop(key, None)
-
-        # Push to Redis so Celery workers pick it up without waiting
-        await self._push_to_redis(key, enabled)
+        if commit:
+            await self._push_to_redis(key, enabled)
 
         return flag
+
+    async def sync_flag_cache(self, key: str, enabled: bool) -> None:
+        """Publish a committed operational flag to Redis workers."""
+        _cache.pop(key, None)
+        await self._push_to_redis(key, enabled)
 
     # ---------------------------------------------------------------- #
     #  Sync access (Celery workers)                                     #

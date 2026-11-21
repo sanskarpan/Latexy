@@ -5,7 +5,10 @@ import { toast } from 'sonner'
 import { apiClient, type AdminUser360 } from '@/lib/api-client'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
 
-const PLAN_OPTIONS = ['free', 'basic', 'basic_annual', 'pro', 'pro_annual', 'byok', 'byok_annual', 'student', 'team']
+const PLAN_OPTIONS = [
+  'free', 'basic', 'basic_annual', 'pro', 'pro_annual', 'byok', 'byok_annual',
+  'student', 'team', 'weekly', 'lifetime',
+]
 const STATUS_OPTIONS = ['active', 'inactive', 'trialing', 'past_due', 'cancelled', 'comped']
 const QUOTA_OPTIONS = [
   { value: '', label: 'All dimensions' },
@@ -65,9 +68,9 @@ export default function AdminUserDetail({
     try {
       const next = await apiClient.getAdminUser360(userId)
       setData(next)
-      if (next.user.subscription_plan && PLAN_OPTIONS.includes(next.user.subscription_plan)) {
-        setPlan(next.user.subscription_plan)
-      }
+      // Preserve the exact current SKU, including weekly/lifetime or a retired
+      // SKU. A status-only edit must never silently rewrite the plan.
+      if (next.user.subscription_plan) setPlan(next.user.subscription_plan)
       if (next.user.subscription_status && STATUS_OPTIONS.includes(next.user.subscription_status)) {
         setStatus(next.user.subscription_status)
       }
@@ -173,15 +176,23 @@ export default function AdminUserDetail({
   if (loading && !data) {
     return (
       <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6" role="status">
-        <p className="text-sm text-fg-3">Loading User 360…</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-fg-3">Loading User 360…</p>
+          <button type="button" onClick={onClose} className="rounded border border-line px-3 py-1.5 text-xs text-fg-2">Close</button>
+        </div>
       </div>
     )
   }
   if (error && !data) {
     return (
       <div className="rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.06] p-5" role="alert">
-        <p className="text-sm font-semibold text-err">User 360 could not be loaded</p>
-        <p className="mt-1 text-xs text-err/80">{error}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-err">User 360 could not be loaded</p>
+            <p className="mt-1 text-xs text-err/80">{error}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded border border-line px-3 py-1.5 text-xs text-fg-2">Close</button>
+        </div>
         <button type="button" onClick={() => void load()} className="mt-3 rounded border border-line px-3 py-1.5 text-xs">Retry</button>
       </div>
     )
@@ -189,10 +200,11 @@ export default function AdminUserDetail({
   if (!data) return null
 
   const user = data.user
+  const planOptions = Array.from(new Set([...PLAN_OPTIONS, user.subscription_plan, plan].filter(Boolean))) as string[]
   const email = revealed?.email ?? user.email
   const name = revealed?.name ?? user.name
   const activeSubscriptions = data.billing.subscriptions.filter((row) => ['active', 'cancel_scheduled'].includes(text(row.status)))
-  const failedCompiles = Math.max(0, data.production.compilations - data.production.successful_compilations)
+  const failedCompiles = data.production.failed_compilations
 
   return (
     <section className="overflow-hidden rounded-[var(--radius-lg)] border-2 border-accent/30 bg-surface">
@@ -256,32 +268,32 @@ export default function AdminUserDetail({
           <div className="mt-3 grid gap-3 lg:grid-cols-3">
             <div className="rounded-md border border-line bg-surface-2/40 p-3">
               <p className="text-xs font-semibold text-fg">Identity</p>
-              <button type="button" onClick={() => void revealPii()} disabled={busy === 'reveal' || Boolean(revealed)} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
+              <button type="button" onClick={() => void revealPii()} disabled={Boolean(busy) || Boolean(revealed)} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
                 {revealed ? 'PII revealed' : 'Reveal email and name'}
               </button>
             </div>
             <div className="rounded-md border border-line bg-surface-2/40 p-3">
               <p className="text-xs font-semibold text-fg">Plan override</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <select aria-label="Plan SKU" value={plan} onChange={(event) => setPlan(event.target.value)} className="rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg">
-                  {PLAN_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+                <select aria-label="Plan SKU" value={plan} onChange={(event) => setPlan(event.target.value)} disabled={Boolean(busy)} className="rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg disabled:opacity-50">
+                  {planOptions.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
-                <select aria-label="Subscription status" value={status} onChange={(event) => setStatus(event.target.value)} className="rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg">
+                <select aria-label="Subscription status" value={status} onChange={(event) => setStatus(event.target.value)} disabled={Boolean(busy)} className="rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg disabled:opacity-50">
                   {STATUS_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
-              <button type="button" onClick={() => void changePlan()} disabled={busy === 'plan'} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
+              <button type="button" onClick={() => void changePlan()} disabled={Boolean(busy)} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
                 Apply plan override
               </button>
             </div>
             <div className="rounded-md border border-line bg-surface-2/40 p-3">
               <p className="text-xs font-semibold text-fg">Quota and trial</p>
-              <select aria-label="Quota dimension" value={dimension} onChange={(event) => setDimension(event.target.value as typeof dimension)} className="mt-2 w-full rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg">
+              <select aria-label="Quota dimension" value={dimension} onChange={(event) => setDimension(event.target.value as typeof dimension)} disabled={Boolean(busy)} className="mt-2 w-full rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg disabled:opacity-50">
                 {QUOTA_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void resetQuota()} disabled={busy === 'quota'} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Reset quota</button>
-                <button type="button" onClick={() => void resetTrial()} disabled={busy === 'trial'} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Reset trial</button>
+                <button type="button" onClick={() => void resetQuota()} disabled={Boolean(busy)} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Reset quota</button>
+                <button type="button" onClick={() => void resetTrial()} disabled={Boolean(busy)} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Reset trial</button>
               </div>
             </div>
             <div className="rounded-md border border-line bg-surface-2/40 p-3 lg:col-span-3">
@@ -292,9 +304,9 @@ export default function AdminUserDetail({
                 {formatNumber(data.security.developer_keys.filter((row) => isActive(row.is_active)).length)} active developer keys
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" onClick={() => void revokeSessions()} disabled={busy === 'sessions'} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke sessions</button>
-                <button type="button" onClick={() => void revokePasskeys()} disabled={busy === 'passkeys'} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke passkeys</button>
-                <button type="button" onClick={() => void revokeKeys()} disabled={busy === 'keys'} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Deactivate API keys</button>
+                <button type="button" onClick={() => void revokeSessions()} disabled={Boolean(busy)} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke sessions</button>
+                <button type="button" onClick={() => void revokePasskeys()} disabled={Boolean(busy)} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke passkeys</button>
+                <button type="button" onClick={() => void revokeKeys()} disabled={Boolean(busy)} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Deactivate API keys</button>
               </div>
             </div>
           </div>
@@ -367,7 +379,7 @@ export default function AdminUserDetail({
               <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Refund requests</p>
               {data.billing.refund_requests.map((row) => (
                 <p key={row.id} className="text-[11px] text-fg-3">
-                  {row.status} · {row.amount == null ? 'full' : formatMoney(row.amount / 100)} · {formatDateTime(row.requested_at)}
+                  {row.status} · {row.amount == null ? 'full' : formatMoney(row.amount / 100, row.currency || 'INR')} · {formatDateTime(row.requested_at)}
                 </p>
               ))}
             </div>

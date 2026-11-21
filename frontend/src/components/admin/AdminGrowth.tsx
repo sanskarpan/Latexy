@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   apiClient,
   type AdminActivationResponse,
@@ -113,7 +113,9 @@ function Retention({ data }: { data: AdminRetentionResponse }) {
                 <td className="px-4 py-2.5 text-right text-xs text-fg">{formatNumber(row.cohort_size)}</td>
                 {[row.d1, row.d7, row.d30].map((cell, index) => (
                   <td key={index} className="px-4 py-2.5 text-right text-xs text-fg-3">
-                    {cell.rate == null ? '—' : `${formatNumber(cell.count)} · ${cell.rate}%`}
+                    {cell.rate == null
+                      ? `${formatNumber(cell.count)} / ${formatNumber(cell.eligible)} · —`
+                      : `${formatNumber(cell.count)} / ${formatNumber(cell.eligible)} · ${cell.rate}%`}
                   </td>
                 ))}
               </tr>
@@ -165,7 +167,10 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
             {data.by_model.slice(0, 8).map((row) => (
               <li key={`${row.provider}:${row.model}`} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
                 <span className="truncate text-fg-2">{row.provider}/{row.model}</span>
-                <span className="shrink-0 text-fg-3">${row.cost_usd} · {formatNumber(row.tokens)}</span>
+                <span className="shrink-0 text-fg-3">
+                  ${row.cost_usd} · {formatNumber(row.tokens)}
+                  {row.fallback_price ? ' · fallback price' : ''}
+                </span>
               </li>
             ))}
           </ul>
@@ -243,7 +248,7 @@ function Explorer({
             <option value="">Overall</option>
             <option value="plan">Plan</option>
             <option value="provider">Auth provider</option>
-            <option value="feature">Feature / action</option>
+            <option value="feature" disabled={metric !== 'events'}>Feature / action</option>
           </select>
         </label>
         <label className="text-[11px] text-fg-2">
@@ -287,8 +292,11 @@ export default function AdminGrowth() {
   const [dimension, setDimension] = useState<'' | 'plan' | 'provider' | 'feature'>('plan')
   const [value, setValue] = useState('pro')
   const [explorerLoading, setExplorerLoading] = useState(false)
+  const loadGeneration = useRef(0)
+  const seriesGeneration = useRef(0)
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current
     setLoading(true)
     setError(null)
     try {
@@ -301,13 +309,16 @@ export default function AdminGrowth() {
         apiClient.getAdminRetention(8),
         apiClient.getAdminAiCost(days),
       ])
+      if (loadGeneration.current !== generation) return
       setActivation(nextActivation)
       setRetention(nextRetention)
       setCost(nextCost)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load growth analytics')
+      if (loadGeneration.current === generation) {
+        setError(err instanceof Error ? err.message : 'Failed to load growth analytics')
+      }
     } finally {
-      setLoading(false)
+      if (loadGeneration.current === generation) setLoading(false)
     }
   }, [days, plan, provider])
 
@@ -316,6 +327,7 @@ export default function AdminGrowth() {
   }, [load])
 
   const loadSeries = useCallback(async () => {
+    const generation = ++seriesGeneration.current
     setExplorerLoading(true)
     try {
       const next = await apiClient.getAdminFilteredTimeseries({
@@ -324,11 +336,13 @@ export default function AdminGrowth() {
         dimension: dimension || undefined,
         value: value || undefined,
       })
-      setSeries(next)
+      if (seriesGeneration.current === generation) setSeries(next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load filtered series')
+      if (seriesGeneration.current === generation) {
+        setError(err instanceof Error ? err.message : 'Failed to load filtered series')
+      }
     } finally {
-      setExplorerLoading(false)
+      if (seriesGeneration.current === generation) setExplorerLoading(false)
     }
   }, [days, dimension, metric, value])
 
@@ -376,8 +390,15 @@ export default function AdminGrowth() {
         metric={metric}
         dimension={dimension}
         value={value}
-        onMetric={setMetric}
+        onMetric={(next) => {
+          setMetric(next)
+          if (next !== 'events' && dimension === 'feature') {
+            setDimension('plan')
+            setValue('pro')
+          }
+        }}
         onDimension={(next) => {
+          if (metric !== 'events' && next === 'feature') return
           setDimension(next)
           setValue(next === 'plan' ? 'pro' : next === 'feature' ? 'export' : '')
         }}

@@ -58,8 +58,8 @@ async def _provider_map(db: AsyncSession, user_ids: Iterable[str]) -> dict[str, 
             if user_id and provider and user_id not in result:
                 result[user_id] = str(provider)
         return result
-    except Exception:
-        return {}
+    except Exception as exc:
+        raise RuntimeError("Auth provider lookup failed") from exc
 
 
 async def _provider_user_ids(db: AsyncSession, provider: str) -> list[str]:
@@ -72,8 +72,8 @@ async def _provider_user_ids(db: AsyncSession, provider: str) -> list[str]:
                 )
             ).all()
         return [str(row[0]) for row in rows if row[0]]
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError("Auth provider lookup failed") from exc
 
 
 async def _first_events(
@@ -192,19 +192,21 @@ class AdminGrowthService:
                     reached[key].add(user_id)
 
         steps = []
-        previous = len(reached["signup"])
+        previous_set = reached["signup"]
         for key, label in ACTIVATION_STEPS:
             count = len(reached[key])
+            denominator = len(previous_set)
+            numerator = len(reached[key] & previous_set)
             steps.append(
                 {
                     "key": key,
                     "label": label,
                     "count": count,
-                    "from_previous": _pct(count, previous),
+                    "from_previous": _pct(numerator, denominator),
                     "from_signup": _pct(count, len(reached["signup"])),
                 }
             )
-            previous = count
+            previous_set = reached[key]
 
         def _segment_rows(grouped: dict[str, list[str]]) -> list[dict[str, Any]]:
             return [
@@ -247,15 +249,18 @@ class AdminGrowthService:
         if user_ids:
             day_exprs = [
                 select(UsageAnalytics.user_id, func.date_trunc("day", UsageAnalytics.created_at))
-                .where(UsageAnalytics.user_id.in_(user_ids), UsageAnalytics.created_at >= start),
+                .where(UsageAnalytics.user_id.in_(user_ids), UsageAnalytics.created_at >= start)
+                .distinct(),
                 select(Compilation.user_id, func.date_trunc("day", Compilation.created_at))
                 .where(
                     Compilation.user_id.in_(user_ids),
                     Compilation.status == "completed",
                     Compilation.created_at >= start,
-                ),
+                )
+                .distinct(),
                 select(Optimization.user_id, func.date_trunc("day", Optimization.created_at))
-                .where(Optimization.user_id.in_(user_ids), Optimization.created_at >= start),
+                .where(Optimization.user_id.in_(user_ids), Optimization.created_at >= start)
+                .distinct(),
             ]
             for stmt in day_exprs:
                 for user_id, timestamp in (await db.execute(stmt)).all():
@@ -274,29 +279,40 @@ class AdminGrowthService:
             monday = cohort_day - timedelta(days=cohort_day.weekday())
             cohorts[monday].append(user_id)
 
-        def _retained(ids: list[str], offset: int) -> int:
-            return sum(
-                1
+        def _retention_cell(ids: list[str], offset: int) -> dict[str, Any]:
+            eligible = [
+                user_id
                 for user_id in ids
+                if signup[user_id] <= now - timedelta(days=offset)
+            ]
+            retained = sum(
+                1
+                for user_id in eligible
                 if (signup[user_id].date() + timedelta(days=offset)) in active.get(user_id, set())
             )
+            return {
+                "count": retained,
+                "eligible": len(eligible),
+                "rate": _pct(retained, len(eligible)) if len(eligible) >= 5 else None,
+            }
 
         rows = []
-        totals = {1: 0, 7: 0, 30: 0}
+        totals = {offset: {"count": 0, "eligible": 0} for offset in (1, 7, 30)}
         total_users = 0
         for week_start, ids in sorted(cohorts.items()):
             size = len(ids)
             total_users += size
-            counts = {offset: _retained(ids, offset) for offset in (1, 7, 30)}
-            for offset, count in counts.items():
-                totals[offset] += count
+            cells = {offset: _retention_cell(ids, offset) for offset in (1, 7, 30)}
+            for offset, cell in cells.items():
+                totals[offset]["count"] += cell["count"]
+                totals[offset]["eligible"] += cell["eligible"]
             rows.append(
                 {
                     "week_start": week_start.isoformat(),
                     "cohort_size": size,
-                    "d1": {"count": counts[1], "rate": _pct(counts[1], size) if size >= 5 else None},
-                    "d7": {"count": counts[7], "rate": _pct(counts[7], size) if size >= 5 else None},
-                    "d30": {"count": counts[30], "rate": _pct(counts[30], size) if size >= 5 else None},
+                    "d1": cells[1],
+                    "d7": cells[7],
+                    "d30": cells[30],
                 }
             )
         return {
@@ -304,24 +320,37 @@ class AdminGrowthService:
             "cohorts": rows,
             "overall": {
                 "cohort_size": total_users,
-                "d1": {"count": totals[1], "rate": _pct(totals[1], total_users)},
-                "d7": {"count": totals[7], "rate": _pct(totals[7], total_users)},
-                "d30": {"count": totals[30], "rate": _pct(totals[30], total_users)},
+                "d1": {
+                    **totals[1],
+                    "rate": _pct(totals[1]["count"], totals[1]["eligible"]) if totals[1]["eligible"] >= 5 else None,
+                },
+                "d7": {
+                    **totals[7],
+                    "rate": _pct(totals[7]["count"], totals[7]["eligible"]) if totals[7]["eligible"] >= 5 else None,
+                },
+                "d30": {
+                    **totals[30],
+                    "rate": _pct(totals[30]["count"], totals[30]["eligible"]) if totals[30]["eligible"] >= 5 else None,
+                },
             },
             "minimum_cohort_size": 5,
             "generated_at": now.isoformat(),
         }
 
-    def _price_per_million(self, provider: str, model: str) -> float:
+    def _price_info(self, provider: str, model: str) -> tuple[float, bool]:
         key = f"{provider}:{model}"
         price = settings.RESUME_ENGINE_MODEL_PRICING.get(key)
         if not price:
-            # Compatible providers must be explicitly priced. Return an
-            # intentionally visible estimate instead of pretending it is free.
-            return 3.0
+            # Compatible providers must be explicitly priced. The boolean makes
+            # the fallback visible in the report instead of silently claiming
+            # the configured price table was used.
+            return 3.0, True
         input_price = float(price.get("input_per_million", 1.0))
         output_price = float(price.get("output_per_million", 3.0))
-        return (input_price + output_price) / 2
+        return (input_price + output_price) / 2, False
+
+    def _price_per_million(self, provider: str, model: str) -> float:
+        return self._price_info(provider, model)[0]
 
     async def ai_cost(self, db: AsyncSession, *, days: int = 30) -> dict[str, Any]:
         days = max(1, min(days, 365))
@@ -346,6 +375,24 @@ class AdminGrowthService:
                 )
             )
         ).all()
+        # Cap and outlier alerts are month-to-date, independent of the selected
+        # display range. A 7-day view must not hide spend from the rest of the
+        # month.
+        month_rows = (
+            await db.execute(
+                select(
+                    Optimization.user_id,
+                    Optimization.provider,
+                    Optimization.model,
+                    Optimization.tokens_used,
+                    Optimization.created_at,
+                ).where(
+                    Optimization.created_at >= month_start,
+                    Optimization.tokens_used.is_not(None),
+                    Optimization.tokens_used > 0,
+                )
+            )
+        ).all()
 
         total_cost = 0.0
         total_tokens = 0
@@ -356,17 +403,19 @@ class AdminGrowthService:
         daily_user_cost: dict[tuple[str, str], float] = defaultdict(float)
         for user_id, provider, model, tokens, created_at, plan in rows:
             tokens = int(tokens or 0)
-            rate = self._price_per_million(provider or "unknown", model or "unknown")
+            rate, fallback = self._price_info(provider or "unknown", model or "unknown")
             cost = tokens / 1_000_000 * rate
             total_cost += cost
             total_tokens += tokens
             model_bucket = by_model.setdefault(
                 (provider or "unknown", model or "unknown"),
-                {"provider": provider or "unknown", "model": model or "unknown", "runs": 0, "tokens": 0, "cost_usd": 0.0},
+                {"provider": provider or "unknown", "model": model or "unknown", "runs": 0, "tokens": 0,
+                 "cost_usd": 0.0, "fallback_price": fallback},
             )
             model_bucket["runs"] += 1
             model_bucket["tokens"] += tokens
             model_bucket["cost_usd"] += cost
+            model_bucket["fallback_price"] = model_bucket["fallback_price"] or fallback
             plan_label = plan or "free"
             plan_bucket = by_plan.setdefault(
                 plan_label, {"plan": plan_label, "runs": 0, "tokens": 0, "cost_usd": 0.0}
@@ -380,8 +429,6 @@ class AdminGrowthService:
                 day_bucket["runs"] += 1
                 day_bucket["tokens"] += tokens
                 day_bucket["cost_usd"] += cost
-                if created_at >= month_start:
-                    daily_user_cost[(str(user_id), day_key)] += cost
             if user_id:
                 user_bucket = per_user.setdefault(
                     str(user_id), {"user_id": str(user_id), "plan": plan or "free", "runs": 0, "tokens": 0, "cost_usd": 0.0}
@@ -434,9 +481,15 @@ class AdminGrowthService:
                 }
             )
 
-        monthly_cost = sum(
-            cost for (user_id, day_key), cost in daily_user_cost.items() if day_key >= month_start.date().isoformat()
-        )
+        monthly_cost = 0.0
+        for user_id, provider, model, tokens, created_at in month_rows:
+            if not created_at:
+                continue
+            rate = self._price_per_million(provider or "unknown", model or "unknown")
+            cost = int(tokens or 0) / 1_000_000 * rate
+            monthly_cost += cost
+            if user_id:
+                daily_user_cost[(str(user_id), created_at.date().isoformat())] += cost
         alerts = []
         cap = float(settings.ADMIN_AI_MONTHLY_SPEND_CAP_USD or 0)
         if cap > 0 and monthly_cost >= cap:
@@ -469,7 +522,7 @@ class AdminGrowthService:
             "period_days": days,
             "generated_at": now.isoformat(),
             "estimated": True,
-            "price_note": "Cost uses total tokens and the configured provider:model price table; input/output split is unavailable, so a blended per-million rate is applied.",
+            "price_note": "Cost uses total tokens and a blended per-million rate because the input/output split is unavailable. Rows marked fallback_price=true use the $3/M estimate because that provider:model has no configured price.",
             "usd_inr_rate": rate,
             "monthly_spend_cap_usd": cap or None,
             "total_tokens": total_tokens,
@@ -509,6 +562,8 @@ class AdminGrowthService:
         start = datetime.now(timezone.utc) - timedelta(days=days)
         metric = metric if metric in {"events", "compilations", "optimizations", "revenue"} else "events"
         dimension = dimension if dimension in {"plan", "provider", "feature"} else None
+        if dimension == "feature" and metric != "events":
+            raise ValueError("Feature filters are only supported for the events metric")
 
         provider_ids: list[str] | None = None
         if dimension == "provider" and value:
@@ -590,11 +645,6 @@ class AdminGrowthService:
             for label, amount in (await db.execute(stmt)).all():
                 breakdown.append({"label": label, "value": int(amount or 0)})
         elif dimension == "provider":
-            user_rows = (await db.execute(select(User.id).where(User.created_at >= start - timedelta(days=365)))).all()
-            providers = await _provider_map(db, [row[0] for row in user_rows])
-            provider_counts: dict[str, int] = defaultdict(int)
-            # Provider breakdown is computed from per-user totals because the
-            # Better Auth account table is not an ORM model.
             if metric == "events":
                 grouped = (
                     await db.execute(select(UsageAnalytics.user_id, func.count(UsageAnalytics.id)).where(*filters).group_by(UsageAnalytics.user_id))
@@ -607,8 +657,16 @@ class AdminGrowthService:
                         .group_by(model.user_id)
                     )
                 ).all()
+            # Resolve providers only for users that actually contributed to the
+            # grouped result. A filter match is labelled with the requested
+            # provider even when the account has other linked identities.
+            grouped_ids = [str(user_id) for user_id, _amount in grouped if user_id]
+            providers = await _provider_map(db, grouped_ids)
+            provider_counts: dict[str, int] = defaultdict(int)
             for user_id, amount in grouped:
-                provider_counts[providers.get(str(user_id), "unknown")] += int(amount or 0)
+                label = value if value else providers.get(str(user_id), "unknown")
+                normalized = round(int(amount or 0) / 100, 2) if metric == "revenue" else int(amount or 0)
+                provider_counts[label] += normalized
             breakdown = [{"label": key, "value": val} for key, val in sorted(provider_counts.items(), key=lambda item: -item[1])]
 
         return {

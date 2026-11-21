@@ -66,7 +66,10 @@ class QuotaPolicyService:
             for dimension, policy in self.catalog_policy(sku, rows).items()
         }
 
-    async def update(self, db: AsyncSession, plan: str, dimension: str, *, limit: int | None, version: int, admin_id: str) -> None:
+    async def update(
+        self, db: AsyncSession, plan: str, dimension: str, *, limit: int | None, version: int,
+        admin_id: str, commit: bool = True,
+    ) -> None:
         sku = canonical_quota_sku(plan)
         # Admin paths must use canonical SKUs, never silently edit an alias.
         if sku != plan or dimension not in QUOTA_DIMENSIONS:
@@ -80,7 +83,7 @@ class QuotaPolicyService:
         ).on_conflict_do_nothing(index_elements=["sku", "dimension"]))
         result = await db.execute(select(PlanQuotaOverride).where(
             PlanQuotaOverride.sku == sku, PlanQuotaOverride.dimension == dimension,
-        ).with_for_update())
+        ).with_for_update().execution_options(populate_existing=True))
         row = result.scalar_one()
         if row.version != version:
             await db.rollback()
@@ -92,7 +95,10 @@ class QuotaPolicyService:
             sku=sku, dimension=dimension, version=row.version, limit_value=limit,
             changed_by=admin_id,
         ))
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
 
 
 quota_policy_service = QuotaPolicyService()

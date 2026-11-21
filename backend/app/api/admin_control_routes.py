@@ -404,13 +404,16 @@ async def get_admin_activation(
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_growth_service.activation(
-        db,
-        days=days,
-        plan=plan,
-        provider=provider,
-        activation_window_days=activation_window_days,
-    )
+    try:
+        return await admin_growth_service.activation(
+            db,
+            days=days,
+            plan=plan,
+            provider=provider,
+            activation_window_days=activation_window_days,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/admin/analytics/retention")
@@ -440,9 +443,14 @@ async def get_admin_analytics_timeseries(
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_growth_service.timeseries(
-        db, days=days, metric=metric, dimension=dimension, value=value
-    )
+    try:
+        return await admin_growth_service.timeseries(
+            db, days=days, metric=metric, dimension=dimension, value=value
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 # ------------------------------------------------------------------ #

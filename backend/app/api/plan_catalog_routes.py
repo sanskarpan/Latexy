@@ -66,7 +66,9 @@ async def update_plan_catalog(
         if before_row is not None else None
     )
     try:
-        await plan_catalog_service.update(db, sku, changes, version=body.version, admin_id=actor.user_id)
+        await plan_catalog_service.update(
+            db, sku, changes, version=body.version, admin_id=actor.user_id, commit=False
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown plan SKU")
     except CatalogConflict as exc:
@@ -83,10 +85,11 @@ async def update_plan_catalog(
             before=before,
             after={**changes, "version": body.version + 1},
             request=request,
-            commit=True,
         )
+        await db.commit()
     except Exception:
-        logger.critical("Plan catalog audit write failed", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     return await get_plan_catalog(db, actor.user_id)
 
 
@@ -108,7 +111,8 @@ async def update_plan_quota(
     before_policy = (await quota_policy_service.resolve(sku)).get(dimension)
     try:
         await quota_policy_service.update(
-            db, sku, dimension, limit=body.limit, version=body.version, admin_id=actor.user_id
+            db, sku, dimension, limit=body.limit, version=body.version,
+            admin_id=actor.user_id, commit=False,
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown plan SKU or quota dimension")
@@ -126,8 +130,9 @@ async def update_plan_quota(
             before=before_policy,
             after={"limit": body.limit, "version": body.version + 1},
             request=request,
-            commit=True,
         )
+        await db.commit()
     except Exception:
-        logger.critical("Plan quota audit write failed", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     return await get_plan_catalog(db, actor.user_id)

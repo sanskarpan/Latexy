@@ -26,11 +26,11 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
         role="".join(list(role)), feature_key="".join(["b", "0", "3"]),
         enabled=False, expected_enabled=True,
     )
-    db = Mock()
+    db = AsyncMock()
     actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
     result = await admin_routes.update_role_matrix_cell(body, None, db, actor)
     assert result == {"verified": True}
-    update.assert_awaited_once_with(role, "b03", False, db, expected_enabled=True)
+    update.assert_awaited_once_with(role, "b03", False, db, expected_enabled=True, commit=False)
     assert update.call_args.args[0] is next(known for known in CAPABILITY_ROLES if known == role)
     assert update.call_args.args[1] is get_feature("b03").key
     logger.info.assert_called_once_with(
@@ -58,7 +58,8 @@ async def test_invalid_role_toggle_cannot_write_or_emit_success_audit(monkeypatc
     logger = Mock()
     monkeypatch.setattr(admin_routes.entitlement_service, "set_role_cell", update)
     monkeypatch.setattr(admin_routes.entitlement_service, "get_state", state)
-    monkeypatch.setattr(admin_routes, "record_admin_audit", AsyncMock())
+    audit = AsyncMock()
+    monkeypatch.setattr(admin_routes, "record_admin_audit", audit)
     monkeypatch.setattr(admin_routes, "logger", logger)
     body = admin_routes.RoleMatrixUpdateRequest(role=role, feature_key=feature, enabled=True)
     actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
@@ -67,6 +68,7 @@ async def test_invalid_role_toggle_cannot_write_or_emit_success_audit(monkeypatc
     assert exc.value.status_code == status
     update.assert_not_awaited()
     state.assert_not_awaited()
+    audit.assert_not_awaited()
     logger.info.assert_not_called()
 
 

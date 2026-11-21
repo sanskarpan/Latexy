@@ -19,7 +19,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
 | Customers | `GET /admin/users/{id}/360` | Masked account, activation, usage, billing, security, and integration summary |
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
-| Customers | `/admin/users/{id}/{plan,trial,quota,sessions,passkeys,api-keys}` | Audited support actions |
+| Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
 | Audit | `GET /admin/audit` | Append-only operator audit trail |
 
 ## Security invariants

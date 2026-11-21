@@ -673,6 +673,7 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
       {selectedUserId && (
         <div className="mt-5">
           <AdminUserDetail
+            key={selectedUserId}
             userId={selectedUserId}
             canAdmin={canAdmin}
             onClose={() => setSelectedUserId(null)}
@@ -721,7 +722,7 @@ export default function AdminPage() {
     <p className="text-sm text-fg-3">Support or admin access required. Ask an administrator to grant you the right role.</p>
   </div>
   // Changing identity remounts every private tab before it can display old data.
-  return <AuthorizedAdminPage key={scopeKey} role={role} />
+  return <AuthorizedAdminPage key={`${scopeKey}:${role}`} role={role} />
 }
 
 function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {

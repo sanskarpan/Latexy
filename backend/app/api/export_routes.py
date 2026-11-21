@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from fastapi.responses import Response
@@ -400,19 +399,13 @@ async def export_resume(
             content_bytes = _convert_latex(resume.latex_content, fmt)
         mime_type, filename = EXPORT_FORMATS[fmt]
 
-        # Activation milestone used by the admin funnel. Best-effort only; the
-        # export response must never depend on analytics availability.
-        try:
-            analytics_user_id = UUID(user_id)
-        except (TypeError, ValueError):
-            analytics_user_id = None
-        if analytics_user_id is not None:
-            await analytics_service.track_event(
-                db,
-                event_type="export",
-                user_id=analytics_user_id,
-                metadata={"resource_type": "resume", "format": fmt},
-            )
+        # Activation milestone used by the admin funnel. The response must never
+        # wait for analytics; the task owns a separate bounded session.
+        analytics_service.schedule_event(
+            event_type="export",
+            user_id=user_id,
+            metadata={"resource_type": "resume", "format": fmt},
+        )
 
         return Response(
             content=content_bytes,
