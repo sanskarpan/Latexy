@@ -1188,6 +1188,7 @@ def test_modal_scheduled_fanouts_attempt_both_children_and_signal_spawn_failures
         "scheduled_five_minute_maintenance": (
             "run_scheduled_health_check",
             "scheduled_tracker_notifications",
+            "run_scheduled_admin_alert_evaluation",
         ),
         "scheduled_minute_recovery": (
             "scheduled_comment_mention_recovery",
@@ -1195,7 +1196,7 @@ def test_modal_scheduled_fanouts_attempt_both_children_and_signal_spawn_failures
         ),
     }
     for wrapper_name, children in expected.items():
-        for failing in (set(), {children[0]}, {children[1]}, set(children)):
+        for failing in (set(), *({child} for child in children), set(children)):
             attempts, initialized, raised, output = _run_fanout_wrapper_case(
                 wrapper_name, children, failing
             )
@@ -1224,6 +1225,7 @@ def test_modal_scheduled_fanouts_isolate_each_child_spawn():
         "scheduled_five_minute_maintenance": (
             "run_scheduled_health_check",
             "scheduled_tracker_notifications",
+            "run_scheduled_admin_alert_evaluation",
         ),
         "scheduled_minute_recovery": (
             "scheduled_comment_mention_recovery",

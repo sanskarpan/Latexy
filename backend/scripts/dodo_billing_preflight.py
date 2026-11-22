@@ -21,14 +21,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0077_admin_control_room"
+EXPECTED_HEAD = "0078_admin_alerts"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
     "0065", "0066", "0067", "0068", "0069_capability_catalog",
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
     "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
-    "0076_spare_authority_handover", "0077_admin_control_room",
+    "0076_spare_authority_handover", "0077_admin_control_room", "0078_admin_alerts",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -78,7 +78,7 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
           "plan_quota_overrides", "plan_quota_revisions", "role_features",
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
-          "admin_audit_log", "admin_refund_requests")
+          "admin_audit_log", "admin_refund_requests", "admin_alerts")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -173,6 +173,14 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "reason", "decision_note", "requested_by", "requested_email", "approved_by", "approved_email",
             "executed_by", "provider_refund_id", "last_error", "requested_at", "decided_at", "executed_at",
             "updated_at",
+        },
+    },
+    "0078_admin_alerts": {
+        "admin_alerts": {
+            "id", "kind", "severity", "owner", "title", "dedupe_key", "payload", "runbook_url",
+            "state", "occurrence_count", "first_seen_at", "last_seen_at", "acknowledged_by",
+            "acknowledged_at", "acknowledgement_note", "snoozed_by", "snoozed_at", "snooze_until",
+            "resolved_at", "resolution", "created_at", "updated_at",
         },
     },
 }

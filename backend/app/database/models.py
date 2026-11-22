@@ -927,6 +927,61 @@ class AdminRefundRequest(Base):
     )
 
 
+class AdminAlert(Base):
+    """Durable operational alert with deduplication, ack and snooze state."""
+
+    __tablename__ = "admin_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('open', 'acknowledged', 'snoozed', 'resolved')",
+            name="ck_admin_alerts_state",
+        ),
+        CheckConstraint(
+            "severity IN ('critical', 'high', 'medium', 'low')",
+            name="ck_admin_alerts_severity",
+        ),
+        Index("idx_admin_alerts_state_severity", "state", "severity", "last_seen_at"),
+        Index("idx_admin_alerts_kind", "kind"),
+        Index(
+            "uq_admin_alerts_active_dedupe",
+            "dedupe_key",
+            unique=True,
+            postgresql_where=text("state IN ('open', 'acknowledged', 'snoozed')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    owner: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    payload: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    runbook_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="open", server_default="open")
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    acknowledged_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledgement_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    snoozed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    snoozed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    snooze_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class PaymentRefund(Base):
     """Append-only refund records, including partial refunds and failed attempts."""
 
