@@ -5,10 +5,10 @@ Analytics Service for tracking user behavior and system metrics.
 import asyncio
 import inspect
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.log_sanitize import sanitize_for_log
@@ -840,6 +840,203 @@ class AnalyticsService:
                 "revenue_inr": round((payment_map.get(day, 0) - refund_map.get(day, 0)) / 100, 2),
             }
             for day in days_list
+        ]
+
+    async def get_admin_kpi_trends(
+        self,
+        db: AsyncSession,
+        days: int,
+        *,
+        system: Mapping[str, Any],
+        timeseries: Sequence[Mapping[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Return prior-period deltas and daily sparklines for the six KPI cards.
+
+        Snapshot KPIs (total users, active subscriptions) compare the current
+        total with the count that existed at the start of the period. Period
+        KPIs compare equal-length current and previous windows. A zero prior
+        baseline returns ``percent_delta=None`` instead of infinity.
+        """
+        period_days = max(1, min(days, 365))
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=period_days)
+        previous_start = start - timedelta(days=period_days)
+
+        async def _count(model, *conditions) -> int:
+            return int(
+                (
+                    await db.execute(
+                        select(func.count(model.id)).where(*conditions)
+                    )
+                ).scalar()
+                or 0
+            )
+
+        previous_total_users = await _count(User, User.created_at < start)
+        previous_compilations = await _count(
+            Compilation,
+            Compilation.created_at >= previous_start,
+            Compilation.created_at < start,
+        )
+        previous_optimizations = await _count(
+            Optimization,
+            Optimization.created_at >= previous_start,
+            Optimization.created_at < start,
+        )
+        previous_trials = await _count(
+            DeviceTrial,
+            DeviceTrial.created_at >= previous_start,
+            DeviceTrial.created_at < start,
+        )
+        previous_active_subscriptions = int(
+            (
+                await db.execute(
+                    select(func.count(Subscription.id)).where(
+                        Subscription.status.in_(("active", "cancel_scheduled", "past_due")),
+                        Subscription.created_at < start,
+                        or_(
+                            Subscription.current_period_end.is_(None),
+                            Subscription.current_period_end >= start,
+                        ),
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+
+        previous_gross = int(
+            (
+                await db.execute(
+                    select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                        Payment.created_at >= previous_start,
+                        Payment.created_at < start,
+                        Payment.currency == "INR",
+                        Payment.status.in_(("paid", "partially_refunded", "captured", "refunded")),
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        previous_refunds = int(
+            (
+                await db.execute(
+                    select(func.coalesce(func.sum(PaymentRefund.amount), 0))
+                    .join(Payment, PaymentRefund.payment_id == Payment.id)
+                    .where(
+                        Payment.created_at >= previous_start,
+                        Payment.created_at < start,
+                        Payment.currency == "INR",
+                        PaymentRefund.status == "succeeded",
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        previous_revenue = round((previous_gross - previous_refunds) / 100, 2)
+
+        trial_day = func.date_trunc("day", DeviceTrial.created_at).label("day")
+        trial_rows = (
+            await db.execute(
+                select(trial_day, func.count(DeviceTrial.id).label("cnt"))
+                .where(DeviceTrial.created_at >= start)
+                .group_by(trial_day)
+            )
+        ).all()
+        trial_map = {row.day.strftime("%Y-%m-%d"): int(row.cnt or 0) for row in trial_rows if row.day}
+
+        # Active-subscription sparkline: reconstruct a daily snapshot from the
+        # current active rows. This is an approximation (status history is not
+        # stored), so the final point is pinned to the authoritative KPI value.
+        active_rows = (
+            await db.execute(
+                select(Subscription.created_at, Subscription.current_period_end).where(
+                    Subscription.status.in_(("active", "cancel_scheduled", "past_due"))
+                )
+            )
+        ).all()
+
+        def sparkline(metric: str, *, cumulative_from: int | None = None) -> List[Dict[str, Any]]:
+            points: List[Dict[str, Any]] = []
+            running = cumulative_from
+            for point in timeseries:
+                day = str(point["date"])
+                if metric == "total_users":
+                    running = int(running or 0) + int(point.get("new_users") or 0)
+                    value: float | int = running
+                elif metric == "active_subscriptions":
+                    day_end = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+                    value = sum(
+                        1
+                        for created_at, period_end in active_rows
+                        if created_at < day_end and (period_end is None or period_end >= day_end)
+                    )
+                elif metric == "trial_users":
+                    value = trial_map.get(day, 0)
+                else:
+                    value = point.get(metric, 0)
+                points.append({
+                    "date": day,
+                    "value": round(float(value), 2) if metric == "revenue_inr" else int(value),
+                })
+            if metric == "active_subscriptions" and points:
+                points[-1]["value"] = int(system["active_subscriptions"])
+            if metric == "total_users" and points:
+                points[-1]["value"] = int(system["total_users"])
+            return points
+
+        def trend(
+            key: str,
+            label: str,
+            unit: str,
+            current: float | int,
+            previous: float | int,
+            points: List[Dict[str, Any]],
+        ) -> Dict[str, Any]:
+            current_value = float(current) if unit == "currency" else int(current)
+            previous_value = float(previous) if unit == "currency" else int(previous)
+            absolute = (
+                round(current_value - previous_value, 2)
+                if unit == "currency"
+                else int(current_value - previous_value)
+            )
+            percent = round((absolute / previous_value) * 100, 1) if previous_value > 0 else None
+            return {
+                "key": key,
+                "label": label,
+                "unit": unit,
+                "current": current_value,
+                "previous": previous_value,
+                "absolute_delta": absolute,
+                "percent_delta": percent,
+                "baseline_zero": previous_value == 0,
+                "sparkline": points,
+            }
+
+        return [
+            trend(
+                "total_users", "Total users", "count", system["total_users"], previous_total_users,
+                sparkline("total_users", cumulative_from=previous_total_users),
+            ),
+            trend(
+                "active_subscriptions", "Active subscriptions", "count", system["active_subscriptions"],
+                previous_active_subscriptions, sparkline("active_subscriptions"),
+            ),
+            trend(
+                "total_revenue_inr", "Revenue", "currency", system["total_revenue_inr"],
+                previous_revenue, sparkline("revenue_inr"),
+            ),
+            trend(
+                "total_compilations", "Compilations", "count", system["total_compilations"],
+                previous_compilations, sparkline("compilations"),
+            ),
+            trend(
+                "total_optimizations", "Optimizations", "count", system["total_optimizations"],
+                previous_optimizations, sparkline("optimizations"),
+            ),
+            trend(
+                "trial_users", "Trial users", "count", system["trial_users"], previous_trials,
+                sparkline("trial_users"),
+            ),
         ]
 
     async def get_admin_top_features(

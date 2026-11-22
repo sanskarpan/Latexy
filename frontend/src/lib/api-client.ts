@@ -819,6 +819,23 @@ export interface AdminOperationsHealthResponse {
   sections: Record<string, AdminOperationsHealthSection>
 }
 
+export interface AdminKpiTrendPoint {
+  date: string
+  value: number
+}
+
+export interface AdminKpiTrend {
+  key: string
+  label: string
+  unit: 'count' | 'currency'
+  current: number
+  previous: number
+  absolute_delta: number
+  percent_delta: number | null
+  baseline_zero: boolean
+  sparkline: AdminKpiTrendPoint[]
+}
+
 export interface AdminAnalyticsOverviewResponse {
   period_days: number
   system: {
@@ -844,6 +861,7 @@ export interface AdminAnalyticsOverviewResponse {
   top_features: AdminFeatureUsage[]
   recent_events: AdminRecentEvent[]
   operations: AdminOperationsSummary
+  kpi_trends: AdminKpiTrend[]
   generated_at: string
 }
 

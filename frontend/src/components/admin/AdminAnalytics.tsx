@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { apiClient, type AdminAnalyticsOverviewResponse } from '@/lib/api-client'
+import { apiClient, type AdminAnalyticsOverviewResponse, type AdminKpiTrend } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import AdminOperations from '@/components/admin/AdminOperations'
 import { analyticsDashboardLinks } from '@/lib/analytics/posthog'
@@ -44,12 +44,82 @@ function metadataSummary(metadata: Record<string, unknown>): string {
     .join(' · ')
 }
 
-function KpiCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function Sparkline({ points, label }: { points: AdminKpiTrend['sparkline']; label: string }) {
+  const values = points
+    .map((point) => point.value)
+    .filter((value) => Number.isFinite(value))
+  if (values.length < 2) return null
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = max - min || 1
+  const width = 100
+  const height = 24
+  const path = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * width
+      const y = height - ((value - min) / range) * height
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+    })
+    .join(' ')
+  return (
+    <div className="mt-2">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-6 w-full text-accent"
+        aria-hidden="true"
+        focusable="false"
+        preserveAspectRatio="none"
+      >
+        <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span className="sr-only">
+        {label} trend from {formatNumber(values[0])} to {formatNumber(values[values.length - 1])} over the selected period.
+      </span>
+    </div>
+  )
+}
+
+function TrendNote({ trend }: { trend: AdminKpiTrend }) {
+  const percent = Number.isFinite(trend.percent_delta ?? NaN) ? trend.percent_delta : null
+  const neutral = percent === null || trend.baseline_zero
+  const tone = neutral ? 'text-fg-3' : percent >= 0 ? 'text-ok' : 'text-err'
+  const absolute = trend.unit === 'currency'
+    ? formatCurrency(trend.absolute_delta)
+    : formatNumber(trend.absolute_delta)
+  return (
+    <div className="mt-1">
+      <p className={`text-[11px] ${tone}`}>
+        {percent === null || trend.baseline_zero ? (
+          <span className="font-medium">{trend.baseline_zero ? 'No prior baseline' : 'No prior comparison'}</span>
+        ) : (
+          <span className="font-medium">
+            {percent >= 0 ? '+' : ''}{percent.toFixed(1)}% vs prior period
+          </span>
+        )}
+        <span className="text-fg-3"> · {absolute} change</span>
+      </p>
+      <Sparkline points={trend.sparkline} label={trend.label} />
+    </div>
+  )
+}
+
+function KpiCard({
+  label,
+  value,
+  detail,
+  trend,
+}: {
+  label: string
+  value: string
+  detail?: string
+  trend?: AdminKpiTrend
+}) {
   return (
     <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-fg-3">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-fg">{value}</p>
       {detail && <p className="mt-1 text-[11px] text-fg-3">{detail}</p>}
+      {trend && <TrendNote trend={trend} />}
     </div>
   )
 }
@@ -212,6 +282,10 @@ export default function AdminAnalytics() {
     () => (data?.top_features ?? []).map((feature) => ({ name: feature.feature, value: feature.count })),
     [data],
   )
+  const trendMap = useMemo(
+    () => new Map((data?.kpi_trends ?? []).map((trend) => [trend.key, trend])),
+    [data],
+  )
 
   if (loading && !data) {
     return (
@@ -286,12 +360,12 @@ export default function AdminAnalytics() {
       <AdminOperations />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiCard label="Total users" value={formatNumber(system.total_users)} detail={`${formatNumber(system.new_users)} new in period`} />
-        <KpiCard label="Active subscriptions" value={formatNumber(system.active_subscriptions)} detail={`${formatPercent(system.conversion_rate)} trial conversion`} />
-        <KpiCard label="Revenue" value={formatCurrency(system.total_revenue_inr)} detail="Net of succeeded refunds" />
-        <KpiCard label="Compilations" value={formatNumber(system.total_compilations)} detail={`${formatPercent(system.success_rate)} success`} />
-        <KpiCard label="Optimizations" value={formatNumber(system.total_optimizations)} detail="AI rewrite runs" />
-        <KpiCard label="Trial users" value={formatNumber(system.trial_users)} detail="Anonymous trial starts" />
+        <KpiCard label="Total users" value={formatNumber(system.total_users)} detail={`${formatNumber(system.new_users)} new in period`} trend={trendMap.get('total_users')} />
+        <KpiCard label="Active subscriptions" value={formatNumber(system.active_subscriptions)} detail={`${formatPercent(system.conversion_rate)} trial conversion`} trend={trendMap.get('active_subscriptions')} />
+        <KpiCard label="Revenue" value={formatCurrency(system.total_revenue_inr)} detail="Net of succeeded refunds" trend={trendMap.get('total_revenue_inr')} />
+        <KpiCard label="Compilations" value={formatNumber(system.total_compilations)} detail={`${formatPercent(system.success_rate)} success`} trend={trendMap.get('total_compilations')} />
+        <KpiCard label="Optimizations" value={formatNumber(system.total_optimizations)} detail="AI rewrite runs" trend={trendMap.get('total_optimizations')} />
+        <KpiCard label="Trial users" value={formatNumber(system.trial_users)} detail="Anonymous trial starts" trend={trendMap.get('trial_users')} />
       </div>
 
       <OperationsStrip data={operations} />
