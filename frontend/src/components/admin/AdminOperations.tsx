@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   apiClient,
+  type AdminAlert,
+  type AdminAlertList,
   type AdminAttentionItem,
   type AdminAttentionResponse,
   type AdminOperationsHealthResponse,
@@ -25,6 +27,13 @@ const SEVERITY_LABEL: Record<AdminAttentionItem['severity'], string> = {
   critical: 'Critical',
   high: 'High',
   low: 'Low',
+}
+
+const ALERT_SEVERITY_TONE: Record<AdminAlert['severity'], string> = {
+  critical: 'border-err/30 bg-err/10 text-err',
+  high: 'border-warn/30 bg-warn/10 text-warn',
+  medium: 'border-accent/30 bg-accent-soft text-accent-strong',
+  low: 'border-line bg-surface-2 text-fg-3',
 }
 
 const SECTION_LABEL: Record<string, string> = {
@@ -103,6 +112,201 @@ function metricText(section: Record<string, unknown>): string[] {
   if (utilization !== null) parts.push(`${(utilization * 100).toFixed(1)}% capacity`)
 
   return parts
+}
+
+function AlertRow({ alert, onUpdated }: { alert: AdminAlert; onUpdated: () => void }) {
+  const [mode, setMode] = useState<'acknowledge' | 'snooze' | null>(null)
+  const [reason, setReason] = useState('')
+  const [snoozeMinutes, setSnoozeMinutes] = useState(60)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (nextState: 'acknowledged' | 'snoozed') => {
+    if (reason.trim().length < 3 || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await apiClient.updateAdminAlert(alert.id, {
+        state: nextState,
+        reason: reason.trim(),
+        ...(nextState === 'snoozed' ? { snooze_minutes: snoozeMinutes } : {}),
+      })
+      setMode(null)
+      setReason('')
+      onUpdated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Alert action failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-line bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${ALERT_SEVERITY_TONE[alert.severity]}`}>
+              {alert.severity}
+            </span>
+            <span className="text-sm font-medium text-fg">{alert.title}</span>
+            <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] text-fg-3">
+              {alert.owner}
+            </span>
+            {alert.state !== 'open' && (
+              <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] text-fg-3">
+                {alert.state}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-fg-3">
+            Seen {alert.occurrence_count}× · last {formatAge(alert.last_seen_at)}
+            {alert.snooze_until ? ` · snoozed until ${new Date(alert.snooze_until).toLocaleString()}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {alert.runbook_url && (
+            <a
+              href={alert.runbook_url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-[var(--radius-md)] border border-line px-2.5 py-1.5 text-[11px] font-medium text-fg-2 hover:bg-surface-2"
+            >
+              Runbook
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => { setMode(mode === 'acknowledge' ? null : 'acknowledge'); setError(null) }}
+            className="rounded-[var(--radius-md)] border border-line px-2.5 py-1.5 text-[11px] font-medium text-fg-2 hover:bg-surface-2"
+          >
+            Acknowledge
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode(mode === 'snooze' ? null : 'snooze'); setError(null) }}
+            className="rounded-[var(--radius-md)] border border-line px-2.5 py-1.5 text-[11px] font-medium text-fg-2 hover:bg-surface-2"
+          >
+            Snooze
+          </button>
+        </div>
+      </div>
+
+      {mode && (
+        <div className="mt-3 space-y-2 border-t border-line pt-3">
+          <label className="block text-[11px] text-fg-2">
+            Reason
+            <input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              minLength={3}
+              maxLength={1000}
+              className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-xs text-fg"
+              placeholder="Why is this alert being handled?"
+            />
+          </label>
+          {mode === 'snooze' && (
+            <label className="block text-[11px] text-fg-2">
+              Snooze for
+              <select
+                value={snoozeMinutes}
+                onChange={(event) => setSnoozeMinutes(Number(event.target.value))}
+                className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-xs text-fg"
+              >
+                <option value={60}>1 hour</option>
+                <option value={240}>4 hours</option>
+                <option value={1440}>24 hours</option>
+              </select>
+            </label>
+          )}
+          {error && <p role="alert" className="text-[11px] text-err">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy || reason.trim().length < 3}
+              onClick={() => void submit(mode === 'snooze' ? 'snoozed' : 'acknowledged')}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"
+            >
+              {busy ? 'Saving…' : mode === 'snooze' ? 'Snooze alert' : 'Acknowledge alert'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode(null)}
+              className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AlertStrip({ refreshKey, onUpdated }: { refreshKey: number; onUpdated: () => void }) {
+  const [data, setData] = useState<AdminAlertList | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [unavailable, setUnavailable] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    setUnavailable(false)
+    try {
+      setData(await apiClient.getAdminAlerts({ state: 'active', limit: 20 }))
+    } catch (err) {
+      if (isMissingEndpoint(err)) {
+        setUnavailable(true)
+      } else {
+        setError(err instanceof Error ? err.message : 'Alerts could not be loaded')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load, refreshKey])
+
+  if (unavailable) return null
+
+  return (
+    <section aria-labelledby="admin-alerts-heading" className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id="admin-alerts-heading" className="text-sm font-semibold text-fg">Active alerts</h3>
+          <p className="mt-1 text-xs text-fg-3">
+            Durable incidents with owner, acknowledgement and snooze. Nothing is paged or auto-actioned from this strip.
+          </p>
+        </div>
+        {data && (
+          <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            {data.total} active
+          </span>
+        )}
+      </div>
+
+      {loading && !data && <p role="status" className="mt-4 text-xs text-fg-3">Loading alerts…</p>}
+      {error && (
+        <div role="alert" className="mt-4 rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+          {error}
+          {data ? ' Showing the last successful data.' : ''}
+        </div>
+      )}
+      {data && data.items.length === 0 && !error && (
+        <p className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface-2/60 px-3 py-3 text-xs text-fg-3">
+          No active alerts.
+        </p>
+      )}
+      {data && data.items.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {data.items.map((alert) => <AlertRow key={alert.id} alert={alert} onUpdated={onUpdated} />)}
+        </div>
+      )}
+    </section>
+  )
 }
 
 function AttentionRow({ item }: { item: AdminAttentionItem }) {
@@ -318,6 +522,7 @@ export default function AdminOperations() {
           Refresh operations
         </button>
       </div>
+      <AlertStrip refreshKey={refreshKey} onUpdated={() => setRefreshKey((value) => value + 1)} />
       <AttentionStrip refreshKey={refreshKey} />
       <HealthPanel refreshKey={refreshKey} />
     </div>

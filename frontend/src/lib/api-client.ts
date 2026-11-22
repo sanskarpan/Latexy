@@ -819,6 +819,38 @@ export interface AdminOperationsHealthResponse {
   sections: Record<string, AdminOperationsHealthSection>
 }
 
+export interface AdminAlert {
+  id: string
+  kind: string
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  owner: string
+  title: string
+  dedupe_key: string
+  payload: Record<string, unknown>
+  runbook_url: string | null
+  state: 'open' | 'acknowledged' | 'snoozed' | 'resolved'
+  occurrence_count: number
+  first_seen_at: string | null
+  last_seen_at: string | null
+  acknowledged_by: string | null
+  acknowledged_at: string | null
+  acknowledgement_note: string | null
+  snoozed_by: string | null
+  snoozed_at: string | null
+  snooze_until: string | null
+  resolved_at: string | null
+  resolution: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminAlertList {
+  items: AdminAlert[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export interface AdminKpiTrendPoint {
   date: string
   value: number
@@ -4213,6 +4245,31 @@ class ApiClient {
 
   async getAdminAttention(): Promise<AdminAttentionResponse> {
     return this.request<AdminAttentionResponse>('/admin/operations/attention')
+  }
+
+  async getAdminAlerts(params?: {
+    state?: 'active' | 'open' | 'acknowledged' | 'snoozed' | 'resolved'
+    severity?: 'critical' | 'high' | 'medium' | 'low'
+    limit?: number
+    offset?: number
+  }): Promise<AdminAlertList> {
+    const qs = new URLSearchParams()
+    if (params?.state) qs.set('state', params.state)
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAlertList>(`/admin/alerts${suffix}`)
+  }
+
+  async updateAdminAlert(
+    id: string,
+    body: { state: 'acknowledged' | 'snoozed'; reason: string; snooze_minutes?: number },
+  ): Promise<AdminAlert> {
+    return this.request<AdminAlert>(`/admin/alerts/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
   }
 
   async getAdminOperationsHealth(): Promise<AdminOperationsHealthResponse> {

@@ -102,7 +102,8 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
     ("0074_redis_authority_freeze", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0075_durable_quota_ledger", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0076_spare_authority_handover", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0077_admin_control_room", current_columns(), "current_dodo_head"),
+    ("0077_admin_control_room", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0078_admin_alerts", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -120,6 +121,18 @@ def test_revision_before_0077_does_not_require_0077_webhook_columns():
     ) == "known_mainline_dodo_upgrade_required"
     assert preflight.classify_schema(
         ["0077_admin_control_room"], columns, known
+    ) == "schema_revision_mismatch_requires_review"
+
+
+def test_revision_before_0078_does_not_require_admin_alerts_table():
+    columns = current_columns()
+    del columns["admin_alerts"]
+    known = preflight.known_revisions()
+    assert preflight.classify_schema(
+        ["0077_admin_control_room"], columns, known
+    ) == "known_mainline_dodo_upgrade_required"
+    assert preflight.classify_schema(
+        ["0078_admin_alerts"], columns, known
     ) == "schema_revision_mismatch_requires_review"
 
 
@@ -157,19 +170,20 @@ def test_stamped_capability_revision_rejects_partial_columns(revision, table, co
 
 
 def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
-    assert preflight.EXPECTED_HEAD == "0077_admin_control_room"
+    assert preflight.EXPECTED_HEAD == "0078_admin_alerts"
     assert preflight.CAPABILITY_SCHEMA_COLUMNS["0073_d14_subfeatures"] == {}
     previous_columns = {
         **{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
         "render_artifact_manifests": {"artifact_id"}, "resume_optimization_runs": {"id"},
         **{table: set(names) for revision, tables in preflight.CAPABILITY_SCHEMA_COLUMNS.items()
            if revision not in {"0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
-                               "0076_spare_authority_handover", "0077_admin_control_room"}
+                               "0076_spare_authority_handover", "0077_admin_control_room",
+                               "0078_admin_alerts"}
            for table, names in tables.items()},
     }
     previous_tables = {
         "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
-        "admin_audit_log", "admin_refund_requests",
+        "admin_audit_log", "admin_refund_requests", "admin_alerts",
     }
     assert previous_columns == {table: names for table, names in current_columns().items()
                                 if table not in previous_tables}
@@ -180,13 +194,14 @@ def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
     assert preflight.classify_schema(["0075_durable_quota_ledger"], previous_columns, known) == "schema_revision_mismatch_requires_review"
     assert preflight.classify_schema(["0076_spare_authority_handover"], previous_columns, known) == "schema_revision_mismatch_requires_review"
     assert preflight.classify_schema(["0077_admin_control_room"], previous_columns, known) == "schema_revision_mismatch_requires_review"
+    assert preflight.classify_schema(["0078_admin_alerts"], previous_columns, known) == "schema_revision_mismatch_requires_review"
     # No revision aliases, unknown stamps or multiple heads become accepted.
     assert preflight.classify_schema(["0073_d14_child_controls"], previous_columns, known) == "unknown_requires_review"
     assert preflight.classify_schema(["0072_capability_roles", "0073_d14_subfeatures"], previous_columns, known) == "unknown_requires_review"
 
 
 def test_future_revision_is_not_implicitly_approved_by_known_files():
-    future = "0078_unreviewed"
+    future = "0079_unreviewed"
     known = preflight.known_revisions() | {future}
     assert preflight.classify_schema([future], current_columns(), known) == "schema_revision_mismatch_requires_review"
     assert {"redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations"} <= set(preflight.TABLES)
@@ -698,7 +713,8 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0074_redis_authority_freeze", "known_mainline_dodo_upgrade_required"),
     ("0075_durable_quota_ledger", "known_mainline_dodo_upgrade_required"),
     ("0076_spare_authority_handover", "known_mainline_dodo_upgrade_required"),
-    ("0077_admin_control_room", "current_dodo_head"),
+    ("0077_admin_control_room", "known_mainline_dodo_upgrade_required"),
+    ("0078_admin_alerts", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
@@ -706,7 +722,7 @@ def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, s
 
 @pytest.mark.parametrize("revision,schema", [
     ("0072_capability_roles", "current_dodo_head"),
-    ("0077_admin_control_room", "known_mainline_dodo_upgrade_required"),
+    ("0078_admin_alerts", "known_mainline_dodo_upgrade_required"),
     ("0073_d14_subfeatures", "current_dodo_head"),
 ])
 def test_rollout_rejects_head_revision_classification_mismatch(revision, schema):

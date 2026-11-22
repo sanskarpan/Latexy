@@ -889,6 +889,36 @@ def scheduled_document_email_recovery() -> None:
 @app.function(
     image=worker_image,
     secrets=_secrets,
+    timeout=300,
+)
+@_require_worker_dispatch
+def run_scheduled_admin_alert_evaluation() -> None:
+    """Evaluate durable admin alerts (cadence: five-minute maintenance).
+
+    The evaluator upserts one active row per dedupe key, reopens expired snoozes
+    and auto-resolves conditions that have cleared. It never pages or mutates a
+    job/payment from this path.
+    """
+    import asyncio
+
+    from app.database.connection import close_db, get_async_db_session
+    from app.services.admin_alert_service import evaluate_alerts
+
+    async def run() -> None:
+        try:
+            async with get_async_db_session() as db:
+                result = await evaluate_alerts(db)
+                await db.commit()
+                print(f"admin alert evaluation: {result}")
+        finally:
+            await close_db()
+
+    asyncio.run(run())
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
     timeout=120,
     schedule=None if _DEPLOYMENT_TRAFFIC_HELD else modal.Period(minutes=5),
 )
@@ -909,6 +939,12 @@ def scheduled_five_minute_maintenance() -> None:
     except Exception as exc:
         print(f"scheduled tracker-notification spawn failed: {type(exc).__name__}")
         spawn_failures.append("scheduled_tracker_notifications")
+
+    try:
+        run_scheduled_admin_alert_evaluation.spawn()
+    except Exception as exc:
+        print(f"scheduled admin-alert evaluation spawn failed: {type(exc).__name__}")
+        spawn_failures.append("run_scheduled_admin_alert_evaluation")
 
     if spawn_failures:
         raise RuntimeError(

@@ -24,6 +24,8 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Overview | `GET /analytics/admin/overview` | Six executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
 | Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
+| Overview | `GET /admin/alerts` | Durable, deduplicated alerts with severity, owner, state, occurrence count and runbook |
+| Overview | `PATCH /admin/alerts/{id}` | Acknowledge or snooze an alert with a mandatory reason; every action is audited |
 
 ## Security invariants
 
@@ -53,6 +55,13 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - Attention rows are read-only. Nothing in the queue auto-retries, refunds,
   cancels or acknowledges a provider event. Domain expiry is explicitly marked
   partial until certificate/DNS metadata is connected.
+- Alerts deduplicate on a stable key while active, update an occurrence count
+  and auto-resolve when the condition clears. A resolved incident may create a
+  new row if it returns later. Acknowledgement and snooze require a reason and
+  write an append-only audit record.
+- Alert payloads contain counts, ages, thresholds and safe metric values only.
+  Per-user spend outliers stay in the Growth tab and are never copied into the
+  alert strip.
 - AI cost is deliberately labeled estimated: only total tokens are stored, so
   the dashboard applies a blended input/output rate from the configured
   `RESUME_ENGINE_MODEL_PRICING` table and the `ADMIN_AI_COST_USD_INR_RATE`
@@ -67,6 +76,15 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - `admin_refund_requests` + one-open-request partial unique index
 - `billing_webhook_events` review/acknowledgement/reconcile columns and index
 
+`0078_admin_alerts` creates:
+
+- `admin_alerts` with one active row per `dedupe_key` (partial unique index)
+- severity/state/history indexes and a fixed severity/state check constraint
+
+The evaluator runs from the existing five-minute Modal maintenance fan-out; it
+upserts signals, reopens expired snoozes and auto-resolves cleared conditions.
+It never pages or mutates a payment, job or provider object.
+
 ## Tests
 
 - `backend/test/test_admin_control_room_api.py` covers audit immutability,
@@ -80,6 +98,9 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - `backend/test/test_admin_kpi_trends.py` covers current/previous/absolute/
   percent deltas, sparkline completeness, zero-baseline handling, finite JSON
   output and the 60-second overview cache.
+- `backend/test/test_admin_alerts_api.py` covers evaluator deduplication,
+  occurrence counts, auto-resolution, admin-only acknowledgement/snooze and
+  audit coverage.
 - `frontend/src/__tests__/admin-control-room.test.ts` pins the tab wiring,
   support-only navigation, refund controls, operations-panel loading and
   PostHog privacy hardening.
