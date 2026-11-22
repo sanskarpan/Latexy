@@ -49,6 +49,11 @@ const SECTION_ORDER = [
   'compilations',
 ]
 
+function isMissingEndpoint(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /^HTTP 404\b/.test(message)
+}
+
 function formatAge(iso: string | null): string {
   if (!iso) return 'unknown age'
   const value = new Date(iso).getTime()
@@ -130,14 +135,20 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<AdminAttentionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [unavailable, setUnavailable] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setUnavailable(false)
     try {
       setData(await apiClient.getAdminAttention())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Attention queue could not be loaded')
+      if (isMissingEndpoint(err)) {
+        setUnavailable(true)
+      } else {
+        setError(err instanceof Error ? err.message : 'Attention queue could not be loaded')
+      }
     } finally {
       setLoading(false)
     }
@@ -146,6 +157,8 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
   useEffect(() => {
     void load()
   }, [load, refreshKey])
+
+  if (unavailable) return null
 
   const partialSources = (data?.sources ?? []).filter((source) => source.status !== 'ok')
 
@@ -210,14 +223,20 @@ function HealthPanel({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<AdminOperationsHealthResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [unavailable, setUnavailable] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setUnavailable(false)
     try {
       setData(await apiClient.getAdminOperationsHealth())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Operations health could not be loaded')
+      if (isMissingEndpoint(err)) {
+        setUnavailable(true)
+      } else {
+        setError(err instanceof Error ? err.message : 'Operations health could not be loaded')
+      }
     } finally {
       setLoading(false)
     }
@@ -226,6 +245,8 @@ function HealthPanel({ refreshKey }: { refreshKey: number }) {
   useEffect(() => {
     void load()
   }, [load, refreshKey])
+
+  if (unavailable) return null
 
   const sections = data?.sections ?? {}
   const ordered = SECTION_ORDER.filter((key) => key in sections)
