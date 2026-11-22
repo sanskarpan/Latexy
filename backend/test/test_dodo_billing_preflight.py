@@ -110,6 +110,19 @@ def test_revision_collision_classification(revision, columns, expected):
     assert preflight.classify_schema([revision], columns, preflight.known_revisions()) == expected
 
 
+def test_revision_before_0077_does_not_require_0077_webhook_columns():
+    columns = current_columns()
+    for column in preflight.BILLING_COLUMNS_ADDED_BY_REVISION["0077_admin_control_room"]["billing_webhook_events"]:
+        columns["billing_webhook_events"].remove(column)
+    known = preflight.known_revisions()
+    assert preflight.classify_schema(
+        ["0076_spare_authority_handover"], columns, known
+    ) == "known_mainline_dodo_upgrade_required"
+    assert preflight.classify_schema(
+        ["0077_admin_control_room"], columns, known
+    ) == "schema_revision_mismatch_requires_review"
+
+
 @pytest.mark.parametrize("revision,table", [
     ("0069_capability_catalog", "feature_flags"),
     ("0070_plan_catalog", "plan_catalog"),

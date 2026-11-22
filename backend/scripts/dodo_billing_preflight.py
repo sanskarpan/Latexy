@@ -22,11 +22,23 @@ from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_HEAD = "0077_admin_control_room"
-DODO_MAINLINE_REVISIONS = {
+# Oldest first. Column checks use the current-head snapshot, so a revision that
+# predates a later billing-column addition must subtract that addition below.
+DODO_MAINLINE_REVISIONS_ORDERED = (
     "0065", "0066", "0067", "0068", "0069_capability_catalog",
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
     "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
     "0076_spare_authority_handover", "0077_admin_control_room",
+)
+DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
+BILLING_COLUMNS_ADDED_BY_REVISION = {
+    "0077_admin_control_room": {
+        "billing_webhook_events": {
+            "acknowledged_at", "acknowledged_by", "acknowledgement_note",
+            "reconcile_attempts", "last_reconcile_at", "last_reconcile_error",
+            "last_reconcile_outcome",
+        },
+    },
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -320,6 +332,17 @@ def configuration_report(env: Mapping[str, str], presence: Mapping[str, Any],
     return report, blockers
 
 
+def billing_columns_for_revision(revision: str) -> dict[str, set[str]]:
+    """Return the billing columns that a stamped mainline revision must have."""
+    required = {table: set(names) for table, names in CURRENT_BILLING_COLUMNS.items()}
+    position = DODO_MAINLINE_REVISIONS_ORDERED.index(revision)
+    for added_revision, additions in BILLING_COLUMNS_ADDED_BY_REVISION.items():
+        if position < DODO_MAINLINE_REVISIONS_ORDERED.index(added_revision):
+            for table, columns in additions.items():
+                required[table] -= columns
+    return required
+
+
 def classify_schema(revisions: list[str], columns: dict[str, set[str]], known: set[str]) -> str:
     if len(revisions) != 1 or revisions[0] not in known:
         return "unknown_requires_review"
@@ -338,7 +361,7 @@ def classify_schema(revisions: list[str], columns: dict[str, set[str]], known: s
     if revision in DODO_MAINLINE_REVISIONS:
         if not dodo or not engine:
             return "schema_revision_mismatch_requires_review"
-        required_columns = {table: set(names) for table, names in CURRENT_BILLING_COLUMNS.items()}
+        required_columns = billing_columns_for_revision(revision)
         if revision in {"0065", "0066", "0067"}:
             required_columns["billing_webhook_events"].discard("event_resource_id")
         if revision in {"0065", "0066"}:
