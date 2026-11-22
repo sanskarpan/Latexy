@@ -151,10 +151,12 @@ router.include_router(reference_router)
 
 # Include Admin routes (feature flags + public config)
 from .admin_control_routes import router as admin_control_router
+from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
+router.include_router(admin_operations_router)
 
 # Include Job Application Tracker routes
 from .email_status_routes import router as email_status_router

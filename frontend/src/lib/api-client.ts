@@ -775,6 +775,50 @@ export interface AdminOperationsSummary {
   active_users_24h: number
 }
 
+export type AdminAttentionSeverity = 'critical' | 'high' | 'low'
+
+export interface AdminAttentionItem {
+  key: string
+  title: string
+  severity: AdminAttentionSeverity
+  owner: string
+  count: number
+  oldest_at: string | null
+  href: string
+  detail: string
+  source_status: 'ok' | 'partial' | 'unavailable'
+}
+
+export interface AdminAttentionSource {
+  key: string
+  status: 'ok' | 'partial' | 'unavailable'
+  count?: number
+  detail?: string
+}
+
+export interface AdminAttentionResponse {
+  generated_at: string
+  overall: 'attention' | 'clear'
+  partial: boolean
+  items: AdminAttentionItem[]
+  sources: AdminAttentionSource[]
+}
+
+export type AdminOperationsStatus = 'healthy' | 'degraded' | 'unhealthy'
+
+export interface AdminOperationsHealthSection {
+  status: AdminOperationsStatus
+  observed_at: string
+  detail?: string
+  [metric: string]: string | number | boolean | null | undefined
+}
+
+export interface AdminOperationsHealthResponse {
+  generated_at: string
+  status: AdminOperationsStatus
+  sections: Record<string, AdminOperationsHealthSection>
+}
+
 export interface AdminAnalyticsOverviewResponse {
   period_days: number
   system: {
@@ -4147,6 +4191,14 @@ class ApiClient {
     if (params.dimension) qs.set('dimension', params.dimension)
     if (params.value) qs.set('value', params.value)
     return this.request<AdminFilteredTimeseriesResponse>(`/admin/analytics/timeseries?${qs}`)
+  }
+
+  async getAdminAttention(): Promise<AdminAttentionResponse> {
+    return this.request<AdminAttentionResponse>('/admin/operations/attention')
+  }
+
+  async getAdminOperationsHealth(): Promise<AdminOperationsHealthResponse> {
+    return this.request<AdminOperationsHealthResponse>('/admin/operations/health')
   }
 
   async getAdminBillingSummary(days = 30): Promise<AdminBillingSummary> {

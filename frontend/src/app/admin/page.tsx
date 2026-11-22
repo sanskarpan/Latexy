@@ -731,6 +731,22 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
   const [tab, setTab] = useState<TabId>(canAdmin ? 'matrix' : 'customers')
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab')
+    if (requested && (canAdmin ? ADMIN_TABS : SUPPORT_TABS).some((item) => item.id === requested)) {
+      setTab(requested as TabId)
+    }
+  }, [canAdmin])
+
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hash) return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [tab])
+
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
     e.preventDefault()
@@ -804,7 +820,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">System</p>
             <h2 className="mt-1 text-xl font-semibold text-fg">Job Queue</h2>
           </div>
-          <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+          <div id="admin-job-queue" className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <JobQueue maxJobs={50} showFilters showSearch />
           </div>
         </div>

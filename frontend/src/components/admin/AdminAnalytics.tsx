@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient, type AdminAnalyticsOverviewResponse } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
+import AdminOperations from '@/components/admin/AdminOperations'
 import { analyticsDashboardLinks } from '@/lib/analytics/posthog'
 
 const RANGES = [
@@ -281,6 +282,8 @@ export default function AdminAnalytics() {
           Showing the last successful data. Refresh failed: {error}
         </div>
       )}
+
+      <AdminOperations />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="Total users" value={formatNumber(system.total_users)} detail={`${formatNumber(system.new_users)} new in period`} />
