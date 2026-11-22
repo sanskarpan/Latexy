@@ -21,6 +21,8 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
 | Audit | `GET /admin/audit` | Append-only operator audit trail |
+| Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
+| Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
 
 ## Security invariants
 
@@ -39,6 +41,13 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - No provider credential, card detail, or bank detail is returned to the browser.
 - Growth segments and retention cohorts suppress rates below five users to
   avoid re-identifying a small group.
+- Operations responses contain counts, ages, statuses and safe metric values
+  only. Probe failures return fixed details; raw provider errors, connection
+  strings, credentials, document content and customer identifiers are never
+  returned.
+- Attention rows are read-only. Nothing in the queue auto-retries, refunds,
+  cancels or acknowledges a provider event. Domain expiry is explicitly marked
+  partial until certificate/DNS metadata is connected.
 - AI cost is deliberately labeled estimated: only total tokens are stored, so
   the dashboard applies a blended input/output rate from the configured
   `RESUME_ENGINE_MODEL_PRICING` table and the `ADMIN_AI_COST_USD_INR_RATE`
@@ -60,8 +69,12 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   masked User 360, PII reveal audit, quota/session/key actions, and plan changes.
 - `backend/test/test_analytics_admin_fixes.py` pins the INR-only refund
   timeseries and substring-based telemetry redaction.
+- `backend/test/test_admin_operations_api.py` covers admin-only access, the
+  attention aggregate, partial-source visibility, health-cache behavior and
+  fixed failure details.
 - `frontend/src/__tests__/admin-control-room.test.ts` pins the tab wiring,
-  support-only navigation, refund controls, and PostHog privacy hardening.
+  support-only navigation, refund controls, operations-panel loading and
+  PostHog privacy hardening.
 
 ## Rollout
 

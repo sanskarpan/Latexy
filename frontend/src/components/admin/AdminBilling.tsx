@@ -74,7 +74,7 @@ function WebhookHealth({
   const page = Math.floor(offset / PAGE_SIZE) + 1
   const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE))
   return (
-    <section className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
+    <section id="admin-billing-webhooks" className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -613,7 +613,7 @@ export default function AdminBilling() {
   }
 
   return (
-    <div className="space-y-6">
+    <div id="admin-billing" className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-fg">Revenue control room</h2>

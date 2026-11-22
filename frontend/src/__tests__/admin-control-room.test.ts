@@ -6,9 +6,12 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 describe('admin control room surfaces', () => {
   const page = read('../app/admin/page.tsx')
   const billing = read('../components/admin/AdminBilling.tsx')
+  const analytics = read('../components/admin/AdminAnalytics.tsx')
   const growth = read('../components/admin/AdminGrowth.tsx')
   const userDetail = read('../components/admin/AdminUserDetail.tsx')
   const audit = read('../components/admin/AdminAudit.tsx')
+  const operations = read('../components/admin/AdminOperations.tsx')
+  const apiClient = read('../lib/api-client.ts')
 
   it('wires revenue, growth, customers, audit, and support-only navigation', () => {
     expect(page).toContain("import AdminBilling from '@/components/admin/AdminBilling'")
@@ -20,6 +23,23 @@ describe('admin control room surfaces', () => {
     expect(page).toContain("tab === 'growth' && <AdminGrowth />")
     expect(page).toContain("tab === 'customers' && <UsersTab canAdmin={canAdmin} />")
     expect(page).toContain("tab === 'audit' && <AdminAudit />")
+    expect(analytics).toContain("import AdminOperations from '@/components/admin/AdminOperations'")
+    expect(analytics).toContain('<AdminOperations />')
+    expect(page).toContain("new URLSearchParams(window.location.search).get('tab')")
+    expect(page).toContain('id="admin-job-queue"')
+  })
+
+  it('wires the attention queue and operations health with independent failure states', () => {
+    expect(operations).toContain('Needs attention')
+    expect(operations).toContain('System health')
+    expect(operations).toContain('getAdminAttention')
+    expect(operations).toContain('getAdminOperationsHealth')
+    expect(operations).toContain('Showing the last successful data')
+    expect(operations).not.toContain('latex_content')
+    expect(operations).not.toContain('customer_email')
+    expect(apiClient).toContain("'/admin/operations/attention'")
+    expect(apiClient).toContain("'/admin/operations/health'")
+    expect(billing).toContain('id="admin-billing-webhooks"')
   })
 
   it('shows activation, retention, cost, and filtered series without document content', () => {
