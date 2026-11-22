@@ -2,6 +2,7 @@
 Analytics API routes for tracking and retrieving usage data.
 """
 
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -32,6 +33,14 @@ from ..services.analytics_service import analytics_service
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+_ADMIN_OVERVIEW_CACHE_SECONDS = 60
+_admin_overview_cache: Dict[int, tuple[float, Dict[str, Any]]] = {}
+
+
+def reset_admin_overview_cache() -> None:
+    """Test/operator seam: discard the in-process overview cache."""
+    _admin_overview_cache.clear()
 
 # Limits for untrusted, client-supplied event metadata (SEC/DoS guard).
 # Keep these private names as compatibility aliases for existing tests and
@@ -160,6 +169,21 @@ class AdminOperationsSummary(BaseModel):
     webhook_failures_24h: int
     active_users_24h: int
 
+class AdminKpiTrendPoint(BaseModel):
+    date: str
+    value: float
+
+class AdminKpiTrend(BaseModel):
+    key: str
+    label: str
+    unit: str
+    current: float
+    previous: float
+    absolute_delta: float
+    percent_delta: Optional[float]
+    baseline_zero: bool
+    sparkline: List[AdminKpiTrendPoint]
+
 class AdminAnalyticsOverviewResponse(BaseModel):
     period_days: int
     system: SystemAnalyticsResponse
@@ -168,6 +192,7 @@ class AdminAnalyticsOverviewResponse(BaseModel):
     top_features: List[AdminFeatureUsage]
     recent_events: List[AdminRecentEvent]
     operations: AdminOperationsSummary
+    kpi_trends: List[AdminKpiTrend]
     generated_at: str
 
 @router.post("/track", status_code=status.HTTP_201_CREATED)
@@ -548,6 +573,9 @@ async def get_admin_analytics_overview(
     the authoritative first-party database; PostHog is the replay/exploration
     layer, not the source of truth for billing or entitlements.
     """
+    cached = _admin_overview_cache.get(days)
+    if cached is not None and time.monotonic() < cached[0]:
+        return AdminAnalyticsOverviewResponse(**cached[1])
     try:
         system = await analytics_service.get_system_analytics(db=db, days=days)
         funnel = await analytics_service.get_conversion_funnel(db=db, days=days)
@@ -555,7 +583,13 @@ async def get_admin_analytics_overview(
         top_features = await analytics_service.get_admin_top_features(db=db, days=days)
         recent_events = await analytics_service.get_admin_recent_events(db=db)
         operations = await analytics_service.get_admin_operations(db=db)
-        return AdminAnalyticsOverviewResponse(
+        kpi_trends = await analytics_service.get_admin_kpi_trends(
+            db=db,
+            days=days,
+            system=system,
+            timeseries=timeseries,
+        )
+        response = AdminAnalyticsOverviewResponse(
             period_days=days,
             system=SystemAnalyticsResponse(**system),
             conversion_funnel=ConversionFunnelResponse(**funnel),
@@ -563,8 +597,14 @@ async def get_admin_analytics_overview(
             top_features=[AdminFeatureUsage(**feature) for feature in top_features],
             recent_events=[AdminRecentEvent(**event) for event in recent_events],
             operations=AdminOperationsSummary(**operations),
+            kpi_trends=[AdminKpiTrend(**trend) for trend in kpi_trends],
             generated_at=datetime.now().isoformat(),
         )
+        _admin_overview_cache[days] = (
+            time.monotonic() + _ADMIN_OVERVIEW_CACHE_SECONDS,
+            response.model_dump(),
+        )
+        return response
     except HTTPException:
         raise
     except Exception as e:
