@@ -211,7 +211,10 @@ class PlanCatalogService:
                 "feature_disabled", "Student and team purchases are currently unavailable for this plan.", None,
             ))
 
-    async def update(self, db: AsyncSession, sku: str, changes: dict, *, version: int, admin_id: str) -> None:
+    async def update(
+        self, db: AsyncSession, sku: str, changes: dict, *, version: int, admin_id: str,
+        commit: bool = True,
+    ) -> None:
         default = self.defaults(sku)  # Reject unknown IDs; never invent a new billing SKU.
         if not changes or set(changes) - EDITABLE_FIELDS:
             raise ValueError("Only catalog presentation and new-purchase availability can be edited")
@@ -220,7 +223,12 @@ class PlanCatalogService:
         # Insert/lock ensures optimistic version checks are atomic even when two
         # admins both edit a SKU that has not had a catalog row yet.
         await db.execute(insert(PlanCatalog).values(**default).on_conflict_do_nothing(index_elements=["sku"]))
-        result = await db.execute(select(PlanCatalog).where(PlanCatalog.sku == sku).with_for_update())
+        result = await db.execute(
+            select(PlanCatalog)
+            .where(PlanCatalog.sku == sku)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         row = result.scalar_one()
         if row.version != version:
             await db.rollback()
@@ -233,7 +241,10 @@ class PlanCatalogService:
             sku=sku, version=row.version, changed_by=admin_id,
             snapshot={key: getattr(row, key) for key in EDITABLE_FIELDS},
         ))
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
 
 
 plan_catalog_service = PlanCatalogService()

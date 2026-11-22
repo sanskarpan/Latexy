@@ -856,6 +856,75 @@ class BillingWebhookEvent(Base):
     last_error: Mapped[Optional[str]] = mapped_column(Text)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    acknowledgement_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reconcile_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_reconcile_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_reconcile_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_reconcile_outcome: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+
+class AdminAuditLog(Base):
+    """Append-only operator action record; the database rejects UPDATE/DELETE."""
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    actor_user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    actor_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    action: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(INET, nullable=True)
+    before_state: Mapped[Optional[Dict]] = mapped_column("before", JSONB, nullable=True)
+    after_state: Mapped[Optional[Dict]] = mapped_column("after", JSONB, nullable=True)
+    event_metadata: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AdminRefundRequest(Base):
+    """Refund intent with separation of duties and a provider execution receipt."""
+
+    __tablename__ = "admin_refund_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'cancelled')",
+            name="ck_admin_refund_status",
+        ),
+        CheckConstraint("amount IS NULL OR amount > 0", name="ck_admin_refund_amount"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    payment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", server_default="pending")
+    amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    provider_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    tax_inclusive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    requested_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    approved_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    executed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    provider_refund_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class PaymentRefund(Base):

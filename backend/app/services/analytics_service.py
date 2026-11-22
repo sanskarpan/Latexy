@@ -2,6 +2,8 @@
 Analytics Service for tracking user behavior and system metrics.
 """
 
+import asyncio
+import inspect
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -56,7 +58,12 @@ class AnalyticsService:
                 user_agent=user_agent
             )
 
-            db.add(analytics_record)
+            added = db.add(analytics_record)
+            # Real AsyncSession.add is synchronous. A few route-policy tests use
+            # an AsyncMock session; awaiting the returned coroutine keeps those
+            # harnesses warning-free without changing production behavior.
+            if inspect.isawaitable(added):
+                await added
             await db.commit()
 
             # Also cache in Redis for real-time analytics
@@ -77,6 +84,39 @@ class AnalyticsService:
             logger.error("Error tracking event %s (%s)", sanitize_for_log(event_type), type(e).__name__)
             await db.rollback()
             return False
+
+    async def track_event_in_own_session(
+        self,
+        *,
+        event_type: str,
+        user_id: Optional[UUID],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record a milestone after the response, using a separate session.
+
+        FastAPI runs this as a background task, so a download/create response
+        never waits for analytics or shares its transaction.
+        """
+        if not user_id:
+            return
+        try:
+            from ..database.connection import get_async_db_session
+
+            async with get_async_db_session() as background_db:
+                await asyncio.wait_for(
+                    self.track_event(
+                        background_db,
+                        event_type=event_type,
+                        user_id=user_id,
+                        metadata=metadata,
+                    ),
+                    timeout=5,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Background analytics milestone failed (%s)",
+                type(exc).__name__,
+            )
 
     async def _cache_event(
         self,
@@ -638,7 +678,7 @@ class AnalyticsService:
             registrations = registrations_result.scalar() or 0
 
             # Subscriptions
-            subscriptions_query = select(func.count(Subscription.id)).where(
+            subscriptions_query = select(func.count(func.distinct(Subscription.user_id))).where(
                 and_(
                     Subscription.created_at >= start_date,
                     Subscription.status.in_(['active', 'cancel_scheduled', 'past_due'])
@@ -648,10 +688,13 @@ class AnalyticsService:
             subscriptions = subscriptions_result.scalar() or 0
 
             # Calculate conversion rates
-            trial_conversion = (trial_starts / landing_visits * 100) if landing_visits > 0 else 0
-            registration_conversion = (registrations / trial_starts * 100) if trial_starts > 0 else 0
-            subscription_conversion = (subscriptions / registrations * 100) if registrations > 0 else 0
-            overall_conversion = (subscriptions / landing_visits * 100) if landing_visits > 0 else 0
+            # These are bounded period-count ratios, not cohort conversions.
+            # Distinct subscription owners plus a visible cap avoid impossible
+            # >100% funnel steps when the two sides cover different cohorts.
+            trial_conversion = min((trial_starts / landing_visits * 100), 100.0) if landing_visits > 0 else 0
+            registration_conversion = min((registrations / trial_starts * 100), 100.0) if trial_starts > 0 else 0
+            subscription_conversion = min((subscriptions / registrations * 100), 100.0) if registrations > 0 else 0
+            overall_conversion = min((subscriptions / landing_visits * 100), 100.0) if landing_visits > 0 else 0
 
             funnel_result = {
                 "period_days": days,
@@ -754,13 +797,19 @@ class AnalyticsService:
             )
         ).all()
 
-        refund_day = func.date_trunc("day", PaymentRefund.created_at).label("day")
+        # Match the KPI: subtract only INR refunds belonging to INR payments,
+        # bucketed by the original payment date. A refund created after the
+        # period must not rewrite a prior day's revenue, and a non-INR refund
+        # must not reduce INR revenue.
+        refund_day = func.date_trunc("day", Payment.created_at).label("day")
         refund_rows = (
             await db.execute(
                 select(refund_day, func.coalesce(func.sum(PaymentRefund.amount), 0).label("amount"))
+                .join(Payment, PaymentRefund.payment_id == Payment.id)
                 .where(
                     and_(
-                        PaymentRefund.created_at >= start_date,
+                        Payment.created_at >= start_date,
+                        Payment.currency == "INR",
                         PaymentRefund.status == "succeeded",
                     )
                 )

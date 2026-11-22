@@ -13,6 +13,10 @@ import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
+import AdminBilling from '@/components/admin/AdminBilling'
+import AdminGrowth from '@/components/admin/AdminGrowth'
+import AdminAudit from '@/components/admin/AdminAudit'
+import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
 interface FlagDetail {
@@ -23,16 +27,23 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'flags' | 'matrix' | 'plans' | 'users'
+type TabId = 'analytics' | 'billing' | 'growth' | 'customers' | 'audit' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
-const TABS: Array<{ id: TabId; label: string }> = [
+const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analytics', label: 'Analytics' },
+  { id: 'billing', label: 'Revenue' },
+  { id: 'growth', label: 'Growth & Cost' },
+  { id: 'customers', label: 'Customers' },
+  { id: 'audit', label: 'Audit' },
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
-  { id: 'users', label: 'Users & Roles' },
+]
+
+const SUPPORT_TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'customers', label: 'Customers' },
 ]
 
 // ── Shared toggle switch ──────────────────────────────────────────────────────
@@ -471,7 +482,7 @@ function AlwaysOnDot({ reason }: { reason?: string | null }) {
 const ROLES: UserRole[] = ['user', 'support', 'admin']
 const PAGE_SIZE = 20
 
-function UsersTab() {
+function UsersTab({ canAdmin }: { canAdmin: boolean }) {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [users, setUsers] = useState<AdminUser[] | null>(null)
@@ -480,6 +491,7 @@ function UsersTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
   // debounce the search box → resets pagination
   useEffect(() => {
@@ -573,6 +585,7 @@ function UsersTab() {
                   <th className="sticky left-0 z-10 min-w-[220px] bg-bg px-4 py-3 text-left font-semibold">User</th>
                   <th className="min-w-[90px] px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="min-w-[130px] px-4 py-3 text-left font-semibold">Role</th>
+                  <th className="min-w-[90px] px-4 py-3 text-left font-semibold">Support</th>
                 </tr>
               </thead>
               <tbody>
@@ -601,19 +614,32 @@ function UsersTab() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={u.role}
-                        disabled={savingId === u.id}
-                        onChange={(e) => changeRole(u, e.target.value as UserRole)}
-                        aria-label={`Role for ${u.email}`}
-                        className="min-h-[40px] rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg disabled:opacity-50"
+                      {canAdmin ? (
+                        <select
+                          value={u.role}
+                          disabled={savingId === u.id}
+                          onChange={(e) => changeRole(u, e.target.value as UserRole)}
+                          aria-label={`Role for ${u.email}`}
+                          className="min-h-[40px] rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg disabled:opacity-50"
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-fg-3">{u.role}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUserId(u.id)}
+                        className="rounded-[var(--radius-md)] border border-line px-2.5 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2"
                       >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
+                        View 360
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -642,6 +668,16 @@ function UsersTab() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {selectedUserId && (
+        <div className="mt-5">
+          <AdminUserDetail
+            key={selectedUserId}
+            userId={selectedUserId}
+            canAdmin={canAdmin}
+            onClose={() => setSelectedUserId(null)}
+          />
         </div>
       )}
     </div>
@@ -681,24 +717,26 @@ export default function AdminPage() {
     <p role="alert" className="text-sm text-err">{error}</p>
     <button type="button" onClick={refresh} className="rounded-md border border-line px-4 py-2 text-sm">Retry</button>
   </div>
-  if (role !== 'admin') return <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+  if (role !== 'admin' && role !== 'support') return <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
     <p className="text-lg font-semibold text-fg-2">Not authorized</p>
-    <p className="text-sm text-fg-3">Admin access required. Ask an administrator to grant you the admin role.</p>
+    <p className="text-sm text-fg-3">Support or admin access required. Ask an administrator to grant you the right role.</p>
   </div>
   // Changing identity remounts every private tab before it can display old data.
-  return <AuthorizedAdminPage key={scopeKey} />
+  return <AuthorizedAdminPage key={`${scopeKey}:${role}`} role={role} />
 }
 
-function AuthorizedAdminPage() {
-  const [tab, setTab] = useState<TabId>('matrix')
+function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
+  const canAdmin = role === 'admin'
+  const tabs = canAdmin ? ADMIN_TABS : SUPPORT_TABS
+  const [tab, setTab] = useState<TabId>(canAdmin ? 'matrix' : 'customers')
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
     e.preventDefault()
     const dir = e.key === 'ArrowRight' ? 1 : -1
-    const next = (index + dir + TABS.length) % TABS.length
-    setTab(TABS[next].id)
+    const next = (index + dir + tabs.length) % tabs.length
+    setTab(tabs[next].id)
     tabRefs.current[next]?.focus()
   }
 
@@ -716,7 +754,7 @@ function AuthorizedAdminPage() {
         aria-label="Admin sections"
         className="mb-8 inline-flex max-w-full flex-wrap gap-1 rounded-[var(--radius-lg)] border border-line bg-surface p-1"
       >
-        {TABS.map((t, i) => {
+        {tabs.map((t, i) => {
           const active = tab === t.id
           return (
             <button
@@ -751,21 +789,26 @@ function AuthorizedAdminPage() {
         className="focus:outline-none"
       >
         {tab === 'analytics' && <AdminAnalytics />}
+        {tab === 'billing' && <AdminBilling />}
+        {tab === 'growth' && <AdminGrowth />}
+        {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
+        {tab === 'audit' && <AdminAudit />}
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}
-        {tab === 'users' && <UsersTab />}
       </div>
 
-      <div className="mt-12">
-        <div className="mb-6">
-          <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">System</p>
-          <h2 className="mt-1 text-xl font-semibold text-fg">Job Queue</h2>
+      {canAdmin && (
+        <div className="mt-12">
+          <div className="mb-6">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">System</p>
+            <h2 className="mt-1 text-xl font-semibold text-fg">Job Queue</h2>
+          </div>
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <JobQueue maxJobs={50} showFilters showSearch />
+          </div>
         </div>
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
-          <JobQueue maxJobs={50} showFilters showSearch />
-        </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -570,7 +570,7 @@ class EntitlementService:
 
     async def _write_cell(
         self, model: Any, identity: dict, values: dict, db: AsyncSession,
-        *, expected_enabled: bool | None = None,
+        *, expected_enabled: bool | None = None, commit: bool = True,
     ) -> None:
         """Serialize a cell and optionally reject stale admin intent.
 
@@ -599,11 +599,13 @@ class EntitlementService:
             set_={"enabled": values["enabled"], "updated_at": datetime.now(timezone.utc)},
         )
         await db.execute(stmt)
-        await db.commit()
+        if commit:
+            await db.commit()
         _clear_cache()
 
     async def set_kill_switch(
         self, key: str, enabled: bool, db: AsyncSession, *, expected_enabled: bool | None = None,
+        commit: bool = True,
     ) -> None:
         """Atomically upsert an explicit product switch in the shared source."""
         feature = get_feature(key)
@@ -612,11 +614,12 @@ class EntitlementService:
         await self._write_cell(
             FeatureFlag, {"key": key},
             {"enabled": enabled, "label": feature.label, "description": feature.description}, db,
-            expected_enabled=expected_enabled,
+            expected_enabled=expected_enabled, commit=commit,
         )
 
     async def set_matrix_cell(
         self, family: str, key: str, enabled: bool, db: AsyncSession, *, expected_enabled: bool | None = None,
+        commit: bool = True,
     ) -> None:
         """Restrict a family or concrete SKU; child/SKU grants never override denial."""
         if family not in PLAN_MATRIX_KEYS:
@@ -625,11 +628,12 @@ class EntitlementService:
             raise KeyError(f"Unknown or non-gateable feature: {key!r}")
         await self._write_cell(
             PlanFeature, {"plan_family": family, "feature_key": key}, {"enabled": enabled}, db,
-            expected_enabled=expected_enabled,
+            expected_enabled=expected_enabled, commit=commit,
         )
 
     async def set_role_cell(
         self, role: str, key: str, enabled: bool, db: AsyncSession, *, expected_enabled: bool | None = None,
+        commit: bool = True,
     ) -> None:
         """Role restrictions narrow product use without granting administrative authority."""
         if role not in CAPABILITY_ROLES:
@@ -638,7 +642,7 @@ class EntitlementService:
             raise KeyError(f"Unknown or non-gateable feature: {key!r}")
         await self._write_cell(
             RoleFeature, {"role": role, "feature_key": key}, {"enabled": enabled}, db,
-            expected_enabled=expected_enabled,
+            expected_enabled=expected_enabled, commit=commit,
         )
 
     async def effective_snapshot(self, user: Any, db: AsyncSession | None = None) -> dict:

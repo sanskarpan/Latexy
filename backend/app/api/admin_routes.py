@@ -8,7 +8,7 @@ PATCH /admin/feature-flags/{key} — admin only — {enabled: bool}
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,9 @@ from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
-from ..middleware.auth_middleware import require_admin
+from ..middleware.auth_middleware import require_admin, require_admin_actor, require_support_actor
+from ..services.admin_audit_service import AdminActor, record_admin_audit
+from ..services.admin_user_service import mask_email, mask_name
 from ..services.entitlement_service import entitlement_service
 from ..services.feature_flag_service import feature_flag_service
 from ..services.posthog_service import posthog_service
@@ -95,20 +97,38 @@ async def get_admin_feature_flags(
 async def update_feature_flag(
     key: str,
     body: FlagUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin_user_id: str = Depends(require_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ):
     """Toggle a feature flag. Admin only."""
     try:
-        flag = await feature_flag_service.update_flag(key, body.enabled, db)
+        before_enabled = await feature_flag_service.get_flag(key, db)
+        flag = await feature_flag_service.update_flag(key, body.enabled, db, commit=False)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Feature flag {key!r} not found")
-    logger.info(
-        "admin_feature_flag_updated",
-        extra={"admin_user_id": sanitize_for_log(admin_user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
-    )
+    try:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="feature_flag.update",
+            target_type="feature_flag",
+            target_id=key,
+            before={"enabled": before_enabled},
+            after={"enabled": flag.enabled},
+            request=request,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
+    if key in PUBLIC_FLAG_KEYS:
+        await feature_flag_service.sync_flag_cache(key, flag.enabled)
+    # Keep every request-derived value out of the log sink. The immutable admin
+    # audit row above is the authoritative actor/target/state record.
+    logger.info("admin_feature_flag_updated")
     posthog_service.capture(
-        admin_user_id,
+        actor.user_id,
         "backend_admin_flag_changed",
         {"feature_key": key, "enabled": body.enabled, "surface": "admin"},
     )
@@ -157,12 +177,16 @@ async def get_entitlements(
 async def update_kill_switch(
     key: str,
     body: KillSwitchUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin_user_id: str = Depends(require_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> dict:
     """Toggle a global feature kill-switch. Admin only. 404 if the key is not gateable."""
+    before_state = await entitlement_service.get_state(db)
     try:
-        await entitlement_service.set_kill_switch(key, body.enabled, db, expected_enabled=body.expected_enabled)
+        await entitlement_service.set_kill_switch(
+            key, body.enabled, db, expected_enabled=body.expected_enabled, commit=False
+        )
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -172,12 +196,24 @@ async def update_kill_switch(
                 None,
             ),
         )
-    logger.info(
-        "admin_kill_switch_updated",
-        extra={"admin_user_id": sanitize_for_log(admin_user_id), "feature_key": sanitize_for_log(key), "enabled": body.enabled},
-    )
+    try:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="entitlement.kill_switch.update",
+            target_type="feature_key",
+            target_id=key,
+            before={"enabled": before_state["kill_switches"].get(key)},
+            after={"enabled": body.enabled},
+            request=request,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
+    logger.info("admin_kill_switch_updated")
     posthog_service.capture(
-        admin_user_id,
+        actor.user_id,
         "backend_admin_kill_switch_changed",
         {"feature_key": key, "enabled": body.enabled, "surface": "admin"},
     )
@@ -187,8 +223,9 @@ async def update_kill_switch(
 @router.patch("/admin/entitlements/matrix")
 async def update_matrix_cell(
     body: MatrixUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin_user_id: str = Depends(require_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> dict:
     """Set a per-plan-family feature cell. Admin only.
 
@@ -214,20 +251,36 @@ async def update_matrix_cell(
                 None,
             ),
         )
+    before_state = await entitlement_service.get_state(db)
     await entitlement_service.set_matrix_cell(
-        body.plan_family, body.feature_key, body.enabled, db, expected_enabled=body.expected_enabled
+        body.plan_family, body.feature_key, body.enabled, db,
+        expected_enabled=body.expected_enabled, commit=False,
     )
+    try:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="entitlement.matrix.update",
+            target_type="plan_feature",
+            target_id=f"{body.plan_family}:{body.feature_key}",
+            before={"enabled": before_state["matrix"].get(body.plan_family, {}).get(body.feature_key)},
+            after={"enabled": body.enabled},
+            request=request,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     logger.info(
         "admin_entitlement_matrix_updated",
         extra={
-            "admin_user_id": sanitize_for_log(admin_user_id),
+            "admin_user_id": sanitize_for_log(actor.user_id),
             "plan_family": sanitize_for_log(body.plan_family),
             "feature_key": sanitize_for_log(body.feature_key),
-            "enabled": body.enabled,
         },
     )
     posthog_service.capture(
-        admin_user_id,
+        actor.user_id,
         "backend_admin_entitlement_changed",
         {"plan_key": body.plan_family, "feature_key": body.feature_key,
          "enabled": body.enabled, "surface": "admin"},
@@ -247,15 +300,17 @@ def _log_role_toggle(admin_user_id: str, role: str, feature_key: str, enabled: b
     # Include bounded identifiers in the message so the audit is not empty.
     logger.info(
         "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
-        one_line(admin_user_id), one_line(role), one_line(feature_key), bool(enabled),
+        one_line(admin_user_id), one_line(role), one_line(feature_key),
+        one_line(str(bool(enabled))),
     )
 
 
 @router.patch("/admin/entitlements/roles")
 async def update_role_matrix_cell(
     body: RoleMatrixUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin_user_id: str = Depends(require_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ) -> dict:
     """Restrict one account role/context; document and tenant ACLs are unchanged."""
     from ..core.feature_registry import CAPABILITY_ROLES, get_feature
@@ -272,12 +327,29 @@ async def update_role_matrix_cell(
         raise HTTPException(status_code=404, detail=error_body(
             "feature_not_found", f"Unknown or non-gateable feature: {body.feature_key!r}", None,
         ))
+    before_state = await entitlement_service.get_state(db)
     await entitlement_service.set_role_cell(
-        role, feature.key, body.enabled, db, expected_enabled=body.expected_enabled,
+        role, feature.key, body.enabled, db,
+        expected_enabled=body.expected_enabled, commit=False,
     )
-    _log_role_toggle(admin_user_id, role, feature.key, body.enabled)
+    try:
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="entitlement.role.update",
+            target_type="role_feature",
+            target_id=f"{role}:{feature.key}",
+            before={"enabled": (before_state.get("role_matrix") or {}).get(role, {}).get(feature.key)},
+            after={"enabled": body.enabled},
+            request=request,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
+    _log_role_toggle(actor.user_id, role, feature.key, body.enabled)
     posthog_service.capture(
-        admin_user_id,
+        actor.user_id,
         "backend_admin_role_matrix_changed",
         {"role": role, "feature_key": feature.key, "enabled": body.enabled, "surface": "admin"},
     )
@@ -307,11 +379,11 @@ class RoleUpdateRequest(BaseModel):
     role: str
 
 
-def _user_summary(user: User) -> UserSummary:
+def _user_summary(user: User, *, masked: bool = False) -> UserSummary:
     return UserSummary(
         id=user.id,
-        email=user.email,
-        name=user.name,
+        email=mask_email(user.email) if masked else user.email,
+        name=mask_name(user.name) if masked else user.name,
         role=user.role,
         subscription_plan=user.subscription_plan,
         email_verified=bool(user.email_verified),
@@ -325,9 +397,13 @@ async def list_users(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_admin),
+    actor: AdminActor = Depends(require_support_actor),
 ):
-    """List users with optional email search + pagination. Admin only."""
+    """List users with optional email search + pagination.
+
+    Support sees masked addresses and can open the masked User 360. Admin sees
+    the account address and can reveal it through the audited PII endpoint.
+    """
     filters = []
     if q:
         pattern = f"%{q.strip()}%"
@@ -342,7 +418,7 @@ async def list_users(
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (await db.execute(list_stmt)).scalars().all()
     return UserListResponse(
-        users=[_user_summary(u) for u in rows],
+        users=[_user_summary(u, masked=actor.role != "admin") for u in rows],
         total=int(total),
     )
 
@@ -351,8 +427,9 @@ async def list_users(
 async def update_user_role(
     user_id: str,
     body: RoleUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin_user_id: str = Depends(require_admin),
+    actor: AdminActor = Depends(require_admin_actor),
 ):
     """Change a user's RBAC role. Admin only.
 
@@ -407,19 +484,30 @@ async def update_user_role(
 
     previous_role = user.role
     user.role = new_role
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="user.role.change",
+        target_type="user",
+        target_id=user_id,
+        reason="Role change from the admin control plane",
+        before={"role": previous_role},
+        after={"role": new_role},
+        request=request,
+    )
     await db.commit()
     await db.refresh(user)
     logger.info(
         "admin_user_role_updated",
         extra={
-            "admin_user_id": sanitize_for_log(admin_user_id),
+            "admin_user_id": sanitize_for_log(actor.user_id),
             "target_user_id": sanitize_for_log(user_id),
             "previous_role": sanitize_for_log(previous_role),
             "new_role": sanitize_for_log(new_role),
         },
     )
     posthog_service.capture(
-        admin_user_id,
+        actor.user_id,
         "backend_admin_user_role_changed",
         {"target_user_id": user_id, "previous_role": previous_role,
          "new_role": new_role, "surface": "admin"},

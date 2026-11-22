@@ -59,7 +59,7 @@ export default function SharedResumePage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
+      <div className="ph-no-capture flex min-h-screen items-center justify-center bg-bg" data-ph-no-capture>
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={28} className="animate-spin text-fg-3" />
           <p className="text-sm text-fg-3">Loading resume…</p>
@@ -70,7 +70,7 @@ export default function SharedResumePage() {
 
   if (error || !data) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-bg px-4">
+      <div className="ph-no-capture flex min-h-screen flex-col items-center justify-center bg-bg px-4" data-ph-no-capture>
         <div className="w-full max-w-md rounded-[var(--radius-md)] border border-line bg-surface p-8 text-center">
           <div className="mb-4 flex justify-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-err/10 ring-1 ring-err/20">
@@ -101,7 +101,7 @@ export default function SharedResumePage() {
 
   if (data.anonymous_processing || !data.pdf_url) {
     return (
-      <div className="flex min-h-screen flex-col bg-bg">
+      <div className="ph-no-capture flex min-h-screen flex-col bg-bg" data-ph-no-capture>
         <div className="content-shell flex flex-1 items-center justify-center py-12">
           <div className="w-full max-w-3xl rounded-[var(--radius-md)] border border-line bg-surface p-6 sm:p-8">
             <div role="status" className="flex items-start gap-3">

@@ -21,12 +21,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0076_spare_authority_handover"
+EXPECTED_HEAD = "0077_admin_control_room"
 DODO_MAINLINE_REVISIONS = {
     "0065", "0066", "0067", "0068", "0069_capability_catalog",
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
     "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
-    "0076_spare_authority_handover",
+    "0076_spare_authority_handover", "0077_admin_control_room",
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -65,7 +65,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "render_artifact_manifests", "billing_webhook_events", "payment_refunds", "payments", "coupon_redemptions",
           "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
           "plan_quota_overrides", "plan_quota_revisions", "role_features",
-          "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations")
+          "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
+          "admin_audit_log", "admin_refund_requests")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -74,7 +75,9 @@ CURRENT_BILLING_COLUMNS = {
     "payments": {"id", "user_id", "subscription_id", "provider", "razorpay_payment_id", "provider_payment_id", "provider_event_at",
                  "amount", "currency", "status"},
     "billing_webhook_events": {"id", "provider", "event_id", "event_type", "payload_sha256", "event_at", "status",
-                               "attempts", "last_error", "received_at", "processed_at", "event_resource_id"},
+                               "attempts", "last_error", "received_at", "processed_at", "event_resource_id",
+                               "acknowledged_at", "acknowledged_by", "acknowledgement_note", "reconcile_attempts",
+                               "last_reconcile_at", "last_reconcile_error", "last_reconcile_outcome"},
     "payment_refunds": {"id", "payment_id", "provider", "provider_refund_id", "amount", "currency", "status", "reason", "created_at"},
     "coupon_redemptions": {"id", "coupon_id", "user_id", "subscription_id", "status", "redeemed_at"},
     "team_seats": {"owner_user_id", "member_user_id", "status"},
@@ -148,6 +151,18 @@ CAPABILITY_SCHEMA_COLUMNS = {
     # Constraint-only widening for a declared spare handover: no new tables
     # or columns. The ordered entry still requires every preceding fingerprint.
     "0076_spare_authority_handover": {},
+    "0077_admin_control_room": {
+        "admin_audit_log": {
+            "id", "actor_user_id", "actor_email", "action", "target_type", "target_id", "reason",
+            "request_id", "ip_address", "before", "after", "event_metadata", "created_at",
+        },
+        "admin_refund_requests": {
+            "id", "payment_id", "status", "amount", "currency", "provider_item_id", "tax_inclusive",
+            "reason", "decision_note", "requested_by", "requested_email", "approved_by", "approved_email",
+            "executed_by", "provider_refund_id", "last_error", "requested_at", "decided_at", "executed_at",
+            "updated_at",
+        },
+    },
 }
 
 

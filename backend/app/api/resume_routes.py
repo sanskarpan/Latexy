@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import (
     BaseModel,
@@ -43,6 +43,7 @@ from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
+from ..services.analytics_service import analytics_service
 from ..services.ats_resume_schema import CanonicalATSResume, from_structured_resume
 from ..services.collab_manager import CLOSE_ROLE_CHANGED, collab_manager
 from ..services.entitlement_service import entitlement_service
@@ -700,7 +701,10 @@ async def get_resume_stats(db: AsyncSession = Depends(get_db), user_id: str = De
 
 @router.post("/", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
 async def create_resume(
-    resume_in: ResumeCreate, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_required)
+    resume_in: ResumeCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """Create a new resume for the authenticated user."""
     payload = resume_in.model_dump()
@@ -717,6 +721,19 @@ async def create_resume(
     db.add(resume)
     await db.commit()
     await db.refresh(resume)
+
+    # First-party activation milestone, mirrored to PostHog by the analytics
+    # service. The background task owns a separate session and cannot expire
+    # `resume`; FastAPI runs it after the response body is sent.
+    background_tasks.add_task(
+        analytics_service.track_event_in_own_session,
+        event_type="resume_created",
+        user_id=user_id,
+        metadata={
+            "resource_type": "resume",
+            "document_type": resume.document_type or "resume",
+        },
+    )
 
     if settings.OPENAI_API_KEY and await entitlement_service.has_feature("d21", user=user_id):
         try:

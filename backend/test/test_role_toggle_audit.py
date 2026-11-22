@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.api import admin_routes
 from app.core.feature_registry import CAPABILITY_ROLES, get_feature
 from app.core.logging import JsonFormatter
+from app.services.admin_audit_service import AdminActor
 
 
 @pytest.mark.parametrize("role", CAPABILITY_ROLES)
@@ -18,21 +19,23 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
     logger = Mock()
     monkeypatch.setattr(admin_routes.entitlement_service, "set_role_cell", update)
     monkeypatch.setattr(admin_routes.entitlement_service, "get_state", state)
+    monkeypatch.setattr(admin_routes, "record_admin_audit", AsyncMock())
     monkeypatch.setattr(admin_routes, "logger", logger)
     # Force equal values constructed at runtime rather than source constants.
     body = admin_routes.RoleMatrixUpdateRequest(
         role="".join(list(role)), feature_key="".join(["b", "0", "3"]),
         enabled=False, expected_enabled=True,
     )
-    db = Mock()
-    result = await admin_routes.update_role_matrix_cell(body, db, "synthetic-admin-id")
+    db = AsyncMock()
+    actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
+    result = await admin_routes.update_role_matrix_cell(body, None, db, actor)
     assert result == {"verified": True}
-    update.assert_awaited_once_with(role, "b03", False, db, expected_enabled=True)
+    update.assert_awaited_once_with(role, "b03", False, db, expected_enabled=True, commit=False)
     assert update.call_args.args[0] is next(known for known in CAPABILITY_ROLES if known == role)
     assert update.call_args.args[1] is get_feature("b03").key
     logger.info.assert_called_once_with(
         "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
-        "synthetic-admin-id", role, "b03", False,
+        "synthetic-admin-id", role, "b03", "False",
     )
     record = logging.LogRecord("audit", logging.INFO, __file__, 1, logger.info.call_args.args[0], logger.info.call_args.args[1:], None)
     message = json.loads(JsonFormatter().format(record))["message"]
@@ -55,13 +58,17 @@ async def test_invalid_role_toggle_cannot_write_or_emit_success_audit(monkeypatc
     logger = Mock()
     monkeypatch.setattr(admin_routes.entitlement_service, "set_role_cell", update)
     monkeypatch.setattr(admin_routes.entitlement_service, "get_state", state)
+    audit = AsyncMock()
+    monkeypatch.setattr(admin_routes, "record_admin_audit", audit)
     monkeypatch.setattr(admin_routes, "logger", logger)
     body = admin_routes.RoleMatrixUpdateRequest(role=role, feature_key=feature, enabled=True)
+    actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
     with pytest.raises(HTTPException) as exc:
-        await admin_routes.update_role_matrix_cell(body, Mock(), "synthetic-admin-id")
+        await admin_routes.update_role_matrix_cell(body, None, Mock(), actor)
     assert exc.value.status_code == status
     update.assert_not_awaited()
     state.assert_not_awaited()
+    audit.assert_not_awaited()
     logger.info.assert_not_called()
 
 
