@@ -1006,8 +1006,9 @@ async def set_user_feature_override(
         target_type="user",
         target_id=user_id,
         reason=cleaned_reason,
-        before={"feature_key": feature_key, "override": current},
-        after={"feature_key": feature_key, "override": enabled},
+        before={"override": current},
+        after={"override": enabled},
+        metadata={"feature_key": feature_key},
         request=request,
     )
     await db.commit()

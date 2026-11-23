@@ -166,13 +166,13 @@ class TestFeatureOverrides:
             headers=admin_headers,
         )
         assert audit.status_code == 200
-        actions = [(row["action"], row["before"], row["after"]) for row in audit.json()["items"]]
-        assert ("user.feature.revoke", {"feature_key": "exports", "override": None},
-                {"feature_key": "exports", "override": False}) in actions
-        assert ("user.feature.grant", {"feature_key": "exports", "override": False},
-                {"feature_key": "exports", "override": True}) in actions
-        assert sum(1 for action, _, _ in actions if action == "user.feature.revoke") == 1
-        assert sum(1 for action, _, _ in actions if action == "user.feature.grant") == 1
+        actions = [(row["action"], row["before"], row["after"], row["metadata"]) for row in audit.json()["items"]]
+        assert ("user.feature.revoke", {"override": None}, {"override": False},
+                {"feature_key": "exports"}) in actions
+        assert ("user.feature.grant", {"override": False}, {"override": True},
+                {"feature_key": "exports"}) in actions
+        assert sum(1 for action, _, _, _ in actions if action == "user.feature.revoke") == 1
+        assert sum(1 for action, _, _, _ in actions if action == "user.feature.grant") == 1
         assert await entitlement_service.has_feature("exports", user=target_id) is True
 
     async def test_feature_override_invalidates_360_and_entitlement_caches(
