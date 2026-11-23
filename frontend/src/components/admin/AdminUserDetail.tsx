@@ -40,7 +40,7 @@ function text(value: unknown): string {
 }
 
 function isActive(value: unknown): boolean {
-  return value !== false
+  return value === true
 }
 
 export default function AdminUserDetail({
@@ -56,8 +56,10 @@ export default function AdminUserDetail({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reason, setReason] = useState('')
-  const [plan, setPlan] = useState('pro')
-  const [status, setStatus] = useState('active')
+  const [plan, setPlan] = useState('free')
+  const [status, setStatus] = useState('inactive')
+  const [savedPlan, setSavedPlan] = useState<string | null>(null)
+  const [savedStatus, setSavedStatus] = useState<string | null>(null)
   const [dimension, setDimension] = useState<'' | 'compilations' | 'optimizations' | 'ai_assists'>('')
   const [revealed, setRevealed] = useState<{ email: string | null; name: string | null } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -69,11 +71,16 @@ export default function AdminUserDetail({
       const next = await apiClient.getAdminUser360(userId)
       setData(next)
       // Preserve the exact current SKU, including weekly/lifetime or a retired
-      // SKU. A status-only edit must never silently rewrite the plan.
-      if (next.user.subscription_plan) setPlan(next.user.subscription_plan)
-      if (next.user.subscription_status && STATUS_OPTIONS.includes(next.user.subscription_status)) {
-        setStatus(next.user.subscription_status)
-      }
+      // SKU. A status-only edit must never silently rewrite the plan, and the
+      // apply control stays disabled until the operator changes something.
+      const nextPlan = next.user.subscription_plan || 'free'
+      const nextStatus = next.user.subscription_status && STATUS_OPTIONS.includes(next.user.subscription_status)
+        ? next.user.subscription_status
+        : 'inactive'
+      setPlan(nextPlan)
+      setStatus(nextStatus)
+      setSavedPlan(nextPlan)
+      setSavedStatus(nextStatus)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load User 360')
     } finally {
@@ -126,8 +133,10 @@ export default function AdminUserDetail({
   }
 
   const changePlan = async () => {
+    if (savedPlan === null || savedStatus === null || (plan === savedPlan && status === savedStatus)) return
     const cleaned = requireReason()
     if (!cleaned) return
+    if (!window.confirm(`Change ${data?.user.email ?? 'this user'} from ${savedPlan} (${savedStatus}) to ${plan} (${status})?`)) return
     await run(
       'plan',
       () => apiClient.changeAdminUserPlan(userId, { plan, status, reason: cleaned }),
@@ -138,12 +147,15 @@ export default function AdminUserDetail({
   const resetTrial = async () => {
     const cleaned = requireReason()
     if (!cleaned) return
+    if (!window.confirm(`Reset trial usage for ${data?.user.email ?? 'this user'}?`)) return
     await run('trial', () => apiClient.resetAdminUserTrial(userId, cleaned), 'Trial reset and audited')
   }
 
   const resetQuota = async () => {
     const cleaned = requireReason()
     if (!cleaned) return
+    const scope = dimension || 'all quota dimensions'
+    if (!window.confirm(`Reset ${scope} for ${data?.user.email ?? 'this user'}?`)) return
     await run(
       'quota',
       () => apiClient.resetAdminUserQuota(userId, { reason: cleaned, dimension: dimension || undefined }),
@@ -154,18 +166,21 @@ export default function AdminUserDetail({
   const revokeSessions = async () => {
     const cleaned = requireReason()
     if (!cleaned) return
+    if (!window.confirm(`Revoke every session for ${data?.user.email ?? 'this user'}? They will be signed out.`)) return
     await run('sessions', () => apiClient.revokeAdminUserSessions(userId, cleaned), 'Sessions revoked')
   }
 
   const revokePasskeys = async () => {
     const cleaned = requireReason()
     if (!cleaned) return
+    if (!window.confirm(`Revoke every passkey for ${data?.user.email ?? 'this user'}?`)) return
     await run('passkeys', () => apiClient.revokeAdminUserPasskeys(userId, cleaned), 'Passkeys revoked')
   }
 
   const revokeKeys = async () => {
     const cleaned = requireReason()
     if (!cleaned) return
+    if (!window.confirm(`Deactivate every BYOK and developer API key for ${data?.user.email ?? 'this user'}?`)) return
     await run(
       'keys',
       () => apiClient.revokeAdminUserApiKeys(userId, { reason: cleaned, scope: 'all' }),
@@ -201,6 +216,8 @@ export default function AdminUserDetail({
 
   const user = data.user
   const planOptions = Array.from(new Set([...PLAN_OPTIONS, user.subscription_plan, plan].filter(Boolean))) as string[]
+  const planDirty = savedPlan !== null && savedStatus !== null
+    && (plan !== savedPlan || status !== savedStatus)
   const email = revealed?.email ?? user.email
   const name = revealed?.name ?? user.name
   const activeSubscriptions = data.billing.subscriptions.filter((row) => ['active', 'cancel_scheduled'].includes(text(row.status)))
@@ -282,7 +299,12 @@ export default function AdminUserDetail({
                   {STATUS_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
-              <button type="button" onClick={() => void changePlan()} disabled={Boolean(busy)} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
+              {planDirty && (
+                <p className="mt-2 text-[10px] text-warn">
+                  {savedPlan} → {plan} · {savedStatus} → {status}
+                </p>
+              )}
+              <button type="button" onClick={() => void changePlan()} disabled={Boolean(busy) || !planDirty} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
                 Apply plan override
               </button>
             </div>

@@ -239,18 +239,24 @@ function MatrixTab() {
   const toggle = useCallback(async (scope: string, featureKey: string, next: boolean) => {
     const cellId = `${scope}:${featureKey}`
     if (!pendingRef.current.acquire(cellId)) return
-    setState((cur) => patchEntitlementCell(cur, scope, featureKey, next))
-    markBusy(cellId)
     const readCell = (fresh: AdminEntitlementsState) => scope === 'global'
       ? fresh.kill_switches[featureKey]
       : scope.startsWith('role:') ? fresh.role_matrix?.[scope.slice(5)]?.[featureKey]
         : fresh.matrix[scope]?.[featureKey]
+    let previous: boolean | undefined
+    let confirmed = false
+    setState((cur) => {
+      previous = cur ? readCell(cur) : undefined
+      return patchEntitlementCell(cur, scope, featureKey, next)
+    })
+    markBusy(cellId)
     try {
       const fresh = scope === 'global'
         ? await apiClient.updateKillSwitch(featureKey, next, !next)
         : scope.startsWith('role:')
           ? await apiClient.updateRoleCell(scope.slice(5) as EntitlementRole, featureKey, next, !next)
           : await apiClient.updateMatrixCell(scope, featureKey, next, !next)
+      confirmed = true
       if (mounted.current) setState((cur) => patchEntitlementCell(cur, scope, featureKey, readCell(fresh) === true))
     } catch (err) {
       if (!mounted.current) return
@@ -258,22 +264,51 @@ function MatrixTab() {
       // instead of assuming the old permission is still stored.
       try {
         const fresh = await apiClient.getAdminEntitlements()
+        confirmed = true
         if (mounted.current) setState((cur) => patchEntitlementCell(cur, scope, featureKey, readCell(fresh) === true))
         toast.error(err instanceof Error && err.message.includes('409')
           ? 'This permission changed elsewhere. The switch was refreshed; review it before retrying.'
           : 'The update could not be confirmed. The switch was refreshed from the server.')
       } catch {
-        if (mounted.current) setError('Could not verify the saved permission. Reload this page before making more changes.')
+        if (mounted.current) {
+          // Neither the write nor the re-read was confirmed. Revert only if the
+          // optimistic value is still present, and do not invalidate global
+          // entitlements from an unconfirmed change.
+          setState((cur) => cur && readCell(cur) === next
+            ? patchEntitlementCell(cur, scope, featureKey, previous === true)
+            : cur)
+          setError('Could not verify the saved permission. Reload this page before making more changes.')
+        }
       }
     } finally {
       pendingRef.current.release(cellId)
       if (mounted.current) clearBusy(cellId)
-      window.dispatchEvent(new Event('latexy:entitlements-updated'))
+      if (confirmed) window.dispatchEvent(new Event('latexy:entitlements-updated'))
     }
   }, [markBusy, clearBusy])
 
   if (loading) return <RowsSkeleton rows={8} />
-  if (error) return <InlineError message={error} />
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <InlineError message={error} />
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true)
+            setError(null)
+            apiClient.getAdminEntitlements()
+              .then((fresh) => setState(fresh))
+              .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+              .finally(() => setLoading(false))
+          }}
+          className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2"
+        >
+          Reload permissions
+        </button>
+      </div>
+    )
+  }
   if (!state) return null
 
   const families = planView === 'roles' ? (state.roles ?? []) : planView === 'skus' ? (state.plan_keys ?? state.plan_families) : state.plan_families
@@ -470,6 +505,7 @@ function FragmentGroup({
 function AlwaysOnDot({ reason }: { reason?: string | null }) {
   return (
     <span
+      role="img"
       title={reason ?? 'Always on'}
       className="inline-block h-2.5 w-2.5 rounded-full bg-ok/70 align-middle"
       aria-label="Always on"
@@ -503,6 +539,16 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
   }, [query])
 
   useEffect(() => {
+    if (!selectedUserId) return
+    const frame = window.requestAnimationFrame(() => {
+      const panel = document.getElementById('admin-user-360')
+      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      panel?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedUserId])
+
+  useEffect(() => {
     // `stale` guards against out-of-order responses: if the query/offset changes
     // (or the component unmounts) before this request resolves, its result is
     // discarded so the latest request always wins.
@@ -530,6 +576,7 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
 
   const changeRole = async (user: AdminUser, role: UserRole) => {
     if (role === user.role) return
+    if (!window.confirm(`Change ${user.email} from ${user.role} to ${role}?`)) return
     setSavingId(user.id)
     try {
       const updated = await apiClient.updateUserRole(user.id, role)
@@ -547,6 +594,15 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
     } finally {
       setSavingId(null)
     }
+  }
+
+  const closeUser360 = () => {
+    const closingId = selectedUserId
+    setSelectedUserId(null)
+    if (!closingId) return
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(`[data-user-360="${closingId}"]`)?.focus()
+    })
   }
 
   const page = Math.floor(offset / PAGE_SIZE) + 1
@@ -635,6 +691,9 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
                     <td className="px-4 py-3">
                       <button
                         type="button"
+                        data-user-360={u.id}
+                        aria-expanded={selectedUserId === u.id}
+                        aria-controls="admin-user-360"
                         onClick={() => setSelectedUserId(u.id)}
                         className="rounded-[var(--radius-md)] border border-line px-2.5 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2"
                       >
@@ -671,12 +730,12 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
         </div>
       )}
       {selectedUserId && (
-        <div className="mt-5">
+        <div id="admin-user-360" tabIndex={-1} className="mt-5 scroll-mt-6 focus:outline-none">
           <AdminUserDetail
             key={selectedUserId}
             userId={selectedUserId}
             canAdmin={canAdmin}
-            onClose={() => setSelectedUserId(null)}
+            onClose={closeUser360}
           />
         </div>
       )}
@@ -688,7 +747,7 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
 
 function RowsSkeleton({ rows }: { rows: number }) {
   return (
-    <div className="space-y-3">
+    <div role="status" aria-busy="true" aria-label="Loading admin data" className="space-y-3">
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
@@ -701,7 +760,7 @@ function RowsSkeleton({ rows }: { rows: number }) {
 
 function InlineError({ message }: { message: string }) {
   return (
-    <div className="rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.06] px-5 py-4">
+    <div role="alert" className="rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.06] px-5 py-4">
       <p className="text-sm font-medium text-err">Failed to load</p>
       <p className="mt-1 text-xs text-err/70">{message}</p>
     </div>
