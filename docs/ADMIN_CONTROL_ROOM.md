@@ -40,7 +40,9 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - Billing webhook acknowledgement is independent of provider status. A failed
   event stays failed until the local outcome is genuinely reconciled.
 - User 360 never selects resume/LaTeX/prompt/job-description content. It returns
-  titles, counts, timestamps, statuses, and redacted event names only.
+  titles, counts, timestamps, statuses, and redacted event names only. Masked
+  responses are cached for 60 seconds and invalidated by support mutations;
+  revealed PII is overlaid live and is never cached.
 - No provider credential, card detail, or bank detail is returned to the browser.
 - Growth segments and retention cohorts suppress rates below five users to
   avoid re-identifying a small group.
