@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..middleware.auth_middleware import require_admin_actor, require_support_actor
+from ..middleware.auth_middleware import require_admin_actor, require_admin_or_support
 from ..services import admin_user_service
 from ..services.admin_audit_service import AdminActor, audit_row_summary, list_admin_audit
 from ..services.admin_billing_service import admin_billing_service
@@ -54,6 +54,12 @@ class RefundExecuteRequest(BaseModel):
 
 
 class PiiRevealRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: Literal["email", "name"]
+    reason: Reason
+
+
+class CredentialRevokeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: Reason
 
@@ -274,17 +280,43 @@ async def reconcile_admin_refund_request(
 async def get_admin_user_360(
     user_id: str,
     db: AsyncSession = Depends(get_db),
-    actor: AdminActor = Depends(require_support_actor),
+    actor: AdminActor = Depends(require_admin_or_support),
 ) -> dict[str, Any]:
     try:
         return await admin_user_service.build_user_360(
-            db, user_id=user_id, actor_role=actor.role, reveal=False
+            db, user_id=user_id, actor_role=actor.role
         )
     except Exception as exc:
         raise _http_error(exc) from exc
 
 
-@router.post("/admin/users/{user_id}/pii/reveal")
+async def _reveal_admin_user_pii(
+    user_id: str,
+    body: PiiRevealRequest,
+    request: Request,
+    db: AsyncSession,
+    actor: AdminActor,
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.reveal_user_pii(
+            db,
+            user_id=user_id,
+            field=body.field,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except admin_user_service.RevealRateLimited as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="PII reveal rate limit exceeded; try again later",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/reveal-pii")
 async def reveal_admin_user_pii(
     user_id: str,
     body: PiiRevealRequest,
@@ -292,12 +324,19 @@ async def reveal_admin_user_pii(
     db: AsyncSession = Depends(get_db),
     actor: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    try:
-        return await admin_user_service.reveal_user_pii(
-            db, user_id=user_id, actor=actor, reason=body.reason, request=request
-        )
-    except Exception as exc:
-        raise _http_error(exc) from exc
+    return await _reveal_admin_user_pii(user_id, body, request, db, actor)
+
+
+@router.post("/admin/users/{user_id}/pii/reveal", deprecated=True)
+async def reveal_admin_user_pii_legacy(
+    user_id: str,
+    body: PiiRevealRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Deprecated alias; same single-field contract as /reveal-pii."""
+    return await _reveal_admin_user_pii(user_id, body, request, db, actor)
 
 
 @router.post("/admin/users/{user_id}/plan")
@@ -402,6 +441,94 @@ async def revoke_admin_user_api_keys(
     try:
         return await admin_user_service.revoke_user_api_keys(
             db, user_id=user_id, scope=body.scope, actor=actor, reason=body.reason, request=request
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/sessions/{session_id}/revoke")
+async def revoke_admin_user_session(
+    user_id: str,
+    session_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_session(
+            db,
+            user_id=user_id,
+            session_id=session_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/passkeys/{passkey_id}/revoke")
+async def revoke_admin_user_passkey(
+    user_id: str,
+    passkey_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_passkey(
+            db,
+            user_id=user_id,
+            passkey_id=passkey_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/byok-keys/{key_id}/revoke")
+async def revoke_admin_user_byok_key(
+    user_id: str,
+    key_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_byok_key(
+            db,
+            user_id=user_id,
+            key_id=key_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/developer-keys/{key_id}/revoke")
+async def revoke_admin_user_developer_key(
+    user_id: str,
+    key_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_developer_key(
+            db,
+            user_id=user_id,
+            key_id=key_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
         )
     except Exception as exc:
         raise _http_error(exc) from exc

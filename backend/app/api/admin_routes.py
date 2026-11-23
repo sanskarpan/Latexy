@@ -18,7 +18,11 @@ from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
-from ..middleware.auth_middleware import require_admin, require_admin_actor, require_support_actor
+from ..middleware.auth_middleware import (
+    require_admin,
+    require_admin_actor,
+    require_admin_or_support,
+)
 from ..services.admin_audit_service import AdminActor, record_admin_audit
 from ..services.admin_user_service import mask_email, mask_name
 from ..services.entitlement_service import entitlement_service
@@ -364,6 +368,7 @@ class UserSummary(BaseModel):
     id: str
     email: str
     name: Optional[str]
+    pii_masked: bool = True
     role: str
     subscription_plan: str
     email_verified: bool
@@ -379,11 +384,13 @@ class RoleUpdateRequest(BaseModel):
     role: str
 
 
-def _user_summary(user: User, *, masked: bool = False) -> UserSummary:
+def _user_summary(user: User) -> UserSummary:
+    """Masked-by-default projection; a single field needs the audited reveal."""
     return UserSummary(
         id=user.id,
-        email=(mask_email(user.email) or "***") if masked else user.email,
-        name=mask_name(user.name) if masked else user.name,
+        email=mask_email(user.email) or "***",
+        name=mask_name(user.name),
+        pii_masked=True,
         role=user.role,
         subscription_plan=user.subscription_plan,
         email_verified=bool(user.email_verified),
@@ -397,12 +404,13 @@ async def list_users(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    actor: AdminActor = Depends(require_support_actor),
+    _: AdminActor = Depends(require_admin_or_support),
 ):
     """List users with optional email search + pagination.
 
-    Support sees masked addresses and can open the masked User 360. Admin sees
-    the account address and can reveal it through the audited PII endpoint.
+    Support and admin both receive the masked projection. Neither role sees a
+    full address or name here; an admin must use the audited, rate-limited,
+    single-field reveal endpoint.
     """
     filters = []
     if q:
@@ -418,7 +426,7 @@ async def list_users(
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (await db.execute(list_stmt)).scalars().all()
     return UserListResponse(
-        users=[_user_summary(u, masked=actor.role != "admin") for u in rows],
+        users=[_user_summary(u) for u in rows],
         total=int(total),
     )
 

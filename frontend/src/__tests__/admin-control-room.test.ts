@@ -74,9 +74,16 @@ describe('admin control room surfaces', () => {
 
   it('masks PII by default and gates support mutations', () => {
     expect(userDetail).toContain('canAdmin')
-    expect(userDetail).toContain('Reveal email and name')
+    expect(userDetail).toContain('Reveal email')
+    expect(userDetail).toContain('Reveal name')
     expect(userDetail).toContain('Support access is read-only')
     expect(userDetail).toContain('revokeAdminUserSessions')
+    expect(userDetail).toContain('revokeAdminUserSession')
+    expect(userDetail).toContain('revokeAdminUserPasskey')
+    expect(userDetail).toContain('revokeAdminUserByokKey')
+    expect(userDetail).toContain('revokeAdminUserDeveloperKey')
+    expect(apiClient).toContain('/reveal-pii')
+    expect(page).toContain('PII masked')
     expect(userDetail).toContain('resetAdminUserQuota')
     expect(audit.toLowerCase()).toContain('append-only')
     expect(audit).toContain('UPDATE and DELETE')

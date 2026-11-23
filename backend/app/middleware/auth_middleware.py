@@ -378,6 +378,20 @@ async def require_support_actor(
     )
 
 
+async def require_admin_or_support(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> "AdminActor":
+    """Least-privilege gate for masked admin *read* surfaces.
+
+    Support and admin may read masked customer data; revealing PII and mutating
+    an account remain admin-only. This is intentionally a thin, named wrapper so
+    call sites state which privilege tier they need.
+    """
+    return await require_support_actor(request, credentials, db)
+
+
 def require_role(*roles: str):
     """Return a FastAPI dependency requiring the user's role ∈ ``roles``.
 

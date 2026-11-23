@@ -7,6 +7,7 @@ values. Support can see a masked account view; only an admin can reveal PII.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -14,12 +15,39 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import QUOTA_DIMENSIONS, get_plan_quota_window, settings
-from ..core.redis import cache_manager
+from ..core.logging import get_logger
+from ..core.redis import cache_manager, get_redis_client
 from ..database import models
 from .admin_audit_service import AdminActor, audit_row_summary, record_admin_audit
 
+logger = get_logger(__name__)
+
 USER_360_CACHE_TTL = 60
-USER_360_CACHE_PREFIX = "admin:user360:v1"
+USER_360_CACHE_PREFIX = "admin:user360:v2"
+
+# A reveal is a single field, at most five times a minute for one operator,
+# target, and field. Redis is only a counter; a Redis outage fails open so a
+# cache incident cannot block a legitimate support escalation.
+PII_REVEAL_LIMIT = 5
+PII_REVEAL_WINDOW_SECONDS = 60
+PII_FIELDS = frozenset({"email", "name"})
+_PII_REVEAL_LUA = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('TTL', KEYS[1])
+return {n, ttl}
+"""
+
+
+class RevealRateLimited(RuntimeError):
+    """Raised when one admin+target+field exceeds the reveal budget."""
+
+    def __init__(self, retry_after: int):
+        self.retry_after = max(1, int(retry_after))
+        super().__init__("PII reveal rate limit exceeded")
+
 
 User = models.User
 Resume = models.Resume
@@ -106,23 +134,21 @@ async def build_user_360(
     *,
     user_id: str,
     actor_role: str,
-    reveal: bool = False,
 ) -> dict[str, Any]:
-    if not reveal:
-        cached = await _read_user_360_cache(user_id, actor_role)
-        if cached is not None:
-            return cached
+    """Compose the always-masked 360 view.
+
+    Revealed PII is never overlaid here and never cached; the UI calls the
+    single-field reveal endpoint and holds the value client-side.
+    """
+    cached = await _read_user_360_cache(user_id, actor_role)
+    if cached is not None:
+        return cached
 
     user = await db.get(User, user_id)
     if user is None:
         raise KeyError("User not found")
     payload = await _compose_user_360(db, user=user, actor_role=actor_role)
-    if reveal and actor_role == "admin":
-        payload["user"]["email"] = user.email
-        payload["user"]["name"] = user.name
-        payload["user"]["pii_masked"] = False
-    else:
-        await _write_user_360_cache(user_id, actor_role, payload)
+    await _write_user_360_cache(user_id, actor_role, payload)
     return payload
 
 
@@ -227,6 +253,15 @@ async def _compose_user_360(
         await db.execute(
             text(
                 'SELECT id, "createdAt", "expiresAt", "userAgent" FROM session '
+                'WHERE "userId" = :uid ORDER BY "createdAt" DESC NULLS LAST LIMIT 20'
+            ),
+            {"uid": user_id},
+        )
+    ).all()
+    passkeys = (
+        await db.execute(
+            text(
+                'SELECT id, name, "deviceType", "backedUp", "createdAt" FROM passkey '
                 'WHERE "userId" = :uid ORDER BY "createdAt" DESC NULLS LAST LIMIT 20'
             ),
             {"uid": user_id},
@@ -437,6 +472,18 @@ async def _compose_user_360(
             ],
             "session_count": session_count,
             "passkey_count": passkey_count,
+            # Identification and metadata only. Public keys, credential IDs,
+            # counters, and session tokens never enter this projection.
+            "passkeys": [
+                {
+                    "id": row[0],
+                    "name": (row[1] or "")[:255] or None,
+                    "device_type": row[2],
+                    "backed_up": bool(row[3]),
+                    "created_at": _iso(row[4]),
+                }
+                for row in passkeys
+            ],
             "byok_keys": [
                 {
                     "id": row.id,
@@ -463,20 +510,58 @@ async def _compose_user_360(
     }
 
 
+async def _consume_reveal_budget(*, actor_user_id: str, user_id: str, field: str) -> None:
+    """Fixed-window 5/min limiter scoped to admin+target+field.
+
+    Only a Redis outage fails open. A malformed response from a healthy Redis is
+    treated as a limiter failure and also fails open, because it cannot be
+    distinguished from an outage; no other error path is caught here.
+    """
+    key = f"latexy:admin:pii-reveal:{actor_user_id}:{user_id}:{field}"
+    try:
+        redis = await get_redis_client()
+        result = await redis.eval(_PII_REVEAL_LUA, 1, key, PII_REVEAL_WINDOW_SECONDS)
+        count, ttl = int(result[0]), int(result[1])
+    except Exception as exc:  # Redis outage: fail open, log without PII.
+        logger.warning(
+            "PII reveal rate limiter unavailable; failing open",
+            extra={"error_type": type(exc).__name__},
+        )
+        return
+    if count > PII_REVEAL_LIMIT:
+        raise RevealRateLimited(ttl or PII_REVEAL_WINDOW_SECONDS)
+
+
 async def reveal_user_pii(
     db: AsyncSession,
     *,
     user_id: str,
+    field: str,
     actor: AdminActor,
     reason: str,
     request=None,
 ) -> dict[str, Any]:
+    """Reveal exactly one PII field and write its immutable audit row.
+
+    The response and the audit payload never contain the other field, and the
+    revealed value itself is never written to the audit log or application log.
+    """
+    normalized_field = (field or "").strip().lower()
+    if normalized_field not in PII_FIELDS:
+        raise ValueError("field must be email or name")
+    cleaned_reason = " ".join((reason or "").split())[:1000]
+    if len(cleaned_reason) < 3:
+        raise ValueError("A reason of at least 3 characters is required to reveal PII")
+
     user = await db.get(User, user_id)
     if user is None:
         raise KeyError("User not found")
-    cleaned_reason = " ".join((reason or "").split())[:1000]
-    if not cleaned_reason:
-        raise ValueError("A reason is required to reveal PII")
+
+    await _consume_reveal_budget(
+        actor_user_id=actor.user_id,
+        user_id=user_id,
+        field=normalized_field,
+    )
     await record_admin_audit(
         db,
         actor=actor,
@@ -484,12 +569,250 @@ async def reveal_user_pii(
         target_type="user",
         target_id=user_id,
         reason=cleaned_reason,
-        before={"pii_masked": True},
-        after={"pii_masked": False, "fields": ["email", "name"]},
+        before={"pii_masked": True, "field": normalized_field},
+        after={"pii_masked": False, "field": normalized_field},
+        metadata={"field": normalized_field},
         request=request,
         commit=True,
     )
-    return {"email": user.email, "name": user.name}
+    return {"field": normalized_field, "value": getattr(user, normalized_field)}
+
+
+async def _credential_already_revoked(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    action: str,
+    kind: str,
+    item_id: str,
+) -> bool:
+    """Idempotency probe: a prior revoke audit row proves this item belonged here."""
+    stmt = (
+        select(models.AdminAuditLog.id)
+        .where(
+            models.AdminAuditLog.target_type == "user",
+            models.AdminAuditLog.target_id == user_id,
+            models.AdminAuditLog.action == action,
+            models.AdminAuditLog.event_metadata["kind"].astext == kind,
+            models.AdminAuditLog.event_metadata["item_id"].astext == item_id,
+        )
+        .limit(1)
+    )
+    return (await db.execute(stmt)).first() is not None
+
+
+async def _revoke_audited_credential(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    credential_id: str,
+    kind: str,
+    action: str,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Shared audit/idempotency envelope for an individual credential revoke."""
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action=action,
+        target_type="user",
+        target_id=user_id,
+        reason=reason,
+        before={"active": True, "kind": kind},
+        after={"active": False, "kind": kind},
+        metadata={"kind": kind, "item_id": credential_id},
+        request=request,
+    )
+    await db.commit()
+    await invalidate_user_360_cache(user_id)
+    return {"kind": kind, "item_id": credential_id, "revoked": True, "already_revoked": False}
+
+
+def _clean_revoke_reason(reason: str) -> str:
+    cleaned_reason = " ".join((reason or "").split())[:1000]
+    if len(cleaned_reason) < 3:
+        raise ValueError("A reason of at least 3 characters is required")
+    return cleaned_reason
+
+
+def _normalize_uuid(value: str) -> str | None:
+    """Return a canonical UUID string or None without touching the database."""
+    try:
+        return str(uuid.UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+async def revoke_user_session(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    session_id: str,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Revoke one session for this user; a cross-user id is indistinguishable from missing."""
+    cleaned_reason = _clean_revoke_reason(reason)
+    if await db.get(User, user_id) is None:
+        raise KeyError("User not found")
+    owner = (
+        await db.execute(
+            text('SELECT "userId" FROM session WHERE id = :sid'),
+            {"sid": session_id},
+        )
+    ).scalar_one_or_none()
+    action = "user.session.revoke"
+    kind = "session"
+    if owner is None or str(owner) != user_id:
+        if owner is None and await _credential_already_revoked(
+            db, user_id=user_id, action=action, kind=kind, item_id=session_id
+        ):
+            return {"kind": kind, "item_id": session_id, "revoked": False, "already_revoked": True}
+        raise KeyError("Session not found")
+    result = await db.execute(
+        text('DELETE FROM session WHERE id = :sid AND "userId" = :uid'),
+        {"sid": session_id, "uid": user_id},
+    )
+    if int(result.rowcount or 0) == 0:
+        return {"kind": kind, "item_id": session_id, "revoked": False, "already_revoked": True}
+    return await _revoke_audited_credential(
+        db,
+        user_id=user_id,
+        credential_id=session_id,
+        kind=kind,
+        action=action,
+        actor=actor,
+        reason=cleaned_reason,
+        request=request,
+    )
+
+
+async def revoke_user_passkey(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    passkey_id: str,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Revoke one passkey for this user."""
+    cleaned_reason = _clean_revoke_reason(reason)
+    if await db.get(User, user_id) is None:
+        raise KeyError("User not found")
+    owner = (
+        await db.execute(
+            text('SELECT "userId" FROM passkey WHERE id = :pid'),
+            {"pid": passkey_id},
+        )
+    ).scalar_one_or_none()
+    action = "user.passkey.revoke"
+    kind = "passkey"
+    if owner is None or str(owner) != user_id:
+        if owner is None and await _credential_already_revoked(
+            db, user_id=user_id, action=action, kind=kind, item_id=passkey_id
+        ):
+            return {"kind": kind, "item_id": passkey_id, "revoked": False, "already_revoked": True}
+        raise KeyError("Passkey not found")
+    result = await db.execute(
+        text('DELETE FROM passkey WHERE id = :pid AND "userId" = :uid'),
+        {"pid": passkey_id, "uid": user_id},
+    )
+    if int(result.rowcount or 0) == 0:
+        return {"kind": kind, "item_id": passkey_id, "revoked": False, "already_revoked": True}
+    return await _revoke_audited_credential(
+        db,
+        user_id=user_id,
+        credential_id=passkey_id,
+        kind=kind,
+        action=action,
+        actor=actor,
+        reason=cleaned_reason,
+        request=request,
+    )
+
+
+async def revoke_user_byok_key(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    key_id: str,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Deactivate one BYOK key for this user, idempotently."""
+    cleaned_reason = _clean_revoke_reason(reason)
+    if await db.get(User, user_id) is None:
+        raise KeyError("User not found")
+    normalized_key_id = _normalize_uuid(key_id)
+    key: UserAPIKey | None = None
+    if normalized_key_id is not None:
+        key = await db.get(UserAPIKey, normalized_key_id)
+    action = "user.byok_key.revoke"
+    kind = "byok"
+    if key is None or key.user_id != user_id:
+        if key is None and await _credential_already_revoked(
+            db, user_id=user_id, action=action, kind=kind, item_id=normalized_key_id or key_id
+        ):
+            return {"kind": kind, "item_id": key_id, "revoked": False, "already_revoked": True}
+        raise KeyError("API key not found")
+    if not key.is_active:
+        return {"kind": kind, "item_id": key_id, "revoked": False, "already_revoked": True}
+    key.is_active = False
+    return await _revoke_audited_credential(
+        db,
+        user_id=user_id,
+        credential_id=normalized_key_id or key_id,
+        kind=kind,
+        action=action,
+        actor=actor,
+        reason=cleaned_reason,
+        request=request,
+    )
+
+
+async def revoke_user_developer_key(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    key_id: str,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Deactivate one developer API key for this user, idempotently."""
+    cleaned_reason = _clean_revoke_reason(reason)
+    if await db.get(User, user_id) is None:
+        raise KeyError("User not found")
+    normalized_key_id = _normalize_uuid(key_id)
+    key: DeveloperAPIKey | None = None
+    if normalized_key_id is not None:
+        key = await db.get(DeveloperAPIKey, normalized_key_id)
+    action = "user.developer_key.revoke"
+    kind = "developer"
+    if key is None or key.user_id != user_id:
+        if key is None and await _credential_already_revoked(
+            db, user_id=user_id, action=action, kind=kind, item_id=normalized_key_id or key_id
+        ):
+            return {"kind": kind, "item_id": key_id, "revoked": False, "already_revoked": True}
+        raise KeyError("API key not found")
+    if not key.is_active:
+        return {"kind": kind, "item_id": key_id, "revoked": False, "already_revoked": True}
+    key.is_active = False
+    return await _revoke_audited_credential(
+        db,
+        user_id=user_id,
+        credential_id=normalized_key_id or key_id,
+        kind=kind,
+        action=action,
+        actor=actor,
+        reason=cleaned_reason,
+        request=request,
+    )
 
 
 async def set_user_plan(
