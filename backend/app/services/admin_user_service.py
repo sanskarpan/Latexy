@@ -129,6 +129,19 @@ async def build_user_360(
     last_activity = (await db.execute(
         select(func.max(UsageAnalytics.created_at)).where(UsageAnalytics.user_id == user_id)
     )).scalar_one()
+    activation_flags = (
+        await db.execute(
+            text(
+                "SELECT "
+                "EXISTS(SELECT 1 FROM usage_analytics WHERE user_id = CAST(:uid AS uuid) "
+                "AND action IN ('export', 'pdf_export', 'docx_export', 'download')), "
+                "EXISTS(SELECT 1 FROM subscriptions WHERE user_id = CAST(:uid AS uuid) "
+                "AND status IN ('active', 'cancel_scheduled', 'past_due', 'on_hold', 'paused')), "
+                "(SELECT count(*) FROM session WHERE CAST(\"userId\" AS uuid) = CAST(:uid AS uuid))"
+            ),
+            {"uid": user_id},
+        )
+    ).one()
 
     subscriptions = (
         await db.execute(
@@ -226,8 +239,8 @@ async def build_user_360(
             "has_resume": resume_count > 0,
             "has_compile": int(compilation_row[0] or 0) > 0,
             "has_optimization": int(optimization_row[0] or 0) > 0,
-            "has_export": any(action in {"export", "pdf_export", "docx_export", "download"} for action, _count, _last in usage_rows),
-            "has_paid": any(subscription.status in {"active", "cancel_scheduled"} for subscription in subscriptions),
+            "has_export": bool(activation_flags[0]),
+            "has_paid": bool(activation_flags[1]),
             "last_activity_at": _iso(last_activity),
         },
         "usage": {
@@ -325,7 +338,7 @@ async def build_user_360(
                 }
                 for row in sessions
             ],
-            "session_count": len(sessions),
+            "session_count": int(activation_flags[2]),
             "passkey_count": passkey_count,
             "byok_keys": [
                 {

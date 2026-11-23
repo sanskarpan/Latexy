@@ -30,6 +30,7 @@ Payment, Subscription, User = db_models.Payment, db_models.Subscription, db_mode
 TeamSeat = db_models.TeamSeat
 CouponCode, CouponRedemption = db_models.CouponCode, db_models.CouponRedemption
 BillingWebhookEvent, PaymentRefund = db_models.BillingWebhookEvent, db_models.PaymentRefund
+AdminRefundRequest = db_models.AdminRefundRequest
 
 LIVE_SUBSCRIPTION_STATUSES = ("cancel_scheduled", "active", "past_due", "on_hold", "paused", "created", "pending", "checkout_pending", "checkout_unknown")
 PAID_SUBSCRIPTION_STATUSES = ("cancel_scheduled", "active", "past_due", "on_hold", "paused")
@@ -1733,6 +1734,36 @@ class PaymentService:
                     await referral_service.reverse_paid_payment(db, payment.id)
             elif total:
                 payment.status = "partially_refunded"
+        admin_request = await db.scalar(
+            select(AdminRefundRequest)
+            .where(AdminRefundRequest.provider_refund_id == refund_id)
+            .with_for_update()
+        )
+        if admin_request is None and status != "succeeded":
+            # Execution marks the request `executing` and commits before the
+            # provider responds; settle that row when its webhook arrives.
+            admin_request = await db.scalar(
+                select(AdminRefundRequest)
+                .where(
+                    AdminRefundRequest.payment_id == payment.id,
+                    AdminRefundRequest.status == "executing",
+                )
+                .order_by(AdminRefundRequest.requested_at.desc())
+                .limit(1)
+                .with_for_update()
+            )
+        if admin_request is not None:
+            admin_request.provider_refund_id = refund_id
+            if status == "succeeded":
+                admin_request.status = "executed"
+                admin_request.executed_at = datetime.now(timezone.utc)
+                admin_request.last_error = None
+            elif status == "failed":
+                admin_request.status = "failed"
+                admin_request.last_error = "Provider reported the refund as failed"[:1000]
+            else:
+                admin_request.status = "executing"
+                admin_request.last_error = None
         await db.commit()
         posthog_service.capture(
             str(payment.user_id),

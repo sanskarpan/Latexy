@@ -322,7 +322,8 @@ class TestRefundWorkflow:
             "available",
             property(lambda _self: True),
         )
-        create_refund = AsyncMock(return_value={"id": "ref_test_123", "status": "pending"})
+        refund_id = f"ref_test_{uuid.uuid4().hex[:10]}"
+        create_refund = AsyncMock(return_value={"id": refund_id, "status": "pending"})
         monkeypatch.setattr(payment_service.provider, "create_refund", create_refund)
 
         executed = await client.post(
@@ -331,9 +332,24 @@ class TestRefundWorkflow:
             headers=admin_b,
         )
         assert executed.status_code == 200
-        assert executed.json()["status"] == "executed"
-        assert executed.json()["provider_refund_id"] == "ref_test_123"
+        assert executed.json()["status"] == "executing"
+        assert executed.json()["provider_refund_id"] == refund_id
         create_refund.assert_awaited_once()
+
+        refund_row = (
+            await db_session.execute(
+                text(
+                    "SELECT provider, amount, status FROM payment_refunds "
+                    "WHERE provider_refund_id = :refund_id"
+                ),
+                {"refund_id": refund_id},
+            )
+        ).one()
+        assert tuple(refund_row) == ("dodo", 59900, "pending")
+        payment_status = (
+            await db_session.execute(text("SELECT status FROM payments WHERE id = :id"), {"id": payment_id})
+        ).scalar_one()
+        assert payment_status == "paid"
 
         audit = await client.get(
             f"/admin/audit?target_type=refund_request&target_id={request_id}",
@@ -342,7 +358,79 @@ class TestRefundWorkflow:
         actions = {row["action"] for row in audit.json()["items"]}
         assert "billing.refund.requested" in actions
         assert "billing.refund.approved" in actions
-        assert "billing.refund.executed" in actions
+        assert "billing.refund.execution_pending" in actions
+
+    async def test_successful_provider_execution_writes_ledger(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        admin_a = await _headers(db_session, "admin")
+        admin_b = await _headers(db_session, "admin")
+        user_id, _ = await _create_user(db_session)
+        _, payment_id = await _create_paid_subscription(db_session, user_id=user_id)
+
+        created = await client.post(
+            "/admin/billing/refunds",
+            json={"payment_id": payment_id, "reason": "Provider success test"},
+            headers=admin_a,
+        )
+        request_id = created.json()["id"]
+        approved = await client.post(
+            f"/admin/billing/refunds/{request_id}/approve",
+            json={"note": "Approved for provider success test"},
+            headers=admin_b,
+        )
+        assert approved.status_code == 200
+
+        monkeypatch.setattr(payment_service, "is_service_available", lambda: True)
+        monkeypatch.setattr(type(payment_service.provider), "available", property(lambda _self: True))
+        refund_id = f"ref_test_success_{uuid.uuid4().hex[:10]}"
+        monkeypatch.setattr(
+            payment_service.provider,
+            "create_refund",
+            AsyncMock(return_value={"id": refund_id, "status": "succeeded"}),
+        )
+
+        executed = await client.post(
+            f"/admin/billing/refunds/{request_id}/execute",
+            json={"note": "Submit approved refund"},
+            headers=admin_b,
+        )
+        assert executed.status_code == 200
+        assert executed.json()["status"] == "executed"
+
+        refund_row = (
+            await db_session.execute(
+                text(
+                    "SELECT provider, amount, status FROM payment_refunds "
+                    "WHERE provider_refund_id = :refund_id"
+                ),
+                {"refund_id": refund_id},
+            )
+        ).one()
+        assert tuple(refund_row) == ("dodo", 59900, "succeeded")
+        payment_status = (
+            await db_session.execute(text("SELECT status FROM payments WHERE id = :id"), {"id": payment_id})
+        ).scalar_one()
+        assert payment_status == "refunded"
+
+    async def test_legacy_provider_refund_is_rejected(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        admin_headers = await _headers(db_session, "admin")
+        user_id, _ = await _create_user(db_session)
+        _, payment_id = await _create_paid_subscription(db_session, user_id=user_id)
+        await db_session.execute(
+            text("UPDATE payments SET provider = 'razorpay' WHERE id = :id"), {"id": payment_id}
+        )
+        await db_session.commit()
+
+        response = await client.post(
+            "/admin/billing/refunds",
+            json={"payment_id": payment_id, "reason": "Legacy provider test"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+        assert "Dodo" in response.json()["detail"]
 
     async def test_failed_provider_refund_cannot_be_resubmitted(
         self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch

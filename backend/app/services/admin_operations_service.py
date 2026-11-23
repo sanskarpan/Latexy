@@ -68,7 +68,7 @@ def _worst(statuses: list[str]) -> str:
 
 
 def _capacity_status(status: str) -> str:
-    if status in {"critical", "exhausted", "misconfigured"}:
+    if status in {"critical", "exhausted", "misconfigured", "unavailable"}:
         return "unhealthy"
     if status in {"unconfigured", "warning", "unknown"}:
         return "degraded"
@@ -324,11 +324,11 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
         )
 
     items.sort(key=lambda item: (item["severity"] != "critical", item["severity"] != "high", item["title"]))
-    partial = any(source["status"] != "ok" for source in sources)
+    unavailable = any(source["status"] == "unavailable" for source in sources)
     return {
         "generated_at": now.isoformat(),
-        "overall": "attention" if items else "clear",
-        "partial": partial,
+        "overall": "attention" if items or unavailable else "clear",
+        "partial": unavailable,
         "items": items,
         "sources": sources,
     }

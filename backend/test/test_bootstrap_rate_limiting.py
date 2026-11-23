@@ -88,6 +88,76 @@ async def test_bootstrap_allowlist_does_not_include_related_routes(counter_redis
     assert "rate_limit:user:test:lw:minute:120" not in counter_redis.counts
 
 
+async def test_shared_ip_budget_caps_rotated_tokens(counter_redis):
+    limiter = rate_limiting.RateLimitMiddleware(FastAPI())
+    suffix, per_minute, per_hour = limiter.ip_budget("/compile")
+    assert (suffix, per_minute, per_hour) == (":ip", 1200, 24000)
+    counter_redis.counts[f"rate_limit:ip:1.2.3.4{suffix}:minute:120"] = per_minute
+    with pytest.raises(HTTPException) as exc:
+        await limiter.check_rate_limit(
+            "ip:1.2.3.4",
+            "/compile",
+            per_minute=per_minute,
+            per_hour=per_hour,
+            bucket_suffix=suffix,
+        )
+    assert exc.value.status_code == 429
+    assert exc.value.detail == f"Rate limit exceeded: {per_minute} calls per minute"
+
+
+def test_shared_ip_budgets_are_segmented_by_endpoint_class():
+    limiter = rate_limiting.RateLimitMiddleware(FastAPI())
+    assert limiter.ip_budget("/me") == (":lw:ip", 1800, 36000)
+    assert limiter.ip_budget("/config/entitlements") == (":lw:ip", 1800, 36000)
+    assert limiter.ip_budget("/github/connect") == (":int:ip", 30, 300)
+    assert limiter.ip_budget("/compile") == (":ip", 1200, 24000)
+
+
+async def test_middleware_ip_budget_survives_token_rotation(counter_redis):
+    app = FastAPI()
+    app.add_middleware(rate_limiting.RateLimitMiddleware)
+
+    @app.get("/compile")
+    async def endpoint():
+        return {"ok": True}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.get("/compile", headers={"Authorization": "Bearer rotated-token-one"})
+        assert first.status_code == 200
+
+        ip_key = next(
+            key for key in counter_redis.counts
+            if key.startswith("rate_limit:ip:") and key.endswith(":ip:minute:120")
+        )
+        counter_redis.counts[ip_key] = rate_limiting._IP_CALLS_PER_MINUTE
+
+        second = await client.get("/compile", headers={"Authorization": "Bearer rotated-token-two"})
+        assert second.status_code == 429
+        assert second.json() == {"error": "Rate limit exceeded: 1200 calls per minute", "retry_after": 60}
+
+
+async def test_lightweight_ip_pressure_does_not_429_expensive_requests(counter_redis):
+    app = FastAPI()
+    app.add_middleware(rate_limiting.RateLimitMiddleware)
+
+    @app.get("/me")
+    @app.get("/compile")
+    async def endpoint():
+        return {"ok": True}
+
+    headers = {"Authorization": "Bearer shared-session-token"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.get("/me", headers=headers)).status_code == 200
+        lw_ip_key = next(
+            key for key in counter_redis.counts
+            if key.startswith("rate_limit:ip:") and key.endswith(":lw:ip:minute:120")
+        )
+        counter_redis.counts[lw_ip_key] = rate_limiting._IP_LIGHTWEIGHT_CALLS_PER_MINUTE
+
+        assert (await client.get("/me", headers=headers)).status_code == 429
+        assert (await client.get("/compile", headers=headers)).status_code == 200
+
+
 async def test_middleware_routes_bootstrap_to_bounded_lightweight_budget(counter_redis):
     app = FastAPI()
     app.add_middleware(rate_limiting.RateLimitMiddleware)
