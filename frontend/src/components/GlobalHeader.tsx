@@ -74,7 +74,7 @@ export default function GlobalHeader() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const { role: accountRole } = useAccountRole()
-  const isAdmin = accountRole === 'admin'
+  const canOpenAdmin = accountRole === 'admin' || accountRole === 'support'
   const [tenantBrand, setTenantBrand] = useState<{ name: string; logoUrl: string | null } | null>(null)
   const { canInstall, prompt: promptInstall } = usePWAInstall()
   // framer-motion honours the OS "reduce motion" preference (the CSS floor in
@@ -360,7 +360,7 @@ export default function GlobalHeader() {
                     <Link href="/developer" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.developerApi')}</Link>
                     <Link href="/byok" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.aiProviders')}</Link>
                     <Link href="/settings" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.settings')}</Link>
-                    {isAdmin && (
+                    {canOpenAdmin && (
                       <Link href="/admin" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.admin')}</Link>
                     )}
                     <Link href="/privacy" prefetch={false} className={`${menuLink} px-4 py-2.5`} onClick={() => setIsMobileMenuOpen(false)}>{t('nav.privacy')}</Link>
@@ -507,7 +507,7 @@ export default function GlobalHeader() {
                        {/* Source-contract markers retained for route reachability tests: >AI Providers</Link> and >Settings</Link>. */}
                        <Link href="/byok" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.aiProviders')}</Link>
                        <Link href="/settings" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.settings')}</Link>
-                      {isAdmin && (
+                      {canOpenAdmin && (
                         <Link href="/admin" prefetch={false} role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.admin')}</Link>
                       )}
                       <div className="my-1 h-px bg-line" />

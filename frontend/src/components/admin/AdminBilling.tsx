@@ -348,6 +348,7 @@ function RefundQueue({
                 const isOpen = actionId === row.id
                 const awaitingDecision = row.status === 'pending'
                 const executable = row.status === 'approved'
+                const failed = row.status === 'failed'
                 return (
                   <tr key={row.id} className="border-t border-line align-top">
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-fg-3">
@@ -366,7 +367,7 @@ function RefundQueue({
                       {row.provider_refund_id && <p className="mt-1 font-mono text-[10px] text-ok">{row.provider_refund_id}</p>}
                     </td>
                     <td className="px-4 py-3">
-                      {(awaitingDecision || executable) && (
+                      {(awaitingDecision || executable || failed) && (
                         <button
                           type="button"
                           onClick={() => onActionId(isOpen ? null : row.id)}
@@ -376,7 +377,7 @@ function RefundQueue({
                           {isOpen ? 'Cancel' : 'Review'}
                         </button>
                       )}
-                      {isOpen && (awaitingDecision || executable) && (
+                      {isOpen && (awaitingDecision || executable || failed) && (
                         <div className="mt-2 space-y-2 rounded-md border border-line bg-surface-2/60 p-2">
                           <label className="block text-[10px] font-medium text-fg-2">
                             Note
@@ -406,6 +407,10 @@ function RefundQueue({
                                 Reject
                               </button>
                             </div>
+                          ) : failed ? (
+                            <p className="text-[10px] leading-relaxed text-warn">
+                              Provider execution failed. Reconcile this refund with Dodo before any new attempt; do not resubmit.
+                            </p>
                           ) : (
                             <button
                               type="button"
@@ -413,7 +418,7 @@ function RefundQueue({
                               disabled={Boolean(busyId)}
                               className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
                             >
-                              {row.status === 'failed' ? 'Retry refund' : 'Execute refund'}
+                              Execute refund
                             </button>
                           )}
                         </div>
@@ -567,8 +572,8 @@ export default function AdminBilling() {
     if (!beginBusy(id)) return
     try {
       const updated = await apiClient.executeAdminRefund(id, refundNote.trim() || undefined)
-      if (updated.status === 'executed') {
-        toast.success('Refund submitted to Dodo')
+      if (updated.status === 'executed' || updated.status === 'executing') {
+        toast.success(updated.status === 'executing' ? 'Refund submission in progress' : 'Refund submitted to Dodo')
       } else {
         toast.error(updated.last_error || 'Refund execution failed')
       }
@@ -698,7 +703,7 @@ export default function AdminBilling() {
         onOffset={setWebhookOffset}
         actionId={actionId}
         note={note}
-        onActionId={setActionId}
+        onActionId={(id) => { setActionId(id); setNote('') }}
         onNote={setNote}
         onReconcile={reconcile}
         onAcknowledge={acknowledge}
@@ -750,7 +755,7 @@ export default function AdminBilling() {
         onOffset={setRefundOffset}
         actionId={refundActionId}
         note={refundNote}
-        onActionId={setRefundActionId}
+        onActionId={(id) => { setRefundActionId(id); setRefundNote('') }}
         onNote={setRefundNote}
         onDecision={decideRefund}
         onExecute={executeRefund}

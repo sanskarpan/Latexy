@@ -253,7 +253,7 @@ function Explorer({
         </label>
         <label className="text-[11px] text-fg-2">
           Filter value
-          <input value={value} onChange={(event) => onValue(event.target.value)} placeholder={dimension === 'feature' ? 'export' : dimension === 'provider' ? 'google, github…' : 'pro'} className="mt-1 block min-h-[38px] w-44 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          <input value={value} onChange={(event) => onValue(event.target.value)} maxLength={120} placeholder={dimension === 'feature' ? 'export' : dimension === 'provider' ? 'google, github…' : 'pro'} className="mt-1 block min-h-[38px] w-44 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
         </label>
         <button type="button" onClick={onApply} disabled={loading} className="min-h-[38px] rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
           Apply
@@ -291,6 +291,11 @@ export default function AdminGrowth() {
   const [metric, setMetric] = useState<'events' | 'compilations' | 'optimizations' | 'revenue'>('events')
   const [dimension, setDimension] = useState<'' | 'plan' | 'provider' | 'feature'>('plan')
   const [value, setValue] = useState('pro')
+  const [applied, setApplied] = useState<{
+    metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
+    dimension: '' | 'plan' | 'provider' | 'feature'
+    value: string
+  }>({ metric: 'events', dimension: 'plan', value: 'pro' })
   const [explorerLoading, setExplorerLoading] = useState(false)
   const loadGeneration = useRef(0)
   const seriesGeneration = useRef(0)
@@ -332,9 +337,9 @@ export default function AdminGrowth() {
     try {
       const next = await apiClient.getAdminFilteredTimeseries({
         days,
-        metric,
-        dimension: dimension || undefined,
-        value: value || undefined,
+        metric: applied.metric,
+        dimension: applied.dimension || undefined,
+        value: applied.value || undefined,
       })
       if (seriesGeneration.current === generation) setSeries(next)
     } catch (err) {
@@ -344,7 +349,7 @@ export default function AdminGrowth() {
     } finally {
       if (seriesGeneration.current === generation) setExplorerLoading(false)
     }
-  }, [days, dimension, metric, value])
+  }, [applied, days])
 
   useEffect(() => {
     void loadSeries()
@@ -403,7 +408,7 @@ export default function AdminGrowth() {
           setValue(next === 'plan' ? 'pro' : next === 'feature' ? 'export' : '')
         }}
         onValue={setValue}
-        onApply={() => void loadSeries()}
+        onApply={() => setApplied({ metric, dimension, value })}
         loading={explorerLoading}
       />
 

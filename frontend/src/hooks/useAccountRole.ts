@@ -9,7 +9,7 @@ const TIMEOUT_MS = 8_000
 
 /** Account roles never come from a prior identity or an unverified session. */
 export function useAccountRole() {
-  const { data: session, isPending, error: sessionError } = useSession()
+  const { data: session, isPending, error: sessionError, refetch: refetchSession } = useSession()
   const userId = session?.user?.id ?? null
   const ready = !isPending && !sessionError && Boolean(userId)
   const scopeRef = useRef({ userId, ready, epoch: 0 })
@@ -19,7 +19,14 @@ export function useAccountRole() {
   const scopeKey = `${userId ?? 'anonymous'}:${scopeRef.current.epoch}`
   const [generation, setGeneration] = useState(0)
   const [snapshot, setSnapshot] = useState<{ scopeKey: string; role: UserRole | null; error: string | null; verifiedAt: number } | null>(null)
-  const refresh = useCallback(() => setGeneration((value) => value + 1), [])
+  const refresh = useCallback(() => {
+    setGeneration((value) => value + 1)
+    // A failed session blocks the role request. Retry must recover the session
+    // first; the ready transition then verifies the role again.
+    if (sessionError && typeof refetchSession === 'function') {
+      void Promise.resolve(refetchSession()).catch(() => {})
+    }
+  }, [sessionError, refetchSession])
   useEffect(() => {
     if (!ready) return
     let active = true

@@ -6,12 +6,18 @@ export function formatNumber(value: number | null | undefined): string {
 
 export function formatMoney(
   value: number | null | undefined,
-  currency = 'INR',
+  currency: string | null | undefined = 'INR',
   maximumFractionDigits = 2,
 ): string {
+  // Provider rows created before multi-currency support may carry a null code.
+  // Intl.NumberFormat throws on an invalid currency, which would blank the whole
+  // admin panel; fall back to the ledger's primary currency instead.
+  const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency)
+    ? currency.toUpperCase()
+    : 'INR'
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency,
+    currency: code,
     maximumFractionDigits,
   }).format(Number.isFinite(value ?? NaN) ? Number(value) : 0)
 }

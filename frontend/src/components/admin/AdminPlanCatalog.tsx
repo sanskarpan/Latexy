@@ -8,6 +8,7 @@ import { formatCatalogPrice, quotaLimitUpdate, type AdminPlanCatalogResponse, ty
 export default function AdminPlanCatalog() {
   const [catalog, setCatalog] = useState<AdminPlanCatalogResponse | null>(null)
   const [selected, setSelected] = useState('free')
+  const [planDirty, setPlanDirty] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const load = useCallback(async () => {
@@ -37,22 +38,32 @@ export default function AdminPlanCatalog() {
       </div>
       <label className="block text-sm text-fg-2">
         Plan SKU
-        <select value={plan?.id || ''} onChange={(event) => setSelected(event.target.value)} className="mt-1 block w-full rounded-md border border-line bg-surface px-3 py-2 text-fg">
+        <select
+          value={plan?.id || ''}
+          onChange={(event) => {
+            const next = event.target.value
+            if (next !== plan?.id && planDirty && !window.confirm('Discard unsaved plan edits?')) return
+            setPlanDirty(false)
+            setSelected(next)
+          }}
+          className="mt-1 block w-full rounded-md border border-line bg-surface px-3 py-2 text-fg"
+        >
           {Object.values(catalog.plans).map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.id})</option>)}
         </select>
       </label>
       {plan && <>
-        <PlanEditor key={`${plan.id}:${plan.version}`} plan={plan} onSaved={setCatalog} onReload={load} />
+        <PlanEditor key={`${plan.id}:${plan.version}`} plan={plan} onSaved={setCatalog} onReload={load} onDirtyChange={setPlanDirty} />
         <QuotaControls key={plan.id} plan={plan} onSaved={setCatalog} onReload={load} />
       </>}
     </section>
   )
 }
 
-function PlanEditor({ plan, onSaved, onReload }: {
+function PlanEditor({ plan, onSaved, onReload, onDirtyChange }: {
   plan: CatalogPlan
   onSaved: (response: AdminPlanCatalogResponse) => void
   onReload: () => Promise<void>
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const [name, setName] = useState(plan.name)
   const [description, setDescription] = useState(plan.description || '')
@@ -63,6 +74,15 @@ function PlanEditor({ plan, onSaved, onReload }: {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const isFree = plan.id === 'free'
+  const dirty = name !== plan.name
+    || description !== (plan.description || '')
+    || order !== (plan.display_order ?? 0)
+    || visible !== (plan.visible !== false)
+    || purchaseEnabled !== (plan.purchase_enabled !== false)
+
+  useEffect(() => {
+    onDirtyChange(dirty)
+  }, [dirty, onDirtyChange])
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
@@ -168,9 +188,13 @@ function QuotaLimitEditor({ plan, dimension, quota, onSaved, onReload }: {
   return (
     <form onSubmit={save} className="space-y-3">
       <p className="text-sm text-fg-2">Fixed reset window: {quota.window}. Version {quota.version ?? 1}. {quota.source === 'admin_override' ? 'Admin override' : 'Configured default'}.</p>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={unlimited} disabled={saving} onChange={(event) => setUnlimited(event.target.checked)} />Unlimited allowance</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={unlimited} disabled={saving} onChange={(event) => {
+        if (!event.target.checked && Number(limit) <= 0) setLimit('1')
+        setUnlimited(event.target.checked)
+      }} />Unlimited allowance</label>
       <label className="block text-sm text-fg-2">Request limit per {quota.window}
-        <input type="number" min={0} max={1_000_000_000} step={1} required={!unlimited} value={limit} disabled={saving || unlimited} onChange={(event) => setLimit(event.target.value)} className="mt-1 block w-48 rounded-md border border-line bg-bg px-3 py-2 text-fg" />
+        <input type="number" min={unlimited ? 0 : 1} max={1_000_000_000} step={1} required={!unlimited} value={limit} disabled={saving || unlimited} onChange={(event) => setLimit(event.target.value)} className="mt-1 block w-48 rounded-md border border-line bg-bg px-3 py-2 text-fg" />
+        {!unlimited && Number(limit) === 0 && <span className="mt-1 block text-[11px] text-err">A zero limit blocks every request.</span>}
       </label>
       {error && <div role="alert" className="text-sm text-err"><p>{error}</p><button type="button" onClick={() => void onReload()} className="mt-2 underline">Reload catalog</button></div>}
       <button type="submit" disabled={saving || !valid} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg disabled:opacity-50">{saving ? 'Saving quota…' : 'Save quota limit'}</button>
