@@ -415,7 +415,9 @@ class ReferralService:
         """Reverse attribution/reward state after a provider refund."""
         # Callers may already hold the webhook/refund transaction. A savepoint
         # keeps this reversal in the same atomic unit instead of raising
-        # "A transaction is already begun on this Session".
+        # "A transaction is already begun on this Session". Standalone callers
+        # still need the reversal committed before they observe it.
+        had_transaction = db.in_transaction()
         async with db.begin_nested():
             attribution = await db.scalar(
                 select(ReferralAttribution).where(ReferralAttribution.qualifying_payment_id == payment_id).with_for_update()
@@ -475,6 +477,8 @@ class ReferralService:
                 reward.reversed_at = datetime.now(timezone.utc)
             attribution.status = "reversed"
             attribution.reversed_at = datetime.now(timezone.utc)
+        if not had_transaction:
+            await db.commit()
         return {"status": "reversed"}
 
 
