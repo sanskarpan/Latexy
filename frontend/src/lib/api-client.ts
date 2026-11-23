@@ -4250,12 +4250,16 @@ class ApiClient {
   async getAdminAlerts(params?: {
     state?: 'active' | 'open' | 'acknowledged' | 'snoozed' | 'resolved'
     severity?: 'critical' | 'high' | 'medium' | 'low'
+    owner?: string
+    kind?: string
     limit?: number
     offset?: number
   }): Promise<AdminAlertList> {
     const qs = new URLSearchParams()
     if (params?.state) qs.set('state', params.state)
     if (params?.severity) qs.set('severity', params.severity)
+    if (params?.owner) qs.set('owner', params.owner)
+    if (params?.kind) qs.set('kind', params.kind)
     if (params?.limit != null) qs.set('limit', String(params.limit))
     if (params?.offset != null) qs.set('offset', String(params.offset))
     const suffix = qs.toString() ? `?${qs}` : ''
