@@ -1200,38 +1200,166 @@ export interface AdminRetentionResponse {
 export interface AdminAiCostResponse {
   period_days: number
   generated_at: string
+  filters: { plan: string | null; feature: string | null; persona: string | null }
   estimated: boolean
   price_note: string
+  cost_currency: string
+  cost_minor_unit: string
+  revenue_currency: string
+  revenue_minor_unit: string
+  pricing_version: string
+  pricing: {
+    version: string
+    schema_version: string
+    source: string
+    currency: string
+    minor_unit: string
+    unit: string
+    blended_for_total_tokens: boolean
+    fallback_per_million_usd: number
+    models: Array<{
+      provider: string
+      model: string
+      input_per_million_usd: number
+      output_per_million_usd: number
+      blended_per_million_usd: number
+    }>
+  }
   usd_inr_rate: number
   monthly_spend_cap_usd: number | null
+  monthly_soft_spend_cap_usd: number | null
   total_tokens: number
   total_cost_usd: number
+  total_cost_usd_minor: number
   total_cost_inr: number
+  total_cost_inr_minor: number
+  total_revenue_inr: number
+  total_revenue_inr_minor: number
+  gross_margin_inr: number
+  gross_margin_inr_minor: number
   optimizations: number
+  estimated_runs: number
+  unknown_pricing_runs: number
+  pricing_complete: boolean
   by_model: Array<{
     provider: string
     model: string
     runs: number
     tokens: number
     cost_usd: number
+    cost_usd_minor: number
     fallback_price?: boolean
+    pricing_status: string
+    estimated: boolean
+    estimated_runs: number
+    unknown_pricing_runs: number
+    unknown_pricing: boolean
   }>
-  by_plan: Array<{ plan: string; runs: number; tokens: number; cost_usd: number }>
-  by_day: Array<{ date: string; runs: number; tokens: number; cost_usd: number }>
-  top_users: Array<{
-    user_id: string
-    plan: string
+  unknown_pricing: {
     runs: number
     tokens: number
     cost_usd: number
+    cost_usd_minor: number
+    models: Array<{
+      provider: string
+      model: string
+      runs: number
+      tokens: number
+      cost_usd: number
+      cost_usd_minor: number
+      pricing_status: string
+      estimated: boolean
+      unknown_pricing: boolean
+    }>
+  }
+  by_plan: AdminAiCostRollupRow[]
+  by_user: AdminAiCostRollupRow[]
+  by_feature: AdminAiCostRollupRow[]
+  by_persona: AdminAiCostRollupRow[]
+  by_day: Array<{
+    date: string
+    runs: number
+    tokens: number
+    cost_usd: number
+    cost_usd_minor: number
+    revenue_inr: number
+    gross_margin_inr: number
   }>
+  daily: {
+    by_plan: AdminAiCostDailyRow[]
+    by_user: AdminAiCostDailyRow[]
+    by_feature: AdminAiCostDailyRow[]
+    by_persona: AdminAiCostDailyRow[]
+    by_model: AdminAiCostDailyRow[]
+  }
+  top_users: AdminAiCostRollupRow[]
   margin_by_plan: Array<{
     plan: string
     revenue_inr: number
     ai_cost_inr: number
     ai_cost_usd: number
     gross_margin_inr: number
+    gross_margin_inr_minor: number
     estimated: boolean
+  }>
+  caps: {
+    currency: string
+    minor_unit: string
+    window: {
+      day: string
+      day_start: string
+      day_resets_at: string
+      month: string
+      month_start: string
+      month_resets_at: string
+    }
+    estimated_job_cost_usd: number
+    enforcement: {
+      mode: string
+      in_flight_jobs_unaffected: boolean
+      auto_suspend: boolean
+      requires_actor_and_reason_log: boolean
+    }
+    global: {
+      month_to_date_usd: number
+      today_usd: number
+      monthly_soft_cap_usd: number | null
+      monthly_hard_cap_usd: number | null
+      decision: string
+      reasons: string[]
+    }
+    users: Array<{
+      user_id: string
+      plan: string
+      month_to_date_usd: number
+      today_usd: number
+      monthly_soft_cap_usd: number | null
+      monthly_hard_cap_usd: number | null
+      daily_soft_cap_usd: number | null
+      daily_hard_cap_usd: number | null
+      decision: string
+      reasons: string[]
+      unknown_pricing_runs: number
+      pricing_complete: boolean
+    }>
+    summary: {
+      users_over_hard_cap: number
+      users_over_soft_cap: number
+      users_with_unknown_pricing: number
+    }
+  }
+  outliers: Array<{
+    dimension: string
+    key: string
+    user_id: string | null
+    today_usd: number
+    baseline_median_usd: number
+    baseline_mad_usd: number
+    threshold_usd: number
+    multiple_of_median: number | null
+    baseline_days: number
+    active_baseline_days: number
+    method: string
   }>
   alerts: Array<{
     severity: string
@@ -1241,7 +1369,78 @@ export interface AdminAiCostResponse {
     threshold: number
     user_id?: string
     date?: string
+    dimension?: string
+    reason?: string
   }>
+  reconciliation: AdminAiCostReconciliation
+  invoice_reconciliation: AdminAiCostReconciliation
+}
+
+export interface AdminAiCostReconciliation {
+  contract_version: string
+  status: string
+  estimated: boolean
+  provider_keys_required: boolean
+  provider_key_included: boolean
+  ledger_currency: string
+  ledger_minor_unit: string
+  ledger_total_usd: number
+  ledger_total_minor: number
+  tolerance_minor: number
+  tolerance_usd: number
+  sampled_invoice: {
+    provided: boolean
+    currency: string
+    minor_unit: string
+    total_minor: number | null
+    reference: string | null
+    variance_minor: number | null
+    variance_usd?: number
+    variance_percent: number | null
+    within_tolerance: boolean | null
+    status: string
+  }
+  sources: Array<{
+    source: string
+    runs: number
+    tokens: number
+    cost_usd: number
+    cost_usd_minor: number
+    estimated_runs: number
+    unknown_pricing_runs: number
+  }>
+  contract: {
+    required_fields: string[]
+    supported_currencies: string[]
+    minor_unit: string
+    provider_credentials_required: boolean
+    query_parameter: string
+    note: string
+  }
+  notes: string[]
+}
+
+export interface AdminAiCostRollupRow {
+  label: string
+  plan?: string
+  user_id?: string
+  feature?: string
+  persona?: string
+  runs: number
+  tokens: number
+  cost_usd: number
+  cost_usd_minor: number
+  ai_cost_inr: number
+  revenue_inr: number
+  gross_margin_inr: number
+  estimated: boolean
+  estimated_runs: number
+  unknown_pricing_runs: number
+  revenue_attribution?: string
+}
+
+export interface AdminAiCostDailyRow extends AdminAiCostRollupRow {
+  date: string
 }
 
 export interface AdminFilteredTimeseriesResponse {
@@ -4226,8 +4425,22 @@ class ApiClient {
     return this.request<AdminRetentionResponse>(`/admin/analytics/retention?weeks=${weeks}`)
   }
 
-  async getAdminAiCost(days = 30): Promise<AdminAiCostResponse> {
-    return this.request<AdminAiCostResponse>(`/admin/analytics/ai-cost?days=${days}`)
+  async getAdminAiCost(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    persona?: string
+    invoice_total_minor?: number
+    invoice_reference?: string
+  }): Promise<AdminAiCostResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.persona) qs.set('persona', params.persona)
+    if (params?.invoice_total_minor != null) qs.set('invoice_total_minor', String(params.invoice_total_minor))
+    if (params?.invoice_reference) qs.set('invoice_reference', params.invoice_reference)
+    return this.request<AdminAiCostResponse>(`/admin/analytics/ai-cost?${qs}`)
   }
 
   async getAdminFilteredTimeseries(params: {

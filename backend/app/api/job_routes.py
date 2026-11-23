@@ -207,6 +207,32 @@ async def _consume_job_quota(
     )
 
 
+async def _enforce_ai_spend_cap(db: AsyncSession, user_id: str, job_type: str) -> None:
+    """Stop new AI work at admission when a per-user hard cap is reached.
+
+    Existing jobs are never touched. The check and its actor/reason are logged
+    by the spend service; when no cap is configured it returns without a query.
+    """
+    from ..services.admin_ai_cost_service import check_user_spend_guard
+
+    decision = await check_user_spend_guard(
+        db,
+        user_id=user_id,
+        actor=user_id,
+        reason=f"job_submit:{job_type}",
+        job_type=job_type,
+    )
+    if decision["allowed"]:
+        return
+    raise HTTPException(
+        status_code=429,
+        detail=(
+            "AI spend limit reached for this account. New AI jobs are paused until the "
+            "cap resets; jobs already in progress are unaffected."
+        ),
+    )
+
+
 _TRIAL_ERRORS = {
     "trial_limit_exceeded": "Free trial limit reached. Please sign up to continue.",
     "blocked": "Device blocked due to abuse. Please contact support.",
@@ -776,6 +802,12 @@ async def submit_job(
                 request.device_fingerprint,
                 ip_address,
             )
+
+        # Hard spend caps stop new AI admissions only. The check runs before any
+        # durable job/quota row is created and never touches work already in
+        # flight. A zero cap is a no-op and performs no extra query.
+        if user_id and request.job_type in {"llm_optimization", "combined", "ats_scoring"}:
+            await _enforce_ai_spend_cap(db, user_id, request.job_type)
 
         # The worker can start as soon as dispatch returns (and Modal executes
         # inline).  Create the durable Compilation row before dispatch so a

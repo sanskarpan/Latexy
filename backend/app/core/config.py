@@ -136,11 +136,27 @@ class Settings(BaseSettings):
         "openai:gpt-4o": {"input_per_million": 2.50, "output_per_million": 10.0},
         "openai:gpt-4o-2024-08-06": {"input_per_million": 2.50, "output_per_million": 10.0},
     })
-    # Admin AI-cost guardrails. A zero monthly cap means "not configured" (the
-    # dashboard still reports spend and per-user anomalies); the per-user daily
-    # threshold drives the outlier alert without blocking requests.
+    # Admin AI-cost guardrails. A zero cap means "not configured" (the dashboard
+    # still reports spend and per-user anomalies); the per-user daily threshold
+    # drives the outlier alert without suspending accounts. Soft caps warn and
+    # hard caps stop *new* jobs at admission; already admitted work is never
+    # interrupted. ``ADMIN_AI_MONTHLY_SPEND_CAP_USD`` remains the global hard
+    # cap for backwards compatibility.
     ADMIN_AI_MONTHLY_SPEND_CAP_USD: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    ADMIN_AI_MONTHLY_SOFT_CAP_USD: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    ADMIN_AI_USER_MONTHLY_SOFT_CAP_USD: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    ADMIN_AI_USER_MONTHLY_HARD_CAP_USD: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    ADMIN_AI_USER_DAILY_SOFT_CAP_USD: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    ADMIN_AI_USER_DAILY_HARD_CAP_USD: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    # Conservative per-job estimate used only at admission so a cap cannot be
+    # overshot by one already-started job. It never changes recorded spend.
+    ADMIN_AI_JOB_ESTIMATE_USD: float = Field(default=0.05, ge=0, allow_inf_nan=False)
     ADMIN_AI_USER_DAILY_COST_ALERT_USD: float = Field(default=5.0, ge=0)
+    ADMIN_AI_ANOMALY_BASELINE_DAYS: int = Field(default=14, ge=3, le=90)
+    ADMIN_AI_ANOMALY_MIN_BASELINE_DAYS: int = Field(default=5, ge=1, le=90)
+    ADMIN_AI_ANOMALY_MAD_MULTIPLIER: float = Field(default=3.0, gt=0, le=100)
+    ADMIN_AI_ANOMALY_MIN_USD: float = Field(default=0.5, ge=0, allow_inf_nan=False)
+    ADMIN_AI_INVOICE_TOLERANCE_MINOR: int = Field(default=100, ge=0)
     ADMIN_AI_COST_USD_INR_RATE: float = Field(default=83.0, gt=0, allow_inf_nan=False)
     RESUME_ENGINE_PROVIDER_RPM: int = Field(default=60, ge=1, le=10000)
     RESUME_ENGINE_PROVIDER_TPM: int = Field(default=100000, ge=1000, le=10000000)

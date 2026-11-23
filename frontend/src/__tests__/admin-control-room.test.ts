@@ -59,6 +59,12 @@ describe('admin control room surfaces', () => {
     expect(growth).toContain('Estimated AI cost')
     expect(growth).toContain('Dimension explorer')
     expect(growth).toContain('minimum_cohort_size')
+    expect(growth).toContain('By feature')
+    expect(growth).toContain('By persona')
+    expect(growth).toContain('Cap status')
+    expect(growth).toContain('Rolling outliers')
+    expect(growth).toContain('Sampled invoice reconciliation')
+    expect(growth).toContain('pricing_version')
     expect(growth).not.toContain('latex_content')
   })
 

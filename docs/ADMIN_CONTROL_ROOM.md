@@ -64,11 +64,21 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - Alert payloads contain counts, ages, thresholds and safe metric values only.
   Per-user spend outliers stay in the Growth tab and are never copied into the
   alert strip.
-- AI cost is deliberately labeled estimated: only total tokens are stored, so
-  the dashboard applies a blended input/output rate from the configured
-  `RESUME_ENGINE_MODEL_PRICING` table and the `ADMIN_AI_COST_USD_INR_RATE`
-  conversion. Unknown models use a visible fallback estimate, never a claim of
-  zero cost.
+- AI cost is deliberately labeled estimated: legacy optimization rows store
+  only total tokens, so the dashboard applies a blended input/output rate from
+  the configured `RESUME_ENGINE_MODEL_PRICING` table and the
+  `ADMIN_AI_COST_USD_INR_RATE` conversion. Resume-engine stage rows prefer the
+  provider-recorded `cost_usd`. Costs are reported in USD cents and revenue /
+  margin in INR paise. Unknown models use a visible fallback estimate and are
+  listed explicitly, never a claim of zero cost. Each response carries the
+  versioned pricing table (no provider keys) and a sampled-invoice
+  reconciliation contract.
+- Soft caps warn and hard caps pause *new* AI job admissions for the affected
+  user; already-admitted work is never interrupted, accounts are never
+  auto-suspended, and each decision is logged with actor and reason. Rolling
+  anomalies use a median+MAD baseline with a minimum sample window before
+  alerting. Alert payloads contain aggregate counts only; per-user details stay
+  in the Growth tab.
 
 ## Migrations
 
