@@ -64,12 +64,20 @@ describe('admin control room surfaces', () => {
 
   it('keeps refund execution behind approval and webhook review explicit', () => {
     expect(billing).toContain('Reconcile from Dodo')
-    expect(billing).toContain('Acknowledge')
+    expect(billing).toContain('Replay from provider')
+    expect(billing).toContain('Reconciliation queue')
+    expect(billing).toContain('Dead letters only')
+    expect(billing).toContain('Received after')
+    expect(billing).toContain('arpu_minor')
     expect(billing).toContain('createAdminRefundRequest')
     expect(billing).toContain('decideAdminRefund')
     expect(billing).toContain('executeAdminRefund')
+    expect(billing).toContain('replayAdminWebhook')
+    expect(billing).toContain('acknowledgeAdminReconciliation')
+    expect(apiClient).toContain('/admin/billing/reconciliation')
     expect(billing).not.toContain('DODO_API_KEY')
     expect(billing).not.toContain('dodo_api_key')
+    expect(billing).not.toContain('payload_sha256')
   })
 
   it('masks PII by default and gates support mutations', () => {

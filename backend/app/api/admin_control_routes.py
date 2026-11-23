@@ -101,10 +101,22 @@ def _http_error(exc: Exception) -> HTTPException:
 @router.get("/admin/billing/summary")
 async def get_admin_billing_summary(
     days: int = Query(30, ge=1, le=365),
+    start: Optional[datetime] = Query(None),
+    end: Optional[datetime] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_billing_service.summary(db, days=days)
+    try:
+        return await admin_billing_service.summary(
+            db,
+            days=days,
+            start=start or start_date,
+            end=end or end_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/admin/billing/webhooks")
@@ -112,21 +124,30 @@ async def list_admin_billing_webhooks(
     status: Optional[str] = Query(None, max_length=24),
     event_type: Optional[str] = Query(None, max_length=120),
     acknowledged: Optional[bool] = Query(None),
+    received_after: Optional[datetime] = Query(None),
+    received_before: Optional[datetime] = Query(None),
+    dead_letter: Optional[bool] = Query(None),
     q: Optional[str] = Query(None, max_length=200),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    items, total = await admin_billing_service.list_webhooks(
-        db,
-        status=status,
-        event_type=event_type,
-        acknowledged=acknowledged,
-        q=q,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        items, total = await admin_billing_service.list_webhooks(
+            db,
+            status=status,
+            event_type=event_type,
+            acknowledged=acknowledged,
+            received_after=received_after,
+            received_before=received_before,
+            dead_letter=dead_letter,
+            q=q,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
