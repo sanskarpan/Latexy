@@ -13,7 +13,6 @@ from typing import Any, Iterable
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..core.redis import cache_manager
 from ..database import models
 
@@ -23,7 +22,6 @@ Compilation = models.Compilation
 Optimization = models.Optimization
 UsageAnalytics = models.UsageAnalytics
 Payment = models.Payment
-PaymentRefund = models.PaymentRefund
 
 ACTIVATION_STEPS = (
     ("signup", "Signup"),
@@ -647,217 +645,28 @@ class AdminGrowthService:
             "generated_at": now.isoformat(),
         }
 
-    def _price_info(self, provider: str, model: str) -> tuple[float, bool]:
-        key = f"{provider}:{model}"
-        price = settings.RESUME_ENGINE_MODEL_PRICING.get(key)
-        if not price:
-            # Compatible providers must be explicitly priced. The boolean makes
-            # the fallback visible in the report instead of silently claiming
-            # the configured price table was used.
-            return 3.0, True
-        input_price = float(price.get("input_per_million", 1.0))
-        output_price = float(price.get("output_per_million", 3.0))
-        return (input_price + output_price) / 2, False
+    async def ai_cost(
+        self,
+        db: AsyncSession,
+        *,
+        days: int = 30,
+        plan: str | None = None,
+        feature: str | None = None,
+        persona: str | None = None,
+        invoice_total_minor: int | None = None,
+        invoice_reference: str | None = None,
+    ) -> dict[str, Any]:
+        from .admin_ai_cost_service import ai_cost_snapshot
 
-    def _price_per_million(self, provider: str, model: str) -> float:
-        return self._price_info(provider, model)[0]
-
-    async def ai_cost(self, db: AsyncSession, *, days: int = 30) -> dict[str, Any]:
-        days = max(1, min(days, 365))
-        now = datetime.now(timezone.utc)
-        start = now - timedelta(days=days)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        rows = (
-            await db.execute(
-                select(
-                    Optimization.user_id,
-                    Optimization.provider,
-                    Optimization.model,
-                    Optimization.tokens_used,
-                    Optimization.created_at,
-                    User.subscription_plan,
-                )
-                .outerjoin(User, User.id == Optimization.user_id)
-                .where(
-                    Optimization.created_at >= start,
-                    Optimization.tokens_used.is_not(None),
-                    Optimization.tokens_used > 0,
-                )
-            )
-        ).all()
-        # Cap and outlier alerts are month-to-date, independent of the selected
-        # display range. A 7-day view must not hide spend from the rest of the
-        # month.
-        month_rows = (
-            await db.execute(
-                select(
-                    Optimization.user_id,
-                    Optimization.provider,
-                    Optimization.model,
-                    Optimization.tokens_used,
-                    Optimization.created_at,
-                ).where(
-                    Optimization.created_at >= month_start,
-                    Optimization.tokens_used.is_not(None),
-                    Optimization.tokens_used > 0,
-                )
-            )
-        ).all()
-
-        total_cost = 0.0
-        total_tokens = 0
-        by_model: dict[tuple[str, str], dict[str, Any]] = {}
-        by_plan: dict[str, dict[str, Any]] = {}
-        by_day: dict[str, dict[str, Any]] = {}
-        per_user: dict[str, dict[str, Any]] = {}
-        daily_user_cost: dict[tuple[str, str], float] = defaultdict(float)
-        for user_id, provider, model, tokens, created_at, plan in rows:
-            tokens = int(tokens or 0)
-            rate, fallback = self._price_info(provider or "unknown", model or "unknown")
-            cost = tokens / 1_000_000 * rate
-            total_cost += cost
-            total_tokens += tokens
-            model_bucket = by_model.setdefault(
-                (provider or "unknown", model or "unknown"),
-                {"provider": provider or "unknown", "model": model or "unknown", "runs": 0, "tokens": 0,
-                 "cost_usd": 0.0, "fallback_price": fallback},
-            )
-            model_bucket["runs"] += 1
-            model_bucket["tokens"] += tokens
-            model_bucket["cost_usd"] += cost
-            model_bucket["fallback_price"] = model_bucket["fallback_price"] or fallback
-            plan_label = plan or "free"
-            plan_bucket = by_plan.setdefault(
-                plan_label, {"plan": plan_label, "runs": 0, "tokens": 0, "cost_usd": 0.0}
-            )
-            plan_bucket["runs"] += 1
-            plan_bucket["tokens"] += tokens
-            plan_bucket["cost_usd"] += cost
-            if created_at:
-                day_key = created_at.date().isoformat()
-                day_bucket = by_day.setdefault(day_key, {"date": day_key, "runs": 0, "tokens": 0, "cost_usd": 0.0})
-                day_bucket["runs"] += 1
-                day_bucket["tokens"] += tokens
-                day_bucket["cost_usd"] += cost
-            if user_id:
-                user_bucket = per_user.setdefault(
-                    str(user_id), {"user_id": str(user_id), "plan": plan or "free", "runs": 0, "tokens": 0, "cost_usd": 0.0}
-                )
-                user_bucket["runs"] += 1
-                user_bucket["tokens"] += tokens
-                user_bucket["cost_usd"] += cost
-
-        revenue_rows = (
-            await db.execute(
-                select(User.subscription_plan, func.coalesce(func.sum(Payment.amount), 0))
-                .join(User, User.id == Payment.user_id)
-                .where(
-                    Payment.created_at >= start,
-                    Payment.currency == "INR",
-                    Payment.status.in_(("paid", "partially_refunded", "captured", "refunded")),
-                )
-                .group_by(User.subscription_plan)
-            )
-        ).all()
-        refund_rows = (
-            await db.execute(
-                select(User.subscription_plan, func.coalesce(func.sum(PaymentRefund.amount), 0))
-                .join(Payment, Payment.id == PaymentRefund.payment_id)
-                .join(User, User.id == Payment.user_id)
-                .where(
-                    Payment.created_at >= start,
-                    Payment.currency == "INR",
-                    PaymentRefund.status == "succeeded",
-                )
-                .group_by(User.subscription_plan)
-            )
-        ).all()
-        refund_by_plan = {plan or "free": int(amount or 0) for plan, amount in refund_rows}
-        inr_rate = settings.ADMIN_AI_COST_USD_INR_RATE
-        margin_by_plan = []
-        for plan_id, amount in revenue_rows:
-            label = plan_id or "free"
-            cost = by_plan.get(label, {}).get("cost_usd", 0.0)
-            revenue_inr = int(amount or 0) / 100
-            refund_inr = refund_by_plan.get(label, 0) / 100
-            margin_by_plan.append(
-                {
-                    "plan": label,
-                    "revenue_inr": round(revenue_inr - refund_inr, 2),
-                    "ai_cost_inr": round(cost * inr_rate, 2),
-                    "ai_cost_usd": round(cost, 2),
-                    "gross_margin_inr": round(revenue_inr - refund_inr - cost * inr_rate, 2),
-                    "estimated": True,
-                }
-            )
-
-        monthly_cost = 0.0
-        for user_id, provider, model, tokens, created_at in month_rows:
-            if not created_at:
-                continue
-            unit_rate = self._price_per_million(provider or "unknown", model or "unknown")
-            cost = int(tokens or 0) / 1_000_000 * unit_rate
-            monthly_cost += cost
-            if user_id:
-                daily_user_cost[(str(user_id), created_at.date().isoformat())] += cost
-        alerts = []
-        cap = float(settings.ADMIN_AI_MONTHLY_SPEND_CAP_USD or 0)
-        if cap > 0 and monthly_cost >= cap:
-            alerts.append(
-                {
-                    "severity": "critical" if monthly_cost >= cap * 1.1 else "warning",
-                    "code": "ai_monthly_cap",
-                    "message": f"Estimated AI spend ${monthly_cost:.2f} has reached the ${cap:.2f} monthly cap.",
-                    "value": round(monthly_cost, 2),
-                    "threshold": cap,
-                }
-            )
-        user_threshold = float(settings.ADMIN_AI_USER_DAILY_COST_ALERT_USD or 0)
-        if user_threshold > 0:
-            for (user_id, day_key), cost in sorted(daily_user_cost.items(), key=lambda item: -item[1])[:10]:
-                if cost >= user_threshold:
-                    alerts.append(
-                        {
-                            "severity": "warning",
-                            "code": "ai_user_daily_outlier",
-                            "message": f"User {user_id[:8]}… estimated ${cost:.2f} on {day_key}.",
-                            "value": round(cost, 2),
-                            "threshold": user_threshold,
-                            "user_id": user_id,
-                            "date": day_key,
-                        }
-                    )
-
-        return {
-            "period_days": days,
-            "generated_at": now.isoformat(),
-            "estimated": True,
-            "price_note": "Cost uses total tokens and a blended per-million rate because the input/output split is unavailable. Rows marked fallback_price=true use the $3/M estimate because that provider:model has no configured price.",
-            "usd_inr_rate": inr_rate,
-            "monthly_spend_cap_usd": cap or None,
-            "total_tokens": total_tokens,
-            "total_cost_usd": round(total_cost, 2),
-            "total_cost_inr": round(total_cost * inr_rate, 2),
-            "optimizations": sum(item["runs"] for item in by_model.values()),
-            "by_model": sorted(
-                ({**item, "cost_usd": round(item["cost_usd"], 2)} for item in by_model.values()),
-                key=lambda item: -item["cost_usd"],
-            ),
-            "by_plan": sorted(
-                ({**item, "cost_usd": round(item["cost_usd"], 2)} for item in by_plan.values()),
-                key=lambda item: -item["cost_usd"],
-            ),
-            "by_day": [
-                {**item, "cost_usd": round(item["cost_usd"], 4)}
-                for item in sorted(by_day.values(), key=lambda item: item["date"])
-            ],
-            "top_users": sorted(
-                ({**item, "cost_usd": round(item["cost_usd"], 4)} for item in per_user.values()),
-                key=lambda item: -item["cost_usd"],
-            )[:20],
-            "margin_by_plan": sorted(margin_by_plan, key=lambda item: -item["gross_margin_inr"]),
-            "alerts": alerts,
-        }
+        return await ai_cost_snapshot(
+            db,
+            days=days,
+            plan=plan,
+            feature=feature,
+            persona=persona,
+            invoice_total_minor=invoice_total_minor,
+            invoice_reference=invoice_reference,
+        )
 
     async def timeseries(
         self,

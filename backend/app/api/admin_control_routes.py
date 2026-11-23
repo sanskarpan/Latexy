@@ -596,10 +596,23 @@ async def get_admin_retention(
 @router.get("/admin/analytics/ai-cost")
 async def get_admin_ai_cost(
     days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    feature: Optional[str] = Query(None, max_length=120),
+    persona: Optional[str] = Query(None, max_length=64),
+    invoice_total_minor: Optional[int] = Query(None, ge=0, le=1_000_000_000),
+    invoice_reference: Optional[str] = Query(None, max_length=120),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_growth_service.ai_cost(db, days=days)
+    return await admin_growth_service.ai_cost(
+        db,
+        days=days,
+        plan=plan,
+        feature=feature,
+        persona=persona,
+        invoice_total_minor=invoice_total_minor,
+        invoice_reference=invoice_reference,
+    )
 
 
 @router.get("/admin/analytics/timeseries")

@@ -277,23 +277,48 @@ function Retention({ data }: { data: AdminRetentionResponse }) {
   )
 }
 
-function Cost({ data }: { data: AdminAiCostResponse }) {
+function Cost({
+  data,
+  plan,
+  feature,
+  onPlan,
+  onFeature,
+  onApply,
+  loading,
+}: {
+  data: AdminAiCostResponse
+  plan: string
+  feature: string
+  onPlan: (value: string) => void
+  onFeature: (value: string) => void
+  onApply: () => void
+  loading: boolean
+}) {
   const dailySeries = useMemo(
     () => data.by_day.map((row) => ({ date: row.date, value: row.cost_usd })),
     [data.by_day],
   )
+  const hardCapReached = data.caps.global.decision === 'block'
+  const capDetail = data.caps.global.monthly_hard_cap_usd == null
+    ? 'No monthly cap configured'
+    : `${formatMoney(data.caps.global.month_to_date_usd, 'USD')} of ${formatMoney(data.caps.global.monthly_hard_cap_usd, 'USD')} month-to-date`
   return (
     <section className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card label="Estimated AI cost" value={formatMoney(data.total_cost_inr, 'INR')} detail={`$${data.total_cost_usd} · ${formatNumber(data.total_tokens)} tokens`} />
-        <Card label="Optimizations" value={formatNumber(data.optimizations)} detail={`Last ${data.period_days} days`} />
+        <Card
+          label="Gross margin"
+          value={formatMoney(data.gross_margin_inr, 'INR')}
+          detail={`${formatMoney(data.total_revenue_inr, 'INR')} revenue`}
+          tone={data.gross_margin_inr < 0 ? 'text-err' : 'text-ok'}
+        />
         <Card
           label="Monthly cap"
-          value={data.monthly_spend_cap_usd == null ? 'Not set' : `$${data.monthly_spend_cap_usd}`}
-          detail={data.alerts.some((alert) => alert.code === 'ai_monthly_cap') ? 'Cap reached' : 'Within configured cap'}
-          tone={data.alerts.some((alert) => alert.code === 'ai_monthly_cap') ? 'text-err' : 'text-fg'}
+          value={data.caps.global.monthly_hard_cap_usd == null ? 'Not set' : formatMoney(data.caps.global.monthly_hard_cap_usd, 'USD')}
+          detail={capDetail}
+          tone={hardCapReached ? 'text-err' : 'text-fg'}
         />
-        <Card label="USD → INR" value={String(data.usd_inr_rate)} detail="Operator-configured estimate" />
+        <Card label="Pricing version" value={data.pricing_version} detail={`${data.pricing.models.length} configured models`} />
       </div>
       {data.alerts.length > 0 && (
         <div className="space-y-2">
@@ -304,6 +329,24 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
           ))}
         </div>
       )}
+      <div className="flex flex-wrap items-end gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+        <label className="text-[11px] text-fg-2">
+          Cost plan filter
+          <select value={plan} onChange={(event) => onPlan(event.target.value)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+            {PLAN_OPTIONS.map((item) => <option key={item || 'all'} value={item}>{item || 'All plans'}</option>)}
+          </select>
+        </label>
+        <label className="text-[11px] text-fg-2">
+          Cost feature filter
+          <input value={feature} onChange={(event) => onFeature(event.target.value)} maxLength={120} placeholder="optimization_patches" className="mt-1 block min-h-[38px] w-48 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+        </label>
+        <button type="button" onClick={onApply} disabled={loading} className="min-h-[38px] rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
+          Apply cost filters
+        </button>
+        <span className="text-[10px] text-fg-3">
+          Costs in USD minor units (cents); revenue and margin in INR minor units (paise).
+        </span>
+      </div>
       <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
         <h3 className="text-sm font-semibold text-fg">Estimated cost per day</h3>
         <p className="mt-1 text-[11px] text-fg-3">{data.price_note}</p>
@@ -329,7 +372,7 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
           <ul className="mt-2 space-y-1 text-xs">
             {data.top_users.slice(0, 8).map((row) => (
               <li key={row.user_id} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
-                <span className="font-mono text-[10px] text-fg-2">{row.user_id.slice(0, 10)}…</span>
+                <span className="font-mono text-[10px] text-fg-2">{(row.user_id ?? row.label).slice(0, 10)}…</span>
                 <span className="shrink-0 text-fg-3">{row.plan} · ${row.cost_usd}</span>
               </li>
             ))}
@@ -348,6 +391,103 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
             ))}
           </ul>
         </div>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">By feature</h3>
+          <p className="mt-1 text-[10px] text-fg-3">Revenue is apportioned proportional to AI cost when a feature is selected.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.by_feature.slice(0, 10).map((row) => (
+              <li key={row.feature ?? row.label} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="truncate text-fg-2">{row.feature ?? row.label}</span>
+                <span className="shrink-0 text-fg-3">${row.cost_usd} · {row.revenue_attribution ?? 'unattributed'}</span>
+              </li>
+            ))}
+            {data.by_feature.length === 0 && <li className="py-3 text-center text-fg-3">No feature cost rows.</li>}
+          </ul>
+        </div>
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">By persona</h3>
+          <p className="mt-1 text-[10px] text-fg-3">Best-effort from the resume&apos;s last saved persona; missing values stay unknown.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.by_persona.map((row) => (
+              <li key={row.persona ?? row.label} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="truncate text-fg-2">{row.persona ?? row.label}</span>
+                <span className="shrink-0 text-fg-3">${row.cost_usd} · {formatNumber(row.tokens)}</span>
+              </li>
+            ))}
+            {data.by_persona.length === 0 && <li className="py-3 text-center text-fg-3">No persona cost rows.</li>}
+          </ul>
+        </div>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Cap status</h3>
+          <p className="mt-1 text-[10px] text-fg-3">
+            Hard caps stop new jobs only. In-flight jobs are never interrupted and no account is auto-suspended.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <span className="text-fg-3">Users over hard cap</span>
+            <span className="text-right font-semibold text-fg">{formatNumber(data.caps.summary.users_over_hard_cap)}</span>
+            <span className="text-fg-3">Users over soft cap</span>
+            <span className="text-right font-semibold text-fg">{formatNumber(data.caps.summary.users_over_soft_cap)}</span>
+            <span className="text-fg-3">Unknown pricing users</span>
+            <span className="text-right font-semibold text-fg">{formatNumber(data.caps.summary.users_with_unknown_pricing)}</span>
+            <span className="text-fg-3">Day resets</span>
+            <span className="text-right text-fg-2">{formatDateTime(data.caps.window.day_resets_at)}</span>
+            <span className="text-fg-3">Month resets</span>
+            <span className="text-right text-fg-2">{formatDateTime(data.caps.window.month_resets_at)}</span>
+          </div>
+          <ul className="mt-3 space-y-1 text-xs">
+            {data.caps.users.filter((row) => row.decision !== 'allow').slice(0, 8).map((row) => (
+              <li key={row.user_id} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="font-mono text-[10px] text-fg-2">{row.user_id.slice(0, 10)}…</span>
+                <span className={row.decision === 'block' ? 'text-err' : 'text-warn'}>
+                  {row.decision} · ${row.month_to_date_usd} month / ${row.today_usd} day
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Rolling outliers</h3>
+          <p className="mt-1 text-[10px] text-fg-3">
+            Median + MAD over {data.outliers[0]?.baseline_days ?? 'the configured'} baseline days; a minimum sample window is required before alerting.
+          </p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.outliers.slice(0, 10).map((row) => (
+              <li key={`${row.dimension}-${row.key}`} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="truncate text-fg-2">{row.dimension} · {row.key.slice(0, 24)}</span>
+                <span className="shrink-0 text-warn">${row.today_usd} today vs ${row.baseline_median_usd} median</span>
+              </li>
+            ))}
+            {data.outliers.length === 0 && <li className="py-3 text-center text-fg-3">No rolling outliers today.</li>}
+          </ul>
+        </div>
+      </div>
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+        <h3 className="text-sm font-semibold text-fg">Sampled invoice reconciliation</h3>
+        <p className="mt-1 text-[11px] text-fg-3">
+          Contract {data.reconciliation.contract_version}. No provider credential is read. Status: {data.reconciliation.status}.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3 text-xs">
+          <div><p className="text-fg-3">Ledger</p><p className="font-semibold text-fg">${(data.reconciliation.ledger_total_minor / 100).toFixed(2)}</p></div>
+          <div><p className="text-fg-3">Sampled invoice</p><p className="font-semibold text-fg">{data.reconciliation.sampled_invoice.total_minor == null ? 'Not supplied' : `$${(data.reconciliation.sampled_invoice.total_minor / 100).toFixed(2)}`}</p></div>
+          <div><p className="text-fg-3">Variance</p><p className={`font-semibold ${data.reconciliation.sampled_invoice.variance_minor != null && !data.reconciliation.sampled_invoice.within_tolerance ? 'text-err' : 'text-fg'}`}>{data.reconciliation.sampled_invoice.variance_minor == null ? '—' : `$${(data.reconciliation.sampled_invoice.variance_minor / 100).toFixed(2)}`}</p></div>
+        </div>
+        <ul className="mt-3 space-y-1 text-xs">
+          {data.reconciliation.sources.map((row) => (
+            <li key={row.source} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+              <span className="text-fg-2">{row.source.replace(/_/g, ' ')}</span>
+              <span className="text-fg-3">{row.runs} runs · ${row.cost_usd} · {formatNumber(row.tokens)} tokens</span>
+            </li>
+          ))}
+        </ul>
+        {data.pricing_complete ? null : (
+          <p className="mt-3 rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+            {formatNumber(data.unknown_pricing.runs)} unpriced run(s) use a visible fallback estimate. Add their provider/model price before trusting margin.
+          </p>
+        )}
       </div>
     </section>
   )
@@ -469,6 +609,9 @@ export default function AdminGrowth() {
   const [error, setError] = useState<string | null>(null)
   const [plan, setPlan] = useState('')
   const [provider, setProvider] = useState('')
+  const [costPlan, setCostPlan] = useState('')
+  const [costFeature, setCostFeature] = useState('')
+  const [costApplied, setCostApplied] = useState<{ plan: string; feature: string }>({ plan: '', feature: '' })
   const [metric, setMetric] = useState<AdminTimeseriesMetric>('events')
   const [dimension, setDimension] = useState<'' | AdminTimeseriesDimension>('plan')
   const [value, setValue] = useState('pro')
@@ -493,7 +636,11 @@ export default function AdminGrowth() {
           provider: provider || undefined,
         }),
         apiClient.getAdminRetention(retentionWeeks, signupMonth || undefined),
-        apiClient.getAdminAiCost(days),
+        apiClient.getAdminAiCost({
+          days,
+          plan: costApplied.plan || undefined,
+          feature: costApplied.feature || undefined,
+        }),
       ])
       if (loadGeneration.current !== generation) return
       setActivation(nextActivation)
@@ -506,7 +653,7 @@ export default function AdminGrowth() {
     } finally {
       if (loadGeneration.current === generation) setLoading(false)
     }
-  }, [days, plan, provider, retentionWeeks, signupMonth])
+  }, [days, plan, provider, retentionWeeks, signupMonth, costApplied])
 
   useEffect(() => {
     void load()
@@ -581,7 +728,17 @@ export default function AdminGrowth() {
 
       {activation && <Funnel data={activation} />}
       {retention && <Retention data={retention} />}
-      {cost && <Cost data={cost} />}
+      {cost && (
+        <Cost
+          data={cost}
+          plan={costPlan}
+          feature={costFeature}
+          onPlan={setCostPlan}
+          onFeature={setCostFeature}
+          onApply={() => setCostApplied({ plan: costPlan, feature: costFeature })}
+          loading={loading}
+        />
+      )}
 
       <Explorer
         data={series}
