@@ -983,15 +983,26 @@ export interface AdminRefundRequest {
 
 export interface AdminBillingSummary {
   period_days: number
+  period_start: string
+  period_end: string
   generated_at: string
   currency: string
   mrr: number
   arr: number
+  mrr_minor: number
+  arr_minor: number
+  arpu: number
+  arpu_minor: number
   active_subscriptions: number
   past_due_subscriptions: number
   gross_revenue: number
   refunded: number
   net_revenue: number
+  gross_revenue_minor: number
+  refunded_minor: number
+  net_revenue_minor: number
+  payments_count: number
+  refunds_count: number
   open_refund_requests: number
   unacknowledged_webhook_failures: number
   webhooks_24h: number
@@ -1033,6 +1044,24 @@ export type AdminBillingWebhookMutation = Omit<AdminBillingWebhook, 'local_link'
 
 export interface AdminBillingWebhookList {
   items: AdminBillingWebhook[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminBillingReconciliation extends AdminBillingWebhook {
+  link_status: string | null
+  amount_minor: number | null
+  currency: string | null
+  age_seconds: number | null
+  age_hours: number | null
+  mismatch_reason: string
+  suggested_action: string
+  can_replay: boolean
+}
+
+export interface AdminBillingReconciliationList {
+  items: AdminBillingReconciliation[]
   total: number
   limit: number
   offset: number
@@ -4309,14 +4338,23 @@ class ApiClient {
     return this.request<AdminOperationsHealthResponse>('/admin/operations/health')
   }
 
-  async getAdminBillingSummary(days = 30): Promise<AdminBillingSummary> {
-    return this.request<AdminBillingSummary>(`/admin/billing/summary?days=${days}`)
+  async getAdminBillingSummary(
+    days = 30,
+    params?: { start?: string; end?: string },
+  ): Promise<AdminBillingSummary> {
+    const qs = new URLSearchParams({ days: String(days) })
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    return this.request<AdminBillingSummary>(`/admin/billing/summary?${qs}`)
   }
 
   async getAdminBillingWebhooks(params?: {
     status?: string
     event_type?: string
     acknowledged?: boolean
+    received_after?: string
+    received_before?: string
+    dead_letter?: boolean
     q?: string
     limit?: number
     offset?: number
@@ -4325,11 +4363,70 @@ class ApiClient {
     if (params?.status) qs.set('status', params.status)
     if (params?.event_type) qs.set('event_type', params.event_type)
     if (params?.acknowledged != null) qs.set('acknowledged', String(params.acknowledged))
+    if (params?.received_after) qs.set('received_after', params.received_after)
+    if (params?.received_before) qs.set('received_before', params.received_before)
+    if (params?.dead_letter != null) qs.set('dead_letter', String(params.dead_letter))
     if (params?.q) qs.set('q', params.q)
     if (params?.limit != null) qs.set('limit', String(params.limit))
     if (params?.offset != null) qs.set('offset', String(params.offset))
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminBillingWebhookList>(`/admin/billing/webhooks${suffix}`)
+  }
+
+  async replayAdminWebhook(id: string, reason: string, confirmed = true): Promise<{
+    status: string
+    replayed: boolean
+    message: string
+    event: AdminBillingWebhookMutation
+  }> {
+    return this.request<{
+      status: string
+      replayed: boolean
+      message: string
+      event: AdminBillingWebhookMutation
+    }>(`/admin/billing/webhooks/${encodeURIComponent(id)}/replay`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, confirm: confirmed }),
+    })
+  }
+
+  async getAdminBillingReconciliation(params?: {
+    received_after?: string
+    received_before?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminBillingReconciliationList> {
+    const qs = new URLSearchParams()
+    if (params?.received_after) qs.set('received_after', params.received_after)
+    if (params?.received_before) qs.set('received_before', params.received_before)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminBillingReconciliationList>(`/admin/billing/reconciliation${suffix}`)
+  }
+
+  async acknowledgeAdminReconciliation(id: string, reason: string): Promise<AdminBillingWebhookMutation> {
+    return this.request<AdminBillingWebhookMutation>(
+      `/admin/billing/reconciliation/${encodeURIComponent(id)}/acknowledge`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async replayAdminReconciliation(id: string, reason: string, confirmed = true): Promise<{
+    status: string
+    replayed: boolean
+    message: string
+    event: AdminBillingWebhookMutation
+  }> {
+    return this.request<{
+      status: string
+      replayed: boolean
+      message: string
+      event: AdminBillingWebhookMutation
+    }>(`/admin/billing/reconciliation/${encodeURIComponent(id)}/replay`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, confirm: confirmed }),
+    })
   }
 
   async acknowledgeAdminWebhook(id: string, note: string): Promise<AdminBillingWebhookMutation> {
