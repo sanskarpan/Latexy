@@ -4358,6 +4358,13 @@ class ApiClient {
     )
   }
 
+  async reconcileAdminRefund(id: string, note?: string): Promise<AdminRefundRequest> {
+    return this.request<AdminRefundRequest>(
+      `/admin/billing/refunds/${encodeURIComponent(id)}/reconcile`,
+      { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+    )
+  }
+
   async getAdminUser360(id: string): Promise<AdminUser360> {
     return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360`)
   }

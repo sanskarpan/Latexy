@@ -250,6 +250,22 @@ async def execute_admin_refund_request(
         raise _http_error(exc) from exc
 
 
+@router.post("/admin/billing/refunds/{request_id}/reconcile")
+async def reconcile_admin_refund_request(
+    request_id: str,
+    body: RefundExecuteRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_billing_service.reconcile_refund_request(
+            db, request_id=request_id, actor=actor, note=body.note or "", request=request
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 # ------------------------------------------------------------------ #
 #  User 360 + audited support actions                                  #
 # ------------------------------------------------------------------ #
