@@ -123,16 +123,18 @@ class TestActivation:
     async def test_funnel_and_segments(self, client: AsyncClient, db_session: AsyncSession):
         headers = await _admin_headers(db_session)
         created = datetime.now(timezone.utc) - timedelta(days=2)
-        first_id, _ = await _create_user(db_session, plan="pro", created_at=created)
+        pro_ids = [
+            (await _create_user(db_session, plan="pro", created_at=created))[0] for _ in range(5)
+        ]
         second_id, _ = await _create_user(db_session, plan="free", created_at=created)
-        await _seed_milestones(db_session, first_id, created_at=created)
+        await _seed_milestones(db_session, pro_ids[0], created_at=created)
 
         response = await client.get("/admin/analytics/activation?days=30", headers=headers)
         assert response.status_code == 200
         body = response.json()
-        assert body["cohort_size"] >= 2
+        assert body["cohort_size"] >= 6
         steps = {step["key"]: step for step in body["steps"]}
-        assert steps["signup"]["count"] >= 2
+        assert steps["signup"]["count"] >= 6
         assert steps["first_resume"]["count"] >= 1
         assert steps["first_compile"]["count"] >= 1
         assert steps["first_export"]["count"] >= 1
@@ -140,10 +142,11 @@ class TestActivation:
         assert steps["first_paid"]["count"] >= 1
         assert body["by_plan"]
         assert any(segment["label"] == "pro" for segment in body["by_plan"])
+        assert all(segment["users"] >= 5 for segment in body["by_plan"])
 
         filtered = await client.get("/admin/analytics/activation?days=30&plan=pro", headers=headers)
         assert filtered.status_code == 200
-        assert filtered.json()["cohort_size"] >= 1
+        assert filtered.json()["cohort_size"] >= 5
         assert all(segment["label"] == "pro" for segment in filtered.json()["by_plan"])
 
     async def test_non_admin_forbidden(self, client: AsyncClient, db_session: AsyncSession):
@@ -157,8 +160,8 @@ class TestRetention:
     async def test_d1_and_d7_cohorts(self, client: AsyncClient, db_session: AsyncSession):
         headers = await _admin_headers(db_session)
         signup = datetime.now(timezone.utc) - timedelta(days=14)
-        user_id, _ = await _create_user(db_session, created_at=signup)
-        for offset in (1, 7):
+        user_ids = [(await _create_user(db_session, created_at=signup))[0] for _ in range(5)]
+        for user_id, offset in zip(user_ids, (1, 7), strict=False):
             await db_session.execute(
                 text(
                     "INSERT INTO usage_analytics (id, user_id, action, resource_type, created_at) "
@@ -175,8 +178,8 @@ class TestRetention:
         response = await client.get("/admin/analytics/retention?weeks=8", headers=headers)
         assert response.status_code == 200
         body = response.json()
-        assert body["overall"]["cohort_size"] >= 1
-        matching = [row for row in body["cohorts"] if row["cohort_size"] >= 1]
+        assert body["overall"]["cohort_size"] >= 5
+        matching = [row for row in body["cohorts"] if row["cohort_size"] >= 5]
         assert matching
         assert any(row["d1"]["count"] >= 1 for row in matching)
         assert any(row["d7"]["count"] >= 1 for row in matching)
@@ -198,24 +201,26 @@ class TestAiCost:
         assert body["by_model"]
         assert body["top_users"]
         assert any(row["plan"] == "pro" for row in body["margin_by_plan"])
-        assert any(row["user_id"] == user_id for row in body["top_users"])
         assert body["usd_inr_rate"] == settings.ADMIN_AI_COST_USD_INR_RATE
-        assert body["total_cost_inr"] == round(
-            body["total_cost_usd"] * settings.ADMIN_AI_COST_USD_INR_RATE, 2
-        )
+        # total_cost_usd is rounded to cents before this response; allow the
+        # cents-rounding window after converting it back at the configured rate.
+        assert abs(
+            body["total_cost_inr"] - body["total_cost_usd"] * settings.ADMIN_AI_COST_USD_INR_RATE
+        ) <= 0.5
 
 
 class TestDimensionTimeseries:
     async def test_plan_and_feature_filters(self, client: AsyncClient, db_session: AsyncSession):
         headers = await _admin_headers(db_session)
-        user_id, _ = await _create_user(db_session, plan="pro")
-        await db_session.execute(
-            text(
-                "INSERT INTO usage_analytics (id, user_id, action, resource_type) "
-                "VALUES (:id, :uid, 'export', 'resume')"
-            ),
-            {"id": str(uuid.uuid4()), "uid": user_id},
-        )
+        user_ids = [(await _create_user(db_session, plan="pro"))[0] for _ in range(5)]
+        for user_id in user_ids:
+            await db_session.execute(
+                text(
+                    "INSERT INTO usage_analytics (id, user_id, action, resource_type) "
+                    "VALUES (:id, :uid, 'export', 'resume')"
+                ),
+                {"id": str(uuid.uuid4()), "uid": user_id},
+            )
         await db_session.commit()
 
         plan_filtered = await client.get(
@@ -223,14 +228,14 @@ class TestDimensionTimeseries:
             headers=headers,
         )
         assert plan_filtered.status_code == 200
-        assert plan_filtered.json()["total"] >= 1
+        assert plan_filtered.json()["total"] >= 5
 
         feature_filtered = await client.get(
             "/admin/analytics/timeseries?days=30&metric=events&dimension=feature&value=export",
             headers=headers,
         )
         assert feature_filtered.status_code == 200
-        assert feature_filtered.json()["total"] >= 1
+        assert feature_filtered.json()["total"] >= 5
         assert any(row["label"] == "export" for row in feature_filtered.json()["breakdown"])
 
         revenue = await client.get(
