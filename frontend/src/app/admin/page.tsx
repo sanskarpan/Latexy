@@ -503,6 +503,14 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
   }, [query])
 
   useEffect(() => {
+    if (!selectedUserId) return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('admin-user-360')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedUserId])
+
+  useEffect(() => {
     // `stale` guards against out-of-order responses: if the query/offset changes
     // (or the component unmounts) before this request resolves, its result is
     // discarded so the latest request always wins.
@@ -671,7 +679,7 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
         </div>
       )}
       {selectedUserId && (
-        <div className="mt-5">
+        <div id="admin-user-360" className="mt-5 scroll-mt-6">
           <AdminUserDetail
             key={selectedUserId}
             userId={selectedUserId}
