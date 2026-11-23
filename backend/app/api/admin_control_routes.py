@@ -13,7 +13,13 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..middleware.auth_middleware import require_admin_actor, require_admin_or_support
 from ..services import admin_user_service
-from ..services.admin_audit_service import AdminActor, audit_row_summary, list_admin_audit
+from ..services.admin_audit_service import (
+    DEFAULT_AUDIT_PAGE_SIZE,
+    MAX_AUDIT_PAGE_SIZE,
+    AdminActor,
+    audit_row_summary,
+    list_admin_audit,
+)
 from ..services.admin_billing_service import admin_billing_service
 from ..services.admin_growth_service import admin_growth_service
 
@@ -653,25 +659,37 @@ async def get_admin_audit_log(
     target_id: Optional[str] = Query(None, max_length=255),
     created_after: Optional[datetime] = Query(None),
     created_before: Optional[datetime] = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_AUDIT_PAGE_SIZE, ge=1, le=MAX_AUDIT_PAGE_SIZE),
+    cursor: Optional[str] = Query(None, max_length=500),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    rows, total = await list_admin_audit(
-        db,
-        actor_user_id=actor_user_id,
-        action=action,
-        target_type=target_type,
-        target_id=target_id,
-        created_after=created_after,
-        created_before=created_before,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        rows, total, has_more, next_cursor = await list_admin_audit(
+            db,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "items": [audit_row_summary(row) for row in rows],
         "total": total,
         "limit": limit,
-        "offset": offset,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "filters": {
+            "actor_user_id": actor_user_id,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "created_after": created_after.isoformat() if created_after else None,
+            "created_before": created_before.isoformat() if created_before else None,
+        },
     }

@@ -1203,11 +1203,22 @@ export interface AdminAuditEntry {
   created_at: string | null
 }
 
+export interface AdminAuditFilters {
+  actor_user_id: string | null
+  action: string | null
+  target_type: string | null
+  target_id: string | null
+  created_after: string | null
+  created_before: string | null
+}
+
 export interface AdminAuditList {
   items: AdminAuditEntry[]
   total: number
   limit: number
-  offset: number
+  next_cursor: string | null
+  has_more: boolean
+  filters: AdminAuditFilters
 }
 
 export interface AdminActivationStep {
@@ -4918,7 +4929,7 @@ class ApiClient {
     created_after?: string
     created_before?: string
     limit?: number
-    offset?: number
+    cursor?: string
   }): Promise<AdminAuditList> {
     const qs = new URLSearchParams()
     for (const key of ['actor_user_id', 'action', 'target_type', 'target_id', 'created_after', 'created_before'] as const) {
@@ -4926,7 +4937,7 @@ class ApiClient {
       if (value) qs.set(key, value)
     }
     if (params?.limit != null) qs.set('limit', String(params.limit))
-    if (params?.offset != null) qs.set('offset', String(params.offset))
+    if (params?.cursor) qs.set('cursor', params.cursor)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminAuditList>(`/admin/audit${suffix}`)
   }

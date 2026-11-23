@@ -20,7 +20,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Customers | `GET /admin/users/{id}/360` | Masked account, activation, usage, billing, security, and integration summary |
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
-| Audit | `GET /admin/audit` | Append-only operator audit trail |
+| Audit | `GET /admin/audit` | Append-only operator audit trail with cursor pagination |
 | Overview | `GET /analytics/admin/overview` | Six executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
 | Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
@@ -30,9 +30,14 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 ## Security invariants
 
 - `admin_audit_log` is append-only enforced by a PostgreSQL trigger. Application
-  code has no update or delete path.
+  code has no update or delete path, and there is no mutation API for audit rows.
+- `GET /admin/audit` uses a stable `(created_at, id)` descending keyset cursor.
+  `limit` is bounded to 200; responses return `next_cursor`, `has_more`, the
+  applied `filters`, and a filtered `total`. Actor, action, target type/id, and
+  time-range filters apply to cursor pages exactly as they do to the first page.
 - Audit payloads are bounded and redacted. Secrets, credentials, document
-  content, prompts, job descriptions, and direct identifiers must not be stored.
+  content, prompts, job descriptions, and direct identifiers are dropped rather
+  than stored, and before/after contain only fields whose values changed.
 - Support can open only the Customers surface. Support sees masked email/name,
   no admin actions, and cannot reveal PII or perform mutations.
 - Refunds use separation of duties: one admin requests, a different admin
@@ -97,11 +102,35 @@ The evaluator runs from the existing five-minute Modal maintenance fan-out; it
 upserts signals, reopens expired snoozes and auto-resolves cleared conditions.
 It never pages or mutates a payment, job or provider object.
 
+## Database role hardening
+
+Migration `0077_admin_control_room` installs the append-only trigger, but table
+privileges are environment-specific. Run the role-neutral script after
+migrations as the table owner (never as the application role):
+
+```bash
+psql "$DATABASE_URL" -v app_role=latexy_app \
+  -f backend/scripts/harden_admin_audit_role.sql
+```
+
+The script is idempotent, refuses an application role that owns the table, and
+fails if the append-only trigger is missing or disabled. It revokes all
+privileges on `admin_audit_log`, then grants only `SELECT` and `INSERT`, so the
+application role cannot `UPDATE` or `DELETE` audit rows even if a future code
+path tries to. `backend/test/test_admin_audit_hardening.py` executes the same
+script against a throwaway role and asserts the resulting grants.
+
+Retention is an explicit, reviewed operator action by a role that does not
+serve normal traffic; there is no application delete path or scheduled purge.
+
 ## Tests
 
 - `backend/test/test_admin_control_room_api.py` covers audit immutability,
   billing summary, webhook acknowledgement/reconcile, dual-control refunds,
   masked User 360, PII reveal audit, quota/session/key actions, and plan changes.
+- `backend/test/test_admin_audit_hardening.py` covers cursor stability under
+  identical timestamps, filter echo, page-size bounds, changed-only redaction,
+  the absence of audit mutation routes, and the database-role grant script.
 - `backend/test/test_analytics_admin_fixes.py` pins the INR-only refund
   timeseries and substring-based telemetry redaction.
 - `backend/test/test_admin_operations_api.py` covers admin-only access, the
