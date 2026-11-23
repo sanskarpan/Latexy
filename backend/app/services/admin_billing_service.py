@@ -836,5 +836,151 @@ class AdminBillingService:
         await db.refresh(row)
         return _refund_row(row)
 
+    async def reconcile_refund_request(
+        self,
+        db: AsyncSession,
+        *,
+        request_id: str,
+        actor: AdminActor,
+        note: str | None,
+        request=None,
+    ) -> dict[str, Any]:
+        """Re-read a stuck provider refund and reconcile the local ledger.
+
+        A failed or still-executing request may have reached Dodo even when the
+        original response was lost. Only the provider's authenticated refund
+        read is authoritative here; reconciliation never resubmits a refund.
+        """
+        row = await db.scalar(select(AdminRefundRequest).where(AdminRefundRequest.id == request_id))
+        if row is None:
+            raise KeyError("Refund request not found")
+        if row.status not in {"executing", "failed"}:
+            raise ValueError("Only an executing or failed refund request can be reconciled")
+        provider_refund_id = str(row.provider_refund_id or "").strip()
+        if not provider_refund_id:
+            raise ValueError("This refund request has no provider refund identifier to reconcile")
+        payment = await db.get(Payment, row.payment_id)
+        if payment is None or not payment.provider_payment_id:
+            raise ValueError("The payment has no provider identifier")
+        if payment.provider != "dodo":
+            raise ValueError("Only Dodo payments can be reconciled from this console")
+        provider_payment_id = payment.provider_payment_id
+        payment_amount = int(payment.amount)
+        currency = row.currency or payment.currency or "INR"
+        reason = row.reason
+        requested_amount = row.amount
+
+        try:
+            provider_result = await payment_service.provider.get_refund(provider_refund_id)
+        except Exception as exc:
+            raise ValueError(
+                f"Dodo refund lookup failed ({type(exc).__name__}); no local changes were made"
+            ) from exc
+        resource = payment_service._provider_resource(provider_result)
+        if not isinstance(resource, dict):
+            raise ValueError("Dodo returned an unreadable refund response; no local changes were made")
+        returned_payment_id = str(resource.get("payment_id") or "").strip()
+        if returned_payment_id and returned_payment_id != provider_payment_id:
+            raise ValueError("Dodo returned a refund for a different payment; no local changes were made")
+        raw_status = str(resource.get("status") or "").lower()
+        if raw_status in {"succeeded", "processed", "completed"}:
+            provider_status = "succeeded"
+        elif raw_status in {"failed", "cancelled"}:
+            provider_status = "failed"
+        else:
+            provider_status = "pending"
+
+        # Re-lock only for the local write so the provider read never holds the
+        # request row while waiting on Dodo. Reject concurrent changes instead
+        # of overwriting a settlement that landed while we were reading.
+        row = await self.get_refund_request(db, request_id)
+        if row is None:
+            raise KeyError("Refund request disappeared during reconciliation")
+        if row.status not in {"executing", "failed"} or str(row.provider_refund_id or "").strip() != provider_refund_id:
+            raise ValueError("Refund request changed while reconciling with Dodo; refresh and review it again")
+        before = {"status": row.status, "provider_refund_id": row.provider_refund_id}
+
+        already_refunded = int(
+            (
+                await db.execute(
+                    select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(
+                        PaymentRefund.payment_id == row.payment_id,
+                        PaymentRefund.status == "succeeded",
+                        PaymentRefund.provider_refund_id != provider_refund_id,
+                    )
+                )
+            ).scalar_one()
+        )
+        refund_amount = requested_amount if requested_amount is not None else max(0, payment_amount - already_refunded)
+
+        ledger_error: str | None = None
+        try:
+            ledger = await payment_service._handle_refund_event(
+                db,
+                f"refund.{provider_status}",
+                {
+                    "refund_id": provider_refund_id,
+                    "payment_id": provider_payment_id,
+                    "amount": refund_amount,
+                    "currency": currency,
+                    "status": provider_status,
+                    "reason": reason,
+                },
+            )
+            if not ledger.get("success"):
+                ledger_error = str(ledger.get("error") or "Local refund ledger update failed")
+        except Exception as exc:
+            ledger_error = f"{type(exc).__name__}: local refund ledger update failed"
+            await db.rollback()
+
+        # _handle_refund_event commits and may settle the request itself. Always
+        # re-read under a fresh lock before applying the final audited state.
+        row = await self.get_refund_request(db, request_id)
+        if row is None:
+            raise KeyError("Refund request disappeared during reconciliation")
+        if ledger_error:
+            # The provider may have accepted or settled the refund. Keep the
+            # request out of `executed`, retain the provider receipt, and send
+            # the operator back through reconciliation instead of resubmission.
+            row.status = "failed"
+            row.last_error = (
+                f"Dodo reports the refund as {provider_status}, but the local refund ledger update failed: "
+                f"{ledger_error}. Reconcile with Dodo again before any new attempt; do not resubmit."
+            )[:1000]
+        elif provider_status == "succeeded":
+            row.status = "executed"
+            row.executed_at = datetime.now(timezone.utc)
+            row.last_error = None
+        elif provider_status == "failed":
+            row.status = "failed"
+            row.last_error = "Provider reported the refund as failed"
+        else:
+            row.status = "executing"
+            row.last_error = None
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="billing.refund.reconciled",
+            target_type="refund_request",
+            target_id=row.id,
+            reason=note,
+            before=before,
+            after={
+                "status": row.status,
+                "provider_refund_id": row.provider_refund_id,
+                "last_error": row.last_error,
+            },
+            metadata={
+                "payment_id": row.payment_id,
+                "amount": row.amount if row.amount is not None else refund_amount,
+                "provider_status": provider_status,
+                "ledger_written": ledger_error is None,
+            },
+            request=request,
+        )
+        await db.commit()
+        await db.refresh(row)
+        return _refund_row(row)
+
 
 admin_billing_service = AdminBillingService()

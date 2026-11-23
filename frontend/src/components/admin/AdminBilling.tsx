@@ -296,6 +296,7 @@ function RefundQueue({
   onNote,
   onDecision,
   onExecute,
+  onReconcile,
   busyId,
 }: {
   data: AdminRefundList | null
@@ -308,6 +309,7 @@ function RefundQueue({
   onNote: (value: string) => void
   onDecision: (id: string, decision: 'approve' | 'reject') => void
   onExecute: (id: string) => void
+  onReconcile: (id: string) => void
   busyId: string | null
 }) {
   const page = Math.floor(offset / PAGE_SIZE) + 1
@@ -349,6 +351,7 @@ function RefundQueue({
                 const awaitingDecision = row.status === 'pending'
                 const executable = row.status === 'approved'
                 const failed = row.status === 'failed'
+                const reconcilable = (row.status === 'executing' || failed) && Boolean(row.provider_refund_id)
                 return (
                   <tr key={row.id} className="border-t border-line align-top">
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-fg-3">
@@ -367,7 +370,7 @@ function RefundQueue({
                       {row.provider_refund_id && <p className="mt-1 font-mono text-[10px] text-ok">{row.provider_refund_id}</p>}
                     </td>
                     <td className="px-4 py-3">
-                      {(awaitingDecision || executable || failed) && (
+                      {(awaitingDecision || executable || failed || reconcilable) && (
                         <button
                           type="button"
                           onClick={() => onActionId(isOpen ? null : row.id)}
@@ -377,7 +380,7 @@ function RefundQueue({
                           {isOpen ? 'Cancel' : 'Review'}
                         </button>
                       )}
-                      {isOpen && (awaitingDecision || executable || failed) && (
+                      {isOpen && (awaitingDecision || executable || failed || reconcilable) && (
                         <div className="mt-2 space-y-2 rounded-md border border-line bg-surface-2/60 p-2">
                           <label className="block text-[10px] font-medium text-fg-2">
                             Note
@@ -407,11 +410,7 @@ function RefundQueue({
                                 Reject
                               </button>
                             </div>
-                          ) : failed ? (
-                            <p className="text-[10px] leading-relaxed text-warn">
-                              Provider execution failed. Reconcile this refund with Dodo before any new attempt; do not resubmit.
-                            </p>
-                          ) : (
+                          ) : executable ? (
                             <button
                               type="button"
                               onClick={() => onExecute(row.id)}
@@ -420,6 +419,28 @@ function RefundQueue({
                             >
                               Execute refund
                             </button>
+                          ) : (
+                            <>
+                              {failed ? (
+                                <p className="text-[10px] leading-relaxed text-warn">
+                                  Provider execution failed. Reconcile this refund with Dodo before any new attempt; do not resubmit.
+                                </p>
+                              ) : (
+                                <p className="text-[10px] leading-relaxed text-warn">
+                                  Provider settlement is still pending. Re-read the authoritative refund from Dodo; do not resubmit.
+                                </p>
+                              )}
+                              {reconcilable && (
+                                <button
+                                  type="button"
+                                  onClick={() => onReconcile(row.id)}
+                                  disabled={Boolean(busyId) || !note.trim()}
+                                  className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                                >
+                                  Reconcile with Dodo
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -582,6 +603,27 @@ export default function AdminBilling() {
       setRefreshKey((value) => value + 1)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Refund execution failed')
+    } finally {
+      endBusy()
+    }
+  }
+
+  const reconcileRefund = async (id: string) => {
+    if (!refundNote.trim() || !beginBusy(id)) return
+    try {
+      const updated = await apiClient.reconcileAdminRefund(id, refundNote.trim())
+      if (updated.status === 'executed') {
+        toast.success('Refund reconciled: Dodo reports it as succeeded')
+      } else if (updated.status === 'executing') {
+        toast.success('Refund reconciled: Dodo still reports it as pending')
+      } else {
+        toast.error(updated.last_error || 'Dodo reports the refund as failed')
+      }
+      setRefundActionId(null)
+      setRefundNote('')
+      setRefreshKey((value) => value + 1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Refund reconciliation failed')
     } finally {
       endBusy()
     }
@@ -759,6 +801,7 @@ export default function AdminBilling() {
         onNote={setRefundNote}
         onDecision={decideRefund}
         onExecute={executeRefund}
+        onReconcile={reconcileRefund}
         busyId={busyId}
       />
     </div>

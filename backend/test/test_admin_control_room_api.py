@@ -476,6 +476,131 @@ class TestRefundWorkflow:
         assert second.status_code == 422
         failing.assert_awaited_once()
 
+    async def _create_executing_refund(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        reason: str,
+    ) -> tuple[str, str, str, dict[str, str]]:
+        admin_a = await _headers(db_session, "admin")
+        admin_b = await _headers(db_session, "admin")
+        user_id, _ = await _create_user(db_session)
+        _, payment_id = await _create_paid_subscription(db_session, user_id=user_id)
+        created = await client.post(
+            "/admin/billing/refunds",
+            json={"payment_id": payment_id, "reason": reason},
+            headers=admin_a,
+        )
+        assert created.status_code == 200
+        request_id = created.json()["id"]
+        approved = await client.post(
+            f"/admin/billing/refunds/{request_id}/approve",
+            json={"note": f"Approved: {reason}"},
+            headers=admin_b,
+        )
+        assert approved.status_code == 200
+
+        monkeypatch.setattr(payment_service, "is_service_available", lambda: True)
+        monkeypatch.setattr(type(payment_service.provider), "available", property(lambda _self: True))
+        refund_id = f"ref_test_reconcile_{uuid.uuid4().hex}"
+        monkeypatch.setattr(
+            payment_service.provider,
+            "create_refund",
+            AsyncMock(return_value={"id": refund_id, "status": "pending"}),
+        )
+        executed = await client.post(
+            f"/admin/billing/refunds/{request_id}/execute",
+            json={"note": "Start provider refund"},
+            headers=admin_b,
+        )
+        assert executed.status_code == 200
+        assert executed.json()["status"] == "executing"
+        assert executed.json()["provider_refund_id"] == refund_id
+        return request_id, refund_id, payment_id, admin_b
+
+    async def test_reconcile_succeeded_provider_settles_stuck_refund(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        request_id, refund_id, payment_id, admin_headers = await self._create_executing_refund(
+            client, db_session, monkeypatch, reason="Stuck refund success reconciliation"
+        )
+        get_refund = AsyncMock(return_value={"id": refund_id, "status": "succeeded"})
+        monkeypatch.setattr(payment_service.provider, "get_refund", get_refund)
+
+        reconciled = await client.post(
+            f"/admin/billing/refunds/{request_id}/reconcile",
+            json={"note": "Checked the refund in the Dodo dashboard"},
+            headers=admin_headers,
+        )
+        assert reconciled.status_code == 200
+        body = reconciled.json()
+        assert body["status"] == "executed"
+        assert body["provider_refund_id"] == refund_id
+        assert body["last_error"] is None
+        assert body["executed_at"] is not None
+        get_refund.assert_awaited_once_with(refund_id)
+
+        refund_row = (
+            await db_session.execute(
+                text(
+                    "SELECT provider, amount, status FROM payment_refunds "
+                    "WHERE provider_refund_id = :refund_id"
+                ),
+                {"refund_id": refund_id},
+            )
+        ).one()
+        assert tuple(refund_row) == ("dodo", 59900, "succeeded")
+        payment_status = (
+            await db_session.execute(text("SELECT status FROM payments WHERE id = :id"), {"id": payment_id})
+        ).scalar_one()
+        assert payment_status == "refunded"
+
+        audit = await client.get(
+            f"/admin/audit?action=billing.refund.reconciled&target_id={request_id}",
+            headers=admin_headers,
+        )
+        assert audit.status_code == 200
+        assert audit.json()["total"] == 1
+        assert audit.json()["items"][0]["after"]["status"] == "executed"
+
+    async def test_reconcile_pending_provider_keeps_request_executing(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        request_id, refund_id, payment_id, admin_headers = await self._create_executing_refund(
+            client, db_session, monkeypatch, reason="Stuck refund pending reconciliation"
+        )
+        get_refund = AsyncMock(return_value={"id": refund_id, "status": "processing"})
+        monkeypatch.setattr(payment_service.provider, "get_refund", get_refund)
+
+        reconciled = await client.post(
+            f"/admin/billing/refunds/{request_id}/reconcile",
+            json={"note": "Dodo still shows the refund as processing"},
+            headers=admin_headers,
+        )
+        assert reconciled.status_code == 200
+        body = reconciled.json()
+        assert body["status"] == "executing"
+        assert body["provider_refund_id"] == refund_id
+        assert body["last_error"] is None
+        get_refund.assert_awaited_once_with(refund_id)
+
+        refund_row = (
+            await db_session.execute(
+                text(
+                    "SELECT provider, amount, status FROM payment_refunds "
+                    "WHERE provider_refund_id = :refund_id"
+                ),
+                {"refund_id": refund_id},
+            )
+        ).one()
+        assert tuple(refund_row) == ("dodo", 59900, "pending")
+        payment_status = (
+            await db_session.execute(text("SELECT status FROM payments WHERE id = :id"), {"id": payment_id})
+        ).scalar_one()
+        assert payment_status == "paid"
+
 
 class TestUser360:
     async def _seed_user_data(
