@@ -212,7 +212,13 @@ export const JobQueue: React.FC<JobQueueProps> = ({
   className = '',
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'all'
+    const value = new URLSearchParams(window.location.search).get('job_status')
+    return ['pending', 'processing', 'completed', 'failed', 'cancelled'].includes(value ?? '')
+      ? (value as string)
+      : 'all'
+  })
   const [typeFilter, setTypeFilter] = useState<string>('all')
 
   const {

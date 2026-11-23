@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_plan_config
+from ..core.redis import get_redis_client
 from ..database import models
 from .admin_audit_service import AdminActor, record_admin_audit
 from .payment_service import PAID_SUBSCRIPTION_STATUSES, payment_service
@@ -37,6 +38,22 @@ def _monthly_amount(plan_id: str | None, quoted_amount: int | None) -> int:
         if is_annual:
             amount = round(amount / 12)
     return max(0, amount)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _webhook_prefix(event_type: str) -> str:
+    if event_type.startswith("payment."):
+        return "payment"
+    if event_type.startswith("subscription."):
+        return "subscription"
+    if event_type.startswith("refund."):
+        return "refund"
+    return "unknown"
 
 
 def _webhook_row(row: BillingWebhookEvent) -> dict[str, Any]:
@@ -98,56 +115,175 @@ async def _local_links(db: AsyncSession, rows: Iterable[BillingWebhookEvent]) ->
 
     payments = (
         await db.execute(
-            select(Payment.provider_payment_id, Payment.id, Payment.subscription_id).where(
+            select(
+                Payment.provider_payment_id,
+                Payment.id,
+                Payment.subscription_id,
+                Payment.user_id,
+                Payment.amount,
+                Payment.currency,
+                Payment.status,
+            ).where(
                 Payment.provider == "dodo", Payment.provider_payment_id.in_(payment_ids)
             )
         )
     ).all() if payment_ids else []
     subscriptions = (
         await db.execute(
-            select(Subscription.provider_subscription_id, Subscription.id, Subscription.user_id).where(
+            select(
+                Subscription.provider_subscription_id,
+                Subscription.id,
+                Subscription.user_id,
+                Subscription.plan_id,
+                Subscription.quoted_amount,
+                Subscription.status,
+                Subscription.current_period_end,
+            ).where(
                 Subscription.provider == "dodo", Subscription.provider_subscription_id.in_(subscription_ids)
             )
         )
     ).all() if subscription_ids else []
     refunds = (
         await db.execute(
-            select(PaymentRefund.provider_refund_id, PaymentRefund.id, PaymentRefund.payment_id).where(
+            select(
+                PaymentRefund.provider_refund_id,
+                PaymentRefund.id,
+                PaymentRefund.payment_id,
+                PaymentRefund.amount,
+                PaymentRefund.currency,
+                PaymentRefund.status,
+            ).where(
                 PaymentRefund.provider == "dodo", PaymentRefund.provider_refund_id.in_(refund_ids)
             )
         )
     ).all() if refund_ids else []
 
     result: dict[str, dict[str, Any]] = {}
-    for provider_id, local_id, subscription_id in payments:
+    for provider_id, local_id, subscription_id, user_id, amount, currency, status in payments:
         result[f"payment:{provider_id}"] = {
             "linked": True, "local_type": "payment", "local_id": local_id,
-            "subscription_id": subscription_id,
+            "subscription_id": subscription_id, "user_id": user_id,
+            "amount_minor": amount, "currency": currency, "status": status,
         }
-    for provider_id, local_id, user_id in subscriptions:
+    for provider_id, local_id, user_id, plan_id, amount, status, period_end in subscriptions:
         result[f"subscription:{provider_id}"] = {
             "linked": True, "local_type": "subscription", "local_id": local_id, "user_id": user_id,
+            "plan_id": plan_id, "amount_minor": amount, "status": status,
+            "current_period_end": period_end.isoformat() if period_end else None,
         }
-    for provider_id, local_id, payment_id in refunds:
+    for provider_id, local_id, payment_id, amount, currency, status in refunds:
         result[f"refund:{provider_id}"] = {
             "linked": True, "local_type": "refund", "local_id": local_id, "payment_id": payment_id,
+            "amount_minor": amount, "currency": currency, "status": status,
         }
     for row in items:
-        prefix = "payment" if row.event_type.startswith("payment.") else (
-            "subscription" if row.event_type.startswith("subscription.") else (
-                "refund" if row.event_type.startswith("refund.") else "unknown"
-            )
-        )
+        prefix = _webhook_prefix(row.event_type)
         key = f"{prefix}:{row.event_resource_id}"
         if key not in result:
-            result[key] = {"linked": False, "local_type": prefix, "local_id": None}
+            result[key] = {"linked": False, "local_type": prefix, "local_id": None, "status": None}
     return result
 
 
+def _reconciliation_diagnosis(
+    row: BillingWebhookEvent, link: dict[str, Any]
+) -> tuple[str, str, str | None]:
+    """Return (mismatch_reason, suggested_action, link_status) from bounded local state."""
+    linked = bool(link.get("linked"))
+    local_type = str(link.get("local_type") or _webhook_prefix(row.event_type))
+    status = str(link.get("status") or "").lower() or None
+    if not linked:
+        reason = (
+            f"No local {local_type} intent is linked to provider resource "
+            f"{row.event_resource_id or '(missing)'}."
+        )
+        action = "Review the provider event; acknowledge only if it is provider-side traffic."
+        return reason, action, None
+    if local_type == "payment":
+        if status in {"paid", "partially_refunded", "captured", "succeeded"}:
+            return (
+                "The local payment is already settled; this failure is likely a duplicate or out-of-order event.",
+                "Replay to prove idempotency, then acknowledge.",
+                status,
+            )
+        if status == "refunded":
+            return (
+                "The local payment is already fully refunded.",
+                "Verify the provider settlement, then acknowledge instead of replaying.",
+                status,
+            )
+        if status in {"failed", "cancelled"}:
+            return (
+                f"The local payment is terminal ({status}).",
+                "Review the provider state; replay only if the provider now reports a recoverable state.",
+                status,
+            )
+        return (
+            f"The local payment is still {status or 'in an unknown state'}.",
+            "Replay the provider resource to reconcile the ledger, or acknowledge after review.",
+            status,
+        )
+    if local_type == "subscription":
+        if status in {"active", "cancel_scheduled", "past_due", "on_hold", "paused"}:
+            return (
+                f"The local subscription already records {status}; the failed event may be stale or out of order.",
+                "Replay to confirm idempotency, or acknowledge the stale event.",
+                status,
+            )
+        if status in {"cancelled", "expired", "failed", "refunded"}:
+            return (
+                f"The local subscription is terminal ({status}).",
+                "Verify the provider subscription before acknowledging or replaying.",
+                status,
+            )
+        return (
+            f"The local subscription is {status or 'in an unknown state'}.",
+            "Replay the provider resource to reconcile the subscription.",
+            status,
+        )
+    if local_type == "refund":
+        if status == "succeeded":
+            return (
+                "The local refund is already settled; the failed event is likely a duplicate.",
+                "Acknowledge after verifying the settled refund; replay is idempotent but unnecessary.",
+                status,
+            )
+        if status == "failed":
+            return (
+                "The local refund is marked failed.",
+                "Replay the provider refund before any new attempt; never resubmit blindly.",
+                status,
+            )
+        return (
+            f"The local refund is still {status or 'in an unknown state'}.",
+            "Replay the provider refund to reconcile the ledger.",
+            status,
+        )
+    return (
+        row.last_error or "The failed event is not linked to a supported local billing record.",
+        "Review the provider event and acknowledge or replay if it maps to a local record.",
+        status,
+    )
+
+
 class AdminBillingService:
-    async def summary(self, db: AsyncSession, days: int = 30) -> dict[str, Any]:
+    async def summary(
+        self,
+        db: AsyncSession,
+        days: int = 30,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
-        period_start = now - timedelta(days=days)
+        period_end = _as_utc(end) or now
+        period_start = _as_utc(start) or (period_end - timedelta(days=days))
+        if period_start > period_end:
+            raise ValueError("The summary start must not be after the end")
+        if start is not None and end is not None:
+            window_seconds = max(0, int((period_end - period_start).total_seconds()))
+            period_days = max(1, (window_seconds + 86_399) // 86_400)
+        else:
+            period_days = days
         active_rows = (
             await db.execute(
                 select(Subscription.plan_id, Subscription.quoted_amount, Subscription.current_period_end).where(
@@ -157,8 +293,8 @@ class AdminBillingService:
         ).all()
         active_count = sum(
             1
-            for plan_id, _amount, period_end in active_rows
-            if period_end is None or period_end >= now
+            for _plan_id, _amount, sub_period_end in active_rows
+            if sub_period_end is None or sub_period_end >= now
         )
         past_due = int(
             (
@@ -171,12 +307,12 @@ class AdminBillingService:
         )
         mrr_paise = sum(
             _monthly_amount(plan_id, amount)
-            for plan_id, amount, period_end in active_rows
-            if period_end is None or period_end >= now
+            for plan_id, amount, sub_period_end in active_rows
+            if sub_period_end is None or sub_period_end >= now
         )
         plan_mix: dict[str, dict[str, Any]] = {}
-        for plan_id, amount, period_end in active_rows:
-            if period_end is not None and period_end < now:
+        for plan_id, amount, sub_period_end in active_rows:
+            if sub_period_end is not None and sub_period_end < now:
                 continue
             bucket = plan_mix.setdefault(plan_id, {"plan_id": plan_id, "subscriptions": 0, "mrr": 0})
             bucket["subscriptions"] += 1
@@ -189,6 +325,18 @@ class AdminBillingService:
                 await db.execute(
                     select(func.coalesce(func.sum(Payment.amount), 0)).where(
                         Payment.created_at >= period_start,
+                        Payment.created_at <= period_end,
+                        Payment.status.in_(("paid", "partially_refunded", "captured", "refunded")),
+                    )
+                )
+            ).scalar_one()
+        )
+        payments_count = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(Payment).where(
+                        Payment.created_at >= period_start,
+                        Payment.created_at <= period_end,
                         Payment.status.in_(("paid", "partially_refunded", "captured", "refunded")),
                     )
                 )
@@ -199,6 +347,18 @@ class AdminBillingService:
                 await db.execute(
                     select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(
                         PaymentRefund.created_at >= period_start,
+                        PaymentRefund.created_at <= period_end,
+                        PaymentRefund.status == "succeeded",
+                    )
+                )
+            ).scalar_one()
+        )
+        refunds_count = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(PaymentRefund).where(
+                        PaymentRefund.created_at >= period_start,
+                        PaymentRefund.created_at <= period_end,
                         PaymentRefund.status == "succeeded",
                     )
                 )
@@ -247,17 +407,29 @@ class AdminBillingService:
                 select(AdminRefundRequest).order_by(AdminRefundRequest.requested_at.desc()).limit(8)
             )
         ).scalars().all()
+        arpu_paise = int(round(mrr_paise / active_count)) if active_count else 0
         return {
-            "period_days": days,
+            "period_days": period_days,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
             "generated_at": now.isoformat(),
             "currency": "INR",
             "mrr": round(mrr_paise / 100, 2),
             "arr": round(mrr_paise * 12 / 100, 2),
+            "mrr_minor": mrr_paise,
+            "arr_minor": mrr_paise * 12,
+            "arpu": round(arpu_paise / 100, 2),
+            "arpu_minor": arpu_paise,
             "active_subscriptions": active_count,
             "past_due_subscriptions": past_due,
             "gross_revenue": round(gross / 100, 2),
             "refunded": round(refunded / 100, 2),
             "net_revenue": round((gross - refunded) / 100, 2),
+            "gross_revenue_minor": gross,
+            "refunded_minor": refunded,
+            "net_revenue_minor": gross - refunded,
+            "payments_count": payments_count,
+            "refunds_count": refunds_count,
             "open_refund_requests": open_refunds,
             "unacknowledged_webhook_failures": unacknowledged_failures,
             "webhooks_24h": webhook_24h,
@@ -273,11 +445,18 @@ class AdminBillingService:
         status: str | None = None,
         event_type: str | None = None,
         acknowledged: bool | None = None,
+        received_after: datetime | None = None,
+        received_before: datetime | None = None,
+        dead_letter: bool | None = None,
         q: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         filters = []
+        after = _as_utc(received_after)
+        before = _as_utc(received_before)
+        if after is not None and before is not None and after > before:
+            raise ValueError("received_after must not be later than received_before")
         if status:
             filters.append(BillingWebhookEvent.status == status)
         if event_type:
@@ -286,6 +465,20 @@ class AdminBillingService:
             filters.append(BillingWebhookEvent.acknowledged_at.is_not(None))
         elif acknowledged is False:
             filters.append(BillingWebhookEvent.acknowledged_at.is_(None))
+        if after is not None:
+            filters.append(BillingWebhookEvent.received_at >= after)
+        if before is not None:
+            filters.append(BillingWebhookEvent.received_at <= before)
+        if dead_letter is True:
+            filters.append(BillingWebhookEvent.status == "failed")
+            filters.append(BillingWebhookEvent.acknowledged_at.is_(None))
+        elif dead_letter is False:
+            filters.append(
+                or_(
+                    BillingWebhookEvent.status != "failed",
+                    BillingWebhookEvent.acknowledged_at.is_not(None),
+                )
+            )
         if q:
             pattern = f"%{q.strip()}%"
             filters.append(
@@ -312,17 +505,90 @@ class AdminBillingService:
         links = await _local_links(db, rows)
         result = []
         for row in rows:
-            prefix = "payment" if row.event_type.startswith("payment.") else (
-                "subscription" if row.event_type.startswith("subscription.") else (
-                    "refund" if row.event_type.startswith("refund.") else "unknown"
-                )
-            )
+            prefix = _webhook_prefix(row.event_type)
             item = _webhook_row(row)
             item["local_link"] = links.get(f"{prefix}:{row.event_resource_id}", {
-                "linked": False, "local_type": prefix, "local_id": None,
+                "linked": False, "local_type": prefix, "local_id": None, "status": None,
             })
             result.append(item)
         return result, total
+
+    async def list_reconciliation(
+        self,
+        db: AsyncSession,
+        *,
+        received_after: datetime | None = None,
+        received_before: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one row per unresolved failed webhook, joined to local intents.
+
+        Resolved events drop off as soon as they are acknowledged or replayed
+        successfully. The event table's unique ``(provider, event_id)`` key means
+        the queue can never duplicate one provider event; multiple distinct
+        failures for the same resource remain separate rows so out-of-order
+        delivery is visible.
+        """
+        after = _as_utc(received_after)
+        before = _as_utc(received_before)
+        if after is not None and before is not None and after > before:
+            raise ValueError("received_after must not be later than received_before")
+        filters = [
+            BillingWebhookEvent.status == "failed",
+            BillingWebhookEvent.acknowledged_at.is_(None),
+        ]
+        if after is not None:
+            filters.append(BillingWebhookEvent.received_at >= after)
+        if before is not None:
+            filters.append(BillingWebhookEvent.received_at <= before)
+        count_stmt = select(func.count()).select_from(BillingWebhookEvent)
+        base = select(BillingWebhookEvent)
+        for condition in filters:
+            count_stmt = count_stmt.where(condition)
+            base = base.where(condition)
+        total = int((await db.execute(count_stmt)).scalar_one())
+        rows = list(
+            (
+                await db.execute(
+                    base.order_by(
+                        BillingWebhookEvent.received_at.desc(),
+                        BillingWebhookEvent.id.desc(),
+                    )
+                    .limit(limit)
+                    .offset(offset)
+                )
+            ).scalars().all()
+        )
+        links = await _local_links(db, rows)
+        now = datetime.now(timezone.utc)
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            prefix = _webhook_prefix(row.event_type)
+            link = links.get(f"{prefix}:{row.event_resource_id}", {
+                "linked": False, "local_type": prefix, "local_id": None, "status": None,
+            })
+            mismatch_reason, suggested_action, link_status = _reconciliation_diagnosis(row, link)
+            received_at = _as_utc(row.received_at)
+            age_seconds = max(0, int((now - received_at).total_seconds())) if received_at else None
+            item = _webhook_row(row)
+            item.update(
+                {
+                    "local_link": link,
+                    "link_status": link_status,
+                    "amount_minor": link.get("amount_minor"),
+                    "currency": link.get("currency"),
+                    "age_seconds": age_seconds,
+                    "age_hours": round(age_seconds / 3600, 1) if age_seconds is not None else None,
+                    "mismatch_reason": mismatch_reason,
+                    "suggested_action": suggested_action,
+                    "can_replay": bool(
+                        row.event_resource_id and prefix in {"payment", "subscription", "refund"}
+                    ),
+                }
+            )
+            items.append(item)
+        return items, total
 
     async def acknowledge_webhook(
         self,
@@ -511,6 +777,145 @@ class AdminBillingService:
             "provider_result": result,
             "event": _webhook_row(row),
         }
+
+    async def replay_webhook(
+        self,
+        db: AsyncSession,
+        *,
+        event_id: str,
+        actor: AdminActor,
+        reason: str,
+        request=None,
+    ) -> dict[str, Any]:
+        """Re-fetch the provider resource and run the normal idempotent handler.
+
+        ``payload_sha256`` proves receipt integrity, not replayability: the raw
+        signed payload is deliberately not persisted. The provider's current
+        resource is therefore the only authoritative replay input, and the
+        operation stays idempotent through the existing payment/refund handlers.
+        """
+        row = await db.scalar(
+            select(BillingWebhookEvent)
+            .where(BillingWebhookEvent.id == event_id)
+            .with_for_update()
+        )
+        if row is None:
+            raise KeyError("Webhook event not found")
+        if row.status == "processed":
+            return {
+                "status": "already_processed",
+                "replayed": False,
+                "message": "This event is already processed; no provider call was made.",
+                "event": _webhook_row(row),
+            }
+        if not row.event_resource_id:
+            raise ValueError("This event has no provider resource to replay")
+        prefix = _webhook_prefix(row.event_type)
+        if prefix == "unknown":
+            raise ValueError("This event type cannot be replayed from the provider")
+        if not payment_service.is_service_available() or not payment_service.provider.available:
+            raise ValueError("The payment provider is not configured; no replay was attempted")
+
+        cleaned_reason = " ".join(reason.split())[:1000]
+        if not cleaned_reason:
+            raise ValueError("A replay reason is required")
+        before = {
+            "status": row.status,
+            "last_error": row.last_error,
+            "reconcile_attempts": row.reconcile_attempts,
+        }
+        try:
+            result = await payment_service.replay_provider_event(
+                db, event_type=row.event_type, resource_id=row.event_resource_id
+            )
+        except Exception as exc:
+            await db.rollback()
+            result = {
+                "success": False,
+                "status": "provider_unavailable",
+                "error": f"Provider replay failed ({type(exc).__name__})",
+            }
+
+        # The handler commits and releases our lock, so always re-lock the
+        # durable inbox row before recording the audited replay outcome.
+        row = await db.scalar(
+            select(BillingWebhookEvent)
+            .where(BillingWebhookEvent.id == event_id)
+            .with_for_update()
+        )
+        if row is None:
+            raise KeyError("Webhook event disappeared during replay")
+        now = datetime.now(timezone.utc)
+        row.reconcile_attempts = int(row.reconcile_attempts or 0) + 1
+        row.last_reconcile_at = now
+        replayed = bool(result.get("success"))
+        provider_status = result.get("status")
+        if replayed:
+            row.status = "processed"
+            row.processed_at = now
+            row.last_error = None
+            row.last_reconcile_outcome = "replayed"
+            row.last_reconcile_error = None
+            message = "Provider resource replayed through the normal idempotent handler."
+        else:
+            outcome = str(provider_status or "replay_failed")
+            row.last_reconcile_outcome = "replay_failed" if outcome not in {
+                "unavailable", "provider_unavailable"
+            } else outcome
+            row.last_reconcile_error = str(
+                result.get("error") or result.get("message") or "Replay did not complete"
+            )[:1000]
+            message = row.last_reconcile_error
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="billing.webhook.replay",
+            target_type="billing_webhook",
+            target_id=row.id,
+            reason=cleaned_reason,
+            before=before,
+            after={
+                "status": row.status,
+                "last_reconcile_outcome": row.last_reconcile_outcome,
+                "reconcile_attempts": row.reconcile_attempts,
+            },
+            metadata={
+                "event_type": row.event_type,
+                "event_id": row.event_id,
+                "provider_status": provider_status,
+                "replayed": replayed,
+            },
+            request=request,
+        )
+        await db.commit()
+        await db.refresh(row)
+        return {
+            "status": row.last_reconcile_outcome,
+            "replayed": replayed,
+            "message": message,
+            "event": _webhook_row(row),
+        }
+
+    async def allow_webhook_replay(self, actor_user_id: str, event_id: str) -> bool:
+        """Bounded per-admin, per-event replay limiter; fails open on Redis outage."""
+        try:
+            redis = await get_redis_client()
+            key = f"ratelimit:admin:billing:webhook-replay:{actor_user_id}:{event_id}"
+            count = await redis.eval(
+                """
+                local n = redis.call('INCR', KEYS[1])
+                if n == 1 then
+                  redis.call('EXPIRE', KEYS[1], ARGV[1])
+                end
+                return n
+                """,
+                1,
+                key,
+                300,
+            )
+            return int(count) <= 5
+        except Exception:
+            return True
 
     async def list_refund_requests(
         self, db: AsyncSession, *, status: str | None = None, limit: int = 50, offset: int = 0

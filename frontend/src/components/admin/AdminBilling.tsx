@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   apiClient,
+  type AdminBillingReconciliationList,
   type AdminBillingSummary,
   type AdminBillingWebhookList,
   type AdminRefundList,
@@ -14,6 +15,12 @@ const RANGES = [7, 30, 90] as const
 const PAGE_SIZE = 25
 
 type AckFilter = 'all' | 'unacknowledged' | 'acknowledged'
+
+function dateBoundary(value: string, endOfDay = false): string | undefined {
+  if (!value) return undefined
+  const parsed = new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
+}
 
 function Kpi({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
   return (
@@ -50,23 +57,43 @@ function WebhookHealth({
   onOffset,
   actionId,
   note,
+  replayConfirmed,
   onActionId,
   onNote,
+  onReplayConfirmed,
   onReconcile,
+  onReplay,
   onAcknowledge,
   busyId,
 }: {
   data: AdminBillingWebhookList | null
   loading: boolean
-  filters: { status: string; acknowledged: AckFilter; q: string }
-  onFilters: (next: { status: string; acknowledged: AckFilter; q: string }) => void
+  filters: {
+    status: string
+    acknowledged: AckFilter
+    q: string
+    receivedAfter: string
+    receivedBefore: string
+    deadLetter: boolean
+  }
+  onFilters: (next: {
+    status: string
+    acknowledged: AckFilter
+    q: string
+    receivedAfter: string
+    receivedBefore: string
+    deadLetter: boolean
+  }) => void
   offset: number
   onOffset: (next: number) => void
   actionId: string | null
   note: string
+  replayConfirmed: boolean
   onActionId: (id: string | null) => void
   onNote: (value: string) => void
+  onReplayConfirmed: (value: boolean) => void
   onReconcile: (id: string) => void
+  onReplay: (id: string) => void
   onAcknowledge: (id: string, quick?: boolean) => void
   busyId: string | null
 }) {
@@ -81,7 +108,8 @@ function WebhookHealth({
             <h3 className="text-sm font-semibold text-fg">Dodo webhook health</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
               Durable receipts for signed provider events. Acknowledge a provider-side dead letter only after review;
-              reconcile re-reads the linked checkout from Dodo. Replay in Dodo remains the authoritative provider action.
+              replay re-fetches the provider resource and runs the normal idempotent billing handler. Raw signatures and
+              payloads are never stored or shown here.
             </p>
           </div>
           <a
@@ -115,6 +143,34 @@ function WebhookHealth({
             <option value="acknowledged">Acknowledged</option>
             <option value="all">All</option>
           </select>
+          <label className="flex min-h-[38px] items-center gap-2 rounded-md border border-line bg-bg px-3 py-1.5 text-xs text-fg-2">
+            <input
+              type="checkbox"
+              checked={filters.deadLetter}
+              onChange={(event) => onFilters({ ...filters, deadLetter: event.target.checked })}
+            />
+            Dead letters only
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] text-fg-3">
+            Received after
+            <input
+              type="date"
+              value={filters.receivedAfter}
+              max={filters.receivedBefore || undefined}
+              onChange={(event) => onFilters({ ...filters, receivedAfter: event.target.value })}
+              className="min-h-[38px] rounded-md border border-line bg-bg px-2 py-1 text-xs text-fg"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] text-fg-3">
+            Received before
+            <input
+              type="date"
+              value={filters.receivedBefore}
+              min={filters.receivedAfter || undefined}
+              onChange={(event) => onFilters({ ...filters, receivedBefore: event.target.value })}
+              className="min-h-[38px] rounded-md border border-line bg-bg px-2 py-1 text-xs text-fg"
+            />
+          </label>
           <form
             className="flex min-w-48 flex-1 gap-2"
             onSubmit={(event) => {
@@ -219,7 +275,7 @@ function WebhookHealth({
                       {isOpen && (
                         <div className="mt-2 space-y-2 rounded-md border border-line bg-surface-2/60 p-2">
                           <label className="block text-[10px] font-medium text-fg-2">
-                            Review note
+                            Review reason
                             <input
                               value={note}
                               onChange={(event) => onNote(event.target.value)}
@@ -228,12 +284,29 @@ function WebhookHealth({
                               className="mt-1 w-full rounded border border-line bg-bg px-2 py-1 text-xs text-fg"
                             />
                           </label>
+                          <label className="flex items-start gap-2 text-[10px] leading-relaxed text-fg-3">
+                            <input
+                              type="checkbox"
+                              checked={replayConfirmed}
+                              onChange={(event) => onReplayConfirmed(event.target.checked)}
+                              className="mt-0.5"
+                            />
+                            I confirm this replay re-reads the provider resource and is audited against my admin account.
+                          </label>
                           <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => onReplay(row.id)}
+                              disabled={Boolean(busyId) || !note.trim() || !replayConfirmed || !row.event_resource_id}
+                              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
+                            >
+                              Replay from provider
+                            </button>
                             <button
                               type="button"
                               onClick={() => onReconcile(row.id)}
                               disabled={Boolean(busyId) || !note.trim()}
-                              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
+                              className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 disabled:opacity-40"
                             >
                               Reconcile from Dodo
                             </button>
@@ -463,23 +536,238 @@ function RefundQueue({
   )
 }
 
+function ReconciliationQueue({
+  data,
+  loading,
+  offset,
+  onOffset,
+  actionId,
+  note,
+  confirmed,
+  onActionId,
+  onNote,
+  onConfirmed,
+  onAcknowledge,
+  onReplay,
+  busyId,
+}: {
+  data: AdminBillingReconciliationList | null
+  loading: boolean
+  offset: number
+  onOffset: (next: number) => void
+  actionId: string | null
+  note: string
+  confirmed: boolean
+  onActionId: (id: string | null) => void
+  onNote: (value: string) => void
+  onConfirmed: (value: boolean) => void
+  onAcknowledge: (id: string) => void
+  onReplay: (id: string) => void
+  busyId: string | null
+}) {
+  const page = Math.floor(offset / PAGE_SIZE) + 1
+  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE))
+  return (
+    <section id="admin-billing-reconciliation" className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
+      <div className="border-b border-line px-5 py-4">
+        <h3 className="text-sm font-semibold text-fg">Reconciliation queue</h3>
+        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
+          One row per unresolved failed webhook, joined to its local payment, subscription, or refund intent. Replay
+          re-reads the provider resource through the idempotent handler; acknowledge only after review. Resolved rows
+          disappear from this queue.
+        </p>
+      </div>
+      {loading && !data ? (
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-12 animate-pulse rounded-md bg-surface-2" />
+          ))}
+        </div>
+      ) : !data || data.items.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-fg-3">No unresolved billing reconciliation items.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1020px] border-collapse text-sm">
+            <caption className="sr-only">Unresolved failed webhooks, newest first</caption>
+            <thead>
+              <tr className="border-b border-line text-[10px] uppercase tracking-wider text-fg-3">
+                <th scope="col" className="px-4 py-3 text-left font-semibold">Received / age</th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">Event</th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">Mismatch</th>
+                <th scope="col" className="px-4 py-3 text-right font-semibold">Amount</th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">Local intent</th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((row) => {
+                const isOpen = actionId === row.id
+                return (
+                  <tr key={row.id} className="border-t border-line align-top">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-fg-3">
+                      {formatDateTime(row.received_at)}
+                      <p className="mt-1 text-[10px]">
+                        {row.age_hours == null ? '—' : `${formatNumber(row.age_hours)} h old`}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-mono text-xs text-fg">{row.event_type}</p>
+                      <p className="mt-1 font-mono text-[10px] text-fg-3">{shortId(row.event_resource_id, 22)}</p>
+                    </td>
+                    <td className="max-w-[360px] px-4 py-3 text-xs text-fg-3">
+                      <p className="leading-relaxed text-warn">{row.mismatch_reason}</p>
+                      {row.last_error && <p className="mt-1 text-[10px] text-err/90">{summarize(row.last_error, 140)}</p>}
+                      <p className="mt-1 text-[10px]">{row.suggested_action}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-fg">
+                      {row.amount_minor == null ? '—' : formatMoney(row.amount_minor / 100, row.currency || 'INR')}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-fg-3">
+                      {row.local_link.linked ? (
+                        <>
+                          <p className="font-mono text-ok">{row.local_link.local_type}</p>
+                          <p className="mt-1 font-mono text-[10px]">{shortId(row.local_link.local_id, 18)}</p>
+                          {row.link_status && <p className="mt-1 text-[10px]">status: {row.link_status}</p>}
+                        </>
+                      ) : (
+                        <span className="text-warn">No local intent</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => onActionId(isOpen ? null : row.id)}
+                        className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 hover:bg-surface-2"
+                      >
+                        {isOpen ? 'Cancel' : 'Review'}
+                      </button>
+                      {isOpen && (
+                        <div className="mt-2 w-[260px] space-y-2 rounded-md border border-line bg-surface-2/60 p-2">
+                          <label className="block text-[10px] font-medium text-fg-2">
+                            Reason
+                            <input
+                              value={note}
+                              onChange={(event) => onNote(event.target.value)}
+                              maxLength={1000}
+                              placeholder="What did you verify?"
+                              className="mt-1 w-full rounded border border-line bg-bg px-2 py-1 text-xs text-fg"
+                            />
+                          </label>
+                          <label className="flex items-start gap-2 text-[10px] leading-relaxed text-fg-3">
+                            <input
+                              type="checkbox"
+                              checked={confirmed}
+                              onChange={(event) => onConfirmed(event.target.checked)}
+                              className="mt-0.5"
+                            />
+                            Confirm replay against the provider and audit log.
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => onReplay(row.id)}
+                              disabled={Boolean(busyId) || !note.trim() || !confirmed || !row.can_replay}
+                              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-accent-fg disabled:opacity-40"
+                            >
+                              Replay
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onAcknowledge(row.id)}
+                              disabled={Boolean(busyId) || !note.trim()}
+                              className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 disabled:opacity-40"
+                            >
+                              Acknowledge
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-xs text-fg-3">
+        <span>
+          {formatNumber(data?.total ?? 0)} unresolved · page {page} of {pageCount}
+        </span>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => onOffset(Math.max(0, offset - PAGE_SIZE))} disabled={offset === 0} className="rounded border border-line px-3 py-1.5 font-medium disabled:opacity-40">Previous</button>
+          <button type="button" onClick={() => onOffset(offset + PAGE_SIZE)} disabled={offset + PAGE_SIZE >= (data?.total ?? 0)} className="rounded border border-line px-3 py-1.5 font-medium disabled:opacity-40">Next</button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export default function AdminBilling() {
   const [days, setDays] = useState<number>(30)
+  const [windowStart, setWindowStart] = useState('')
+  const [windowEnd, setWindowEnd] = useState('')
   const [summary, setSummary] = useState<AdminBillingSummary | null>(null)
   const [webhooks, setWebhooks] = useState<AdminBillingWebhookList | null>(null)
+  const [reconciliation, setReconciliation] = useState<AdminBillingReconciliationList | null>(null)
   const [refunds, setRefunds] = useState<AdminRefundList | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState<{ status: string; acknowledged: AckFilter; q: string }>({
-    status: 'failed',
-    acknowledged: 'unacknowledged',
-    q: '',
+  const [filters, setFilters] = useState<{
+    status: string
+    acknowledged: AckFilter
+    q: string
+    receivedAfter: string
+    receivedBefore: string
+    deadLetter: boolean
+  }>(() => {
+    if (typeof window === 'undefined') {
+      return {
+        status: 'failed',
+        acknowledged: 'unacknowledged',
+        q: '',
+        receivedAfter: '',
+        receivedBefore: '',
+        deadLetter: true,
+      }
+    }
+    const params = new URLSearchParams(window.location.search)
+    // Attention deep links use webhook_status; `status` is accepted too so
+    // older bookmarks and hand-written links keep working.
+    const requestedStatus = params.get('webhook_status') ?? params.get('status')
+    const requestedAck = params.get('acknowledged')
+    return {
+      status: ['failed', 'processed', 'processing'].includes(requestedStatus ?? '')
+        ? (requestedStatus as string)
+        : 'failed',
+      acknowledged: requestedAck === 'all' || requestedAck === 'acknowledged'
+        ? (requestedAck as AckFilter)
+        : 'unacknowledged',
+      q: params.get('q')?.slice(0, 200) ?? '',
+      receivedAfter: '',
+      receivedBefore: '',
+      deadLetter: true,
+    }
+  })
+  const [attentionFilter] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    const subscription = params.get('subscription_status')
+    const payment = params.get('payment_status')
+    if (subscription) return `subscriptions: ${subscription}`
+    if (payment) return `payments: ${payment}`
+    return null
   })
   const [webhookOffset, setWebhookOffset] = useState(0)
+  const [reconciliationOffset, setReconciliationOffset] = useState(0)
   const [refundOffset, setRefundOffset] = useState(0)
   const [actionId, setActionId] = useState<string | null>(null)
+  const [reconciliationActionId, setReconciliationActionId] = useState<string | null>(null)
   const [refundActionId, setRefundActionId] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  const [replayConfirmed, setReplayConfirmed] = useState(false)
+  const [reconciliationNote, setReconciliationNote] = useState('')
+  const [reconciliationConfirmed, setReconciliationConfirmed] = useState(false)
   const [refundNote, setRefundNote] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -492,20 +780,28 @@ export default function AdminBilling() {
   const busyRef = useRef(false)
 
   const acknowledged = filters.acknowledged === 'all' ? undefined : filters.acknowledged === 'acknowledged'
+  const customWindow = Boolean(windowStart || windowEnd)
 
   const load = useCallback(async () => {
     const generation = ++requestGeneration.current
     setLoading(true)
     setError(null)
-    const [summaryResult, webhookResult, refundResult] = await Promise.allSettled([
-      apiClient.getAdminBillingSummary(days),
+    const [summaryResult, webhookResult, reconciliationResult, refundResult] = await Promise.allSettled([
+      apiClient.getAdminBillingSummary(days, {
+        start: dateBoundary(windowStart),
+        end: dateBoundary(windowEnd, true),
+      }),
       apiClient.getAdminBillingWebhooks({
         status: filters.status === 'all' ? undefined : filters.status,
         acknowledged,
+        received_after: dateBoundary(filters.receivedAfter),
+        received_before: dateBoundary(filters.receivedBefore, true),
+        dead_letter: filters.deadLetter,
         q: filters.q || undefined,
         limit: PAGE_SIZE,
         offset: webhookOffset,
       }),
+      apiClient.getAdminBillingReconciliation({ limit: PAGE_SIZE, offset: reconciliationOffset }),
       apiClient.getAdminRefundRequests({ limit: PAGE_SIZE, offset: refundOffset }),
     ])
     if (requestGeneration.current !== generation) return
@@ -514,13 +810,28 @@ export default function AdminBilling() {
     else failures.push('summary')
     if (webhookResult.status === 'fulfilled') setWebhooks(webhookResult.value)
     else failures.push('webhooks')
+    if (reconciliationResult.status === 'fulfilled') setReconciliation(reconciliationResult.value)
+    else failures.push('reconciliation queue')
     if (refundResult.status === 'fulfilled') setRefunds(refundResult.value)
     else failures.push('refund queue')
     if (failures.length) {
       setError(`Could not load ${failures.join(', ')}. Other sections show their last successful data.`)
     }
     setLoading(false)
-  }, [acknowledged, days, filters.q, filters.status, refundOffset, webhookOffset])
+  }, [
+    acknowledged,
+    days,
+    filters.deadLetter,
+    filters.q,
+    filters.receivedAfter,
+    filters.receivedBefore,
+    filters.status,
+    reconciliationOffset,
+    refundOffset,
+    webhookOffset,
+    windowEnd,
+    windowStart,
+  ])
 
   useEffect(() => {
     void load()
@@ -569,6 +880,56 @@ export default function AdminBilling() {
       setRefreshKey((value) => value + 1)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Acknowledgement failed')
+    } finally {
+      endBusy()
+    }
+  }
+
+  const replay = async (id: string) => {
+    if (!note.trim() || !replayConfirmed || !beginBusy(id)) return
+    try {
+      const result = await apiClient.replayAdminWebhook(id, note.trim(), true)
+      if (result.replayed) toast.success(result.message || 'Provider resource replayed')
+      else toast.message(result.message || 'Event was already processed')
+      setActionId(null)
+      setNote('')
+      setReplayConfirmed(false)
+      setRefreshKey((value) => value + 1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Replay failed')
+    } finally {
+      endBusy()
+    }
+  }
+
+  const acknowledgeReconciliation = async (id: string) => {
+    if (!reconciliationNote.trim() || !beginBusy(id)) return
+    try {
+      await apiClient.acknowledgeAdminReconciliation(id, reconciliationNote.trim())
+      toast.success('Reconciliation item acknowledged')
+      setReconciliationActionId(null)
+      setReconciliationNote('')
+      setReconciliationConfirmed(false)
+      setRefreshKey((value) => value + 1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Acknowledgement failed')
+    } finally {
+      endBusy()
+    }
+  }
+
+  const replayReconciliation = async (id: string) => {
+    if (!reconciliationNote.trim() || !reconciliationConfirmed || !beginBusy(id)) return
+    try {
+      const result = await apiClient.replayAdminReconciliation(id, reconciliationNote.trim(), true)
+      if (result.replayed) toast.success(result.message || 'Provider resource replayed')
+      else toast.message(result.message || 'Event was already processed')
+      setReconciliationActionId(null)
+      setReconciliationNote('')
+      setReconciliationConfirmed(false)
+      setRefreshKey((value) => value + 1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Replay failed')
     } finally {
       endBusy()
     }
@@ -675,14 +1036,39 @@ export default function AdminBilling() {
               <button
                 key={range}
                 type="button"
-                aria-pressed={days === range}
-                onClick={() => setDays(range)}
-                className={`rounded px-3 py-1.5 text-xs font-medium ${days === range ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'}`}
+                aria-pressed={!customWindow && days === range}
+                onClick={() => { setDays(range); setWindowStart(''); setWindowEnd('') }}
+                className={`rounded px-3 py-1.5 text-xs font-medium ${!customWindow && days === range ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'}`}
               >
                 {range} days
               </button>
             ))}
           </div>
+          <label className="flex items-center gap-1.5 text-[11px] text-fg-3">
+            Window
+            <input
+              type="date"
+              aria-label="Summary start date"
+              value={windowStart}
+              max={windowEnd || undefined}
+              onChange={(event) => setWindowStart(event.target.value)}
+              className="min-h-[38px] rounded-md border border-line bg-surface px-2 py-1 text-xs text-fg"
+            />
+            <span>to</span>
+            <input
+              type="date"
+              aria-label="Summary end date"
+              value={windowEnd}
+              min={windowStart || undefined}
+              onChange={(event) => setWindowEnd(event.target.value)}
+              className="min-h-[38px] rounded-md border border-line bg-surface px-2 py-1 text-xs text-fg"
+            />
+          </label>
+          {customWindow && (
+            <button type="button" onClick={() => { setWindowStart(''); setWindowEnd('') }} className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+              Clear window
+            </button>
+          )}
           <button type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading} className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-50">
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -695,9 +1081,21 @@ export default function AdminBilling() {
         </div>
       )}
 
+      {attentionFilter && (
+        <div className="rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-4 py-3 text-xs text-warn">
+          Attention filter · {attentionFilter}. Use the subscription and payment records below the KPI strip to review
+          the affected accounts; no automatic retry or refund is performed.
+        </div>
+      )}
+
       {summary && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <Kpi label="MRR" value={formatMoney(summary.mrr)} detail={`ARR ${formatMoney(summary.arr)}`} />
+          <Kpi label="MRR" value={formatMoney(summary.mrr)} detail={`ARR ${formatMoney(summary.arr)} · ${formatNumber(summary.mrr_minor)} paise`} />
+          <Kpi
+            label="ARPU"
+            value={formatMoney(summary.arpu)}
+            detail={`${formatNumber(summary.arpu_minor)} paise / ${formatNumber(summary.active_subscriptions)} active`}
+          />
           <Kpi
             label="Active subscriptions"
             value={formatNumber(summary.active_subscriptions)}
@@ -716,7 +1114,11 @@ export default function AdminBilling() {
             detail="Pending or approved"
             tone={summary.open_refund_requests > 0 ? 'text-warn' : 'text-fg'}
           />
-          <Kpi label="Gross revenue" value={formatMoney(summary.gross_revenue)} detail={`Last ${summary.period_days} days`} />
+          <Kpi
+            label="Gross revenue"
+            value={formatMoney(summary.gross_revenue)}
+            detail={`${formatNumber(summary.payments_count)} payments · ${summary.period_days} day window`}
+          />
         </div>
       )}
 
@@ -745,10 +1147,33 @@ export default function AdminBilling() {
         onOffset={setWebhookOffset}
         actionId={actionId}
         note={note}
-        onActionId={(id) => { setActionId(id); setNote('') }}
+        replayConfirmed={replayConfirmed}
+        onActionId={(id) => { setActionId(id); setNote(''); setReplayConfirmed(false) }}
         onNote={setNote}
+        onReplayConfirmed={setReplayConfirmed}
         onReconcile={reconcile}
+        onReplay={replay}
         onAcknowledge={acknowledge}
+        busyId={busyId}
+      />
+
+      <ReconciliationQueue
+        data={reconciliation}
+        loading={loading}
+        offset={reconciliationOffset}
+        onOffset={setReconciliationOffset}
+        actionId={reconciliationActionId}
+        note={reconciliationNote}
+        confirmed={reconciliationConfirmed}
+        onActionId={(id) => {
+          setReconciliationActionId(id)
+          setReconciliationNote('')
+          setReconciliationConfirmed(false)
+        }}
+        onNote={setReconciliationNote}
+        onConfirmed={setReconciliationConfirmed}
+        onAcknowledge={acknowledgeReconciliation}
+        onReplay={replayReconciliation}
         busyId={busyId}
       />
 

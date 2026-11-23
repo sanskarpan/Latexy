@@ -27,7 +27,7 @@ from ..core.feature_registry import PLAN_SKU_ALIASES
 from ..core.logging import get_logger
 from ..database.connection import get_async_db_session
 from ..database.models import PlanCatalog, PlanCatalogRevision
-from .entitlement_service import entitlement_service
+from .entitlement_service import _subject_parts, entitlement_service
 from .quota_policy_service import format_quota_policy, quota_policy_service
 
 logger = get_logger(__name__)
@@ -88,7 +88,7 @@ class PlanCatalogService:
         blob = {"kill": state["kill_switches"], "matrix": state["matrix"], "roles": state["role_matrix"]} if state else None
         if user_id and state is not None:
             subjects, blob = await entitlement_service._subject_snapshot((user_id,))
-            role, _ = subjects[user_id]
+            role, _plan, _overrides = _subject_parts(subjects[user_id])
         plans = {}
         for sku in settings.SUBSCRIPTION_PLANS:
             config = get_plan_config(sku)

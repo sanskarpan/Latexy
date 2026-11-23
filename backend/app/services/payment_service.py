@@ -1193,8 +1193,91 @@ class PaymentService:
             logger.error("Dodo webhook processing failed", extra={"error_type": type(exc).__name__})
             return {"success": False, "retryable": True, "error": "Webhook processing failed"}
 
+    async def replay_provider_event(
+        self, db: AsyncSession, *, event_type: str, resource_id: str,
+    ) -> dict[str, Any]:
+        """Replay a failed inbox event from the provider's current resource state.
+
+        Raw signed payloads are never retained, so replay deliberately re-reads
+        the authoritative resource by event type and resource ID. The normal
+        handlers perform all ownership, amount, and idempotency checks.
+        """
+        if not self.is_service_available() or not self.provider.available:
+            return {
+                "success": False,
+                "status": "unavailable",
+                "error": "The payment provider is not configured.",
+            }
+        try:
+            data = await self._fetch_provider_event_data(event_type, resource_id)
+        except DodoAPIError as exc:
+            logger.warning(
+                "Dodo replay lookup failed", extra={"status": exc.status_code, "code": exc.code}
+            )
+            return {
+                "success": False,
+                "status": "provider_unavailable",
+                "error": f"Provider lookup failed ({exc.status_code}, {exc.code}).",
+            }
+        except ValueError as exc:
+            return {"success": False, "status": "replay_failed", "error": str(exc)}
+        except Exception as exc:
+            logger.error("Dodo replay lookup failed", extra={"error_type": type(exc).__name__})
+            return {
+                "success": False,
+                "status": "provider_unavailable",
+                "error": "Provider lookup failed.",
+            }
+        return await self._process_webhook_event(
+            db,
+            event_type,
+            data,
+            {"timestamp": datetime.now(timezone.utc).isoformat()},
+            current_state_verified=True,
+        )
+
+    async def _fetch_provider_event_data(
+        self, event_type: str, resource_id: str,
+    ) -> dict[str, Any]:
+        if event_type.startswith("payment."):
+            resource = self._provider_resource(await self.provider.get_payment(resource_id))
+            expected = {"payment_id", "id"}
+            payload_type = "Payment"
+        elif event_type.startswith("subscription."):
+            resource = self._provider_resource(await self.provider.get_subscription(resource_id))
+            expected = {"subscription_id", "id"}
+            payload_type = "Subscription"
+        elif event_type.startswith("refund."):
+            resource = self._provider_resource(await self.provider.get_refund(resource_id))
+            expected = {"refund_id", "id"}
+            payload_type = "Refund"
+        else:
+            raise ValueError("This event type cannot be replayed from the provider")
+        if not isinstance(resource, dict):
+            raise ValueError("The provider returned an unreadable resource")
+        returned_ids = {
+            str(resource.get(key) or "") for key in expected if resource.get(key) is not None
+        }
+        if not returned_ids or resource_id not in returned_ids:
+            raise ValueError("The provider resource did not match the failed event")
+        data = dict(resource)
+        data["payload_type"] = payload_type
+        id_field = {
+            "Payment": "payment_id",
+            "Subscription": "subscription_id",
+            "Refund": "refund_id",
+        }[payload_type]
+        data[id_field] = resource_id
+        return data
+
     async def _process_webhook_event(
-        self, db: AsyncSession, event_type: str, data: dict[str, Any], envelope: dict[str, Any],
+        self,
+        db: AsyncSession,
+        event_type: str,
+        data: dict[str, Any],
+        envelope: dict[str, Any],
+        *,
+        current_state_verified: bool = False,
     ) -> dict[str, Any]:
         if data.get("payload_type") not in {"Payment", "Subscription", "Refund"}:
             return {"success": False, "error": "Unsupported webhook payload type"}
@@ -1203,7 +1286,9 @@ class PaymentService:
             return {"success": False, "error": "Invalid webhook customer"}
         if event_type.startswith("payment."):
             if event_type == "payment.succeeded":
-                return await self._handle_payment_succeeded(db, data, envelope)
+                return await self._handle_payment_succeeded(
+                    db, data, envelope, current_state_verified=current_state_verified
+                )
             if event_type in {"payment.failed", "payment.cancelled"}:
                 # A failed/cancelled charge is not proof that its subscription
                 # is terminal. Dodo uses subscription.failed for terminal

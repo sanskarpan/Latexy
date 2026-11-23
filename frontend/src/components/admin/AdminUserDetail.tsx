@@ -61,7 +61,10 @@ export default function AdminUserDetail({
   const [savedPlan, setSavedPlan] = useState<string | null>(null)
   const [savedStatus, setSavedStatus] = useState<string | null>(null)
   const [dimension, setDimension] = useState<'' | 'compilations' | 'optimizations' | 'ai_assists'>('')
-  const [revealed, setRevealed] = useState<{ email: string | null; name: string | null } | null>(null)
+  const [featureKey, setFeatureKey] = useState('')
+  const [trialDays, setTrialDays] = useState(7)
+  const [lastResult, setLastResult] = useState<{ label: string; before: string; after: string } | null>(null)
+  const [revealed, setRevealed] = useState<{ email?: string | null; name?: string | null }>({})
   const [busy, setBusy] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -96,10 +99,12 @@ export default function AdminUserDetail({
     action: string,
     call: () => Promise<unknown>,
     successMessage: string,
+    onResult?: (value: unknown) => void,
   ) => {
     setBusy(action)
     try {
-      await call()
+      const result = await call()
+      if (onResult) onResult(result)
       toast.success(successMessage)
       await load()
     } catch (err) {
@@ -117,14 +122,14 @@ export default function AdminUserDetail({
     return reason.trim()
   }
 
-  const revealPii = async () => {
+  const revealPii = async (field: 'email' | 'name') => {
     const cleaned = requireReason()
     if (!cleaned) return
-    setBusy('reveal')
+    setBusy(`reveal-${field}`)
     try {
-      const next = await apiClient.revealAdminUserPii(userId, cleaned)
-      setRevealed(next)
-      toast.success('PII revealed and recorded in the audit log')
+      const next = await apiClient.revealAdminUserPii(userId, field, cleaned)
+      setRevealed((prev) => ({ ...prev, [next.field]: next.value }))
+      toast.success(`${field === 'email' ? 'Email' : 'Name'} revealed and recorded in the audit log`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'PII reveal failed')
     } finally {
@@ -148,7 +153,16 @@ export default function AdminUserDetail({
     const cleaned = requireReason()
     if (!cleaned) return
     if (!window.confirm(`Reset trial usage for ${data?.user.email ?? 'this user'}?`)) return
-    await run('trial', () => apiClient.resetAdminUserTrial(userId, cleaned), 'Trial reset and audited')
+    await run(
+      'trial',
+      () => apiClient.resetAdminUserTrial(userId, cleaned),
+      'Trial reset and audited',
+      () => setLastResult({
+        label: 'Trial reset',
+        before: data?.trial.trial_used ? 'used' : 'eligible',
+        after: 'eligible',
+      }),
+    )
   }
 
   const resetQuota = async () => {
@@ -160,6 +174,84 @@ export default function AdminUserDetail({
       'quota',
       () => apiClient.resetAdminUserQuota(userId, { reason: cleaned, dimension: dimension || undefined }),
       'Quota counters reset and audited',
+      (value) => {
+        const result = value as {
+          results?: Array<{ dimension: string; before_used: number; after_used: number; window: string; period: string }>
+        }
+        setLastResult({
+          label: 'Quota reset',
+          before: (result.results ?? [])
+            .map((row) => `${row.dimension} ${row.before_used} (${row.window} ${row.period})`)
+            .join(' · ') || 'no counters',
+          after: (result.results ?? [])
+            .map((row) => `${row.dimension} ${row.after_used} (${row.window} ${row.period})`)
+            .join(' · ') || 'no counters',
+        })
+      },
+    )
+  }
+
+  const overrideFeature = async (enabled: boolean) => {
+    if (!featureKey) {
+      toast.error('Choose a gateable feature first')
+      return
+    }
+    const cleaned = requireReason()
+    if (!cleaned) return
+    const label = data?.entitlements.available_features.find((feature) => feature.key === featureKey)?.label ?? featureKey
+    if (!window.confirm(`${enabled ? 'Grant' : 'Revoke'} ${label} for ${data?.user.email ?? 'this user'}?`)) return
+    await run(
+      enabled ? 'feature-grant' : 'feature-revoke',
+      () => enabled
+        ? apiClient.grantAdminUserFeature(userId, { feature_key: featureKey, reason: cleaned })
+        : apiClient.revokeAdminUserFeature(userId, { feature_key: featureKey, reason: cleaned }),
+      `${label} ${enabled ? 'granted' : 'revoked'} and audited`,
+      (value) => {
+        const result = value as { effective?: boolean; before?: { override?: boolean | null }; after?: { override?: boolean | null } }
+        setLastResult({
+          label: `${label} override`,
+          before: result.before?.override == null ? 'plan default' : result.before.override ? 'granted' : 'revoked',
+          after: `${result.after?.override ? 'granted' : 'revoked'} · effective ${result.effective ? 'on' : 'off'}`,
+        })
+      },
+    )
+  }
+
+  const extendTrial = async () => {
+    const cleaned = requireReason()
+    if (!cleaned) return
+    if (!window.confirm(`Extend ${data?.user.email ?? 'this user'}'s trial by ${trialDays} days?`)) return
+    await run(
+      'trial-extend',
+      () => apiClient.extendAdminUserTrial(userId, { days: trialDays, reason: cleaned }),
+      'Trial extended and audited',
+      (value) => {
+        const result = value as { before?: { extended_until?: string | null }; after?: { extended_until?: string | null } }
+        setLastResult({
+          label: 'Trial extension',
+          before: result.before?.extended_until ? formatDateTime(result.before.extended_until) : 'no extension',
+          after: result.after?.extended_until ? formatDateTime(result.after.extended_until) : 'no extension',
+        })
+      },
+    )
+  }
+
+  const setTrialEligibility = async (eligible: boolean) => {
+    const cleaned = requireReason()
+    if (!cleaned) return
+    if (!window.confirm(`${eligible ? 'Make' : 'Make ineligible for'} ${data?.user.email ?? 'this user'} ${eligible ? 'trial-eligible' : 'trials'}?`)) return
+    await run(
+      'trial-eligibility',
+      () => apiClient.setAdminUserTrialEligibility(userId, { eligible, reason: cleaned }),
+      `Trial eligibility ${eligible ? 'enabled' : 'disabled'}`,
+      (value) => {
+        const result = value as { before?: { eligible?: boolean }; after?: { eligible?: boolean } }
+        setLastResult({
+          label: 'Trial eligibility',
+          before: result.before?.eligible ? 'eligible' : 'ineligible',
+          after: result.after?.eligible ? 'eligible' : 'ineligible',
+        })
+      },
     )
   }
 
@@ -185,6 +277,50 @@ export default function AdminUserDetail({
       'keys',
       () => apiClient.revokeAdminUserApiKeys(userId, { reason: cleaned, scope: 'all' }),
       'API keys deactivated',
+    )
+  }
+
+  const revokeSession = async (sessionId: string) => {
+    const cleaned = requireReason()
+    if (!cleaned) return
+    if (!window.confirm('Revoke this session? That device is signed out on its next request.')) return
+    await run(
+      `session-${sessionId}`,
+      () => apiClient.revokeAdminUserSession(userId, sessionId, cleaned),
+      'Session revoked and audited',
+    )
+  }
+
+  const revokePasskey = async (passkeyId: string) => {
+    const cleaned = requireReason()
+    if (!cleaned) return
+    if (!window.confirm('Revoke this passkey? The credential cannot be used to sign in again.')) return
+    await run(
+      `passkey-${passkeyId}`,
+      () => apiClient.revokeAdminUserPasskey(userId, passkeyId, cleaned),
+      'Passkey revoked and audited',
+    )
+  }
+
+  const revokeByokKey = async (keyId: string) => {
+    const cleaned = requireReason()
+    if (!cleaned) return
+    if (!window.confirm('Deactivate this BYOK key? Requests using it will fail immediately.')) return
+    await run(
+      `byok-${keyId}`,
+      () => apiClient.revokeAdminUserByokKey(userId, keyId, cleaned),
+      'BYOK key deactivated and audited',
+    )
+  }
+
+  const revokeDeveloperKey = async (keyId: string) => {
+    const cleaned = requireReason()
+    if (!cleaned) return
+    if (!window.confirm('Deactivate this developer key? API calls using it will fail immediately.')) return
+    await run(
+      `developer-${keyId}`,
+      () => apiClient.revokeAdminUserDeveloperKey(userId, keyId, cleaned),
+      'Developer key deactivated and audited',
     )
   }
 
@@ -218,8 +354,10 @@ export default function AdminUserDetail({
   const planOptions = Array.from(new Set([...PLAN_OPTIONS, user.subscription_plan, plan].filter(Boolean))) as string[]
   const planDirty = savedPlan !== null && savedStatus !== null
     && (plan !== savedPlan || status !== savedStatus)
-  const email = revealed?.email ?? user.email
-  const name = revealed?.name ?? user.name
+  const email = revealed.email !== undefined ? revealed.email : user.email
+  const name = revealed.name !== undefined ? revealed.name : user.name
+  const emailRevealed = revealed.email !== undefined
+  const nameRevealed = revealed.name !== undefined
   const activeSubscriptions = data.billing.subscriptions.filter((row) => ['active', 'cancel_scheduled'].includes(text(row.status)))
   const failedCompiles = data.production.failed_compilations
 
@@ -233,7 +371,7 @@ export default function AdminUserDetail({
               <Pill label={user.role} ok={user.role === 'admin'} />
               <Pill label={user.email_verified ? 'verified' : 'unverified'} ok={user.email_verified} />
               {user.two_factor_enabled && <Pill label="2FA" ok />}
-              {user.pii_masked && !revealed && <Pill label="PII masked" ok={false} />}
+              {user.pii_masked && !(emailRevealed && nameRevealed) && <Pill label="PII masked" ok={false} />}
             </div>
             <p className="mt-1 break-all font-mono text-xs text-fg-2">{email || 'No email'}</p>
             <p className="mt-1 text-[11px] text-fg-3">
@@ -285,9 +423,25 @@ export default function AdminUserDetail({
           <div className="mt-3 grid gap-3 lg:grid-cols-3">
             <div className="rounded-md border border-line bg-surface-2/40 p-3">
               <p className="text-xs font-semibold text-fg">Identity</p>
-              <button type="button" onClick={() => void revealPii()} disabled={Boolean(busy) || Boolean(revealed)} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
-                {revealed ? 'PII revealed' : 'Reveal email and name'}
-              </button>
+              <p className="mt-1 text-[10px] text-fg-3">Reveal one field at a time. Each reveal is audited.</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void revealPii('email')}
+                  disabled={Boolean(busy) || emailRevealed}
+                  className="w-full rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                >
+                  {emailRevealed ? 'Email revealed' : 'Reveal email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void revealPii('name')}
+                  disabled={Boolean(busy) || nameRevealed}
+                  className="w-full rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                >
+                  {nameRevealed ? 'Name revealed' : 'Reveal name'}
+                </button>
+              </div>
             </div>
             <div className="rounded-md border border-line bg-surface-2/40 p-3">
               <p className="text-xs font-semibold text-fg">Plan override</p>
@@ -317,6 +471,59 @@ export default function AdminUserDetail({
                 <button type="button" onClick={() => void resetQuota()} disabled={Boolean(busy)} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Reset quota</button>
                 <button type="button" onClick={() => void resetTrial()} disabled={Boolean(busy)} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Reset trial</button>
               </div>
+              <div className="mt-3 border-t border-line pt-2">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-fg-3" htmlFor="trial-extension-days">Trial extension</label>
+                <div className="mt-1 flex gap-2">
+                  <select id="trial-extension-days" value={trialDays} onChange={(event) => setTrialDays(Number(event.target.value))} disabled={Boolean(busy)} className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg disabled:opacity-50">
+                    {[3, 7, 14, 30, 90].map((days) => <option key={days} value={days}>{days} days</option>)}
+                  </select>
+                  <button type="button" onClick={() => void extendTrial()} disabled={Boolean(busy)} className="rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">Extend</button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-fg-3">
+                  <span>{data.trial.eligible ? 'Trial eligible' : 'Trial used'}{data.trial.extended_until ? ` · until ${formatDateTime(data.trial.extended_until)}` : ''}</span>
+                  <button type="button" onClick={() => void setTrialEligibility(!data.trial.eligible)} disabled={Boolean(busy)} className="rounded border border-line px-2 py-1 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
+                    {data.trial.eligible ? 'Set ineligible' : 'Set eligible'}
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 border-t border-line pt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Current quota</p>
+                <ul className="mt-1 space-y-1">
+                  {Object.entries(data.quota.dimensions).map(([key, row]) => (
+                    <li key={key} className="flex items-center justify-between gap-2 text-[10px] text-fg-3">
+                      <span>{key.replace(/_/g, ' ')}</span>
+                      <span className="font-mono text-fg-2">
+                        {row.used == null ? 'unknown' : row.used} / {row.limit == null ? '∞' : row.limit} · {row.window}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="rounded-md border border-line bg-surface-2/40 p-3">
+              <p className="text-xs font-semibold text-fg">Feature grant / revoke</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-fg-3">
+                Per-user overrides supplement the plan matrix. Global switches and role restrictions still apply.
+              </p>
+              <select aria-label="Feature override key" value={featureKey} onChange={(event) => setFeatureKey(event.target.value)} disabled={Boolean(busy)} className="mt-2 w-full rounded border border-line bg-bg px-2 py-1.5 text-xs text-fg disabled:opacity-50">
+                <option value="">Choose feature…</option>
+                {data.entitlements.available_features.map((feature) => (
+                  <option key={feature.key} value={feature.key}>
+                    {feature.label} ({feature.key}) · {data.entitlements.effective[feature.key] ? 'effective on' : 'effective off'}
+                    {data.entitlements.overrides[feature.key] ? ` · override ${data.entitlements.overrides[feature.key].enabled ? 'granted' : 'revoked'}` : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => void overrideFeature(true)} disabled={Boolean(busy) || !featureKey} className="rounded border border-ok/30 px-2 py-1.5 text-[10px] font-medium text-ok hover:bg-ok/5 disabled:opacity-40">Grant</button>
+                <button type="button" onClick={() => void overrideFeature(false)} disabled={Boolean(busy) || !featureKey} className="rounded border border-err/30 px-2 py-1.5 text-[10px] font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke</button>
+              </div>
+              {featureKey && (
+                <p className="mt-2 text-[10px] text-fg-3">
+                  Effective now: {data.entitlements.effective[featureKey] ? 'allowed' : 'denied'}
+                  {data.entitlements.overrides[featureKey] ? ` · stored override ${data.entitlements.overrides[featureKey].enabled ? 'grant' : 'revoke'}` : ' · plan default'}
+                </p>
+              )}
             </div>
             <div className="rounded-md border border-line bg-surface-2/40 p-3 lg:col-span-3">
               <p className="text-xs font-semibold text-fg">Security revocation</p>
@@ -330,8 +537,71 @@ export default function AdminUserDetail({
                 <button type="button" onClick={() => void revokePasskeys()} disabled={Boolean(busy)} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke passkeys</button>
                 <button type="button" onClick={() => void revokeKeys()} disabled={Boolean(busy)} className="rounded border border-err/30 px-3 py-1.5 text-xs font-medium text-err hover:bg-err/5 disabled:opacity-40">Deactivate API keys</button>
               </div>
+              <p className="mt-3 text-[10px] text-fg-3">
+                Or revoke one credential below. Every row uses the shared reason above and is audited.
+              </p>
+              <div className="mt-2 grid gap-3 lg:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Sessions</p>
+                  {data.security.sessions.map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-2 border-t border-line py-1.5">
+                      <p className="min-w-0 text-[11px] text-fg-2">
+                        <span className="block truncate">{summarize(row.user_agent, 60)}</span>
+                        <span className="block text-[10px] text-fg-3">created {formatDateTime(row.created_at)} · expires {formatDateTime(row.expires_at)}</span>
+                      </p>
+                      <button type="button" onClick={() => void revokeSession(row.id)} disabled={Boolean(busy)} className="shrink-0 rounded border border-err/30 px-2 py-1 text-[10px] font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke</button>
+                    </div>
+                  ))}
+                  {data.security.sessions.length === 0 && <p className="border-t border-line py-1.5 text-[11px] text-fg-3">No active sessions.</p>}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Passkeys</p>
+                  {data.security.passkeys.map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-2 border-t border-line py-1.5">
+                      <p className="min-w-0 text-[11px] text-fg-2">
+                        <span className="block truncate">{text(row.name) === '—' ? 'Unnamed passkey' : row.name}</span>
+                        <span className="block text-[10px] text-fg-3">{text(row.device_type)} · {row.backed_up ? 'synced' : 'device-bound'} · created {formatDateTime(row.created_at)}</span>
+                      </p>
+                      <button type="button" onClick={() => void revokePasskey(row.id)} disabled={Boolean(busy)} className="shrink-0 rounded border border-err/30 px-2 py-1 text-[10px] font-medium text-err hover:bg-err/5 disabled:opacity-40">Revoke</button>
+                    </div>
+                  ))}
+                  {data.security.passkeys.length === 0 && <p className="border-t border-line py-1.5 text-[11px] text-fg-3">No passkeys.</p>}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">BYOK keys</p>
+                  {data.security.byok_keys.map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-2 border-t border-line py-1.5">
+                      <p className="min-w-0 text-[11px] text-fg-2">
+                        <span className="block truncate">{row.provider} · {text(row.name)}</span>
+                        <span className="block text-[10px] text-fg-3">{row.is_active ? 'active' : 'revoked'} · created {formatDateTime(row.created_at)}</span>
+                      </p>
+                      <button type="button" onClick={() => void revokeByokKey(row.id)} disabled={Boolean(busy) || !row.is_active} className="shrink-0 rounded border border-err/30 px-2 py-1 text-[10px] font-medium text-err hover:bg-err/5 disabled:opacity-40">{row.is_active ? 'Deactivate' : 'Revoked'}</button>
+                    </div>
+                  ))}
+                  {data.security.byok_keys.length === 0 && <p className="border-t border-line py-1.5 text-[11px] text-fg-3">No BYOK keys.</p>}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Developer keys</p>
+                  {data.security.developer_keys.map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-2 border-t border-line py-1.5">
+                      <p className="min-w-0 text-[11px] text-fg-2">
+                        <span className="block truncate font-mono">{row.prefix}… · {text(row.name)}</span>
+                        <span className="block text-[10px] text-fg-3">{row.is_active ? 'active' : 'revoked'} · {formatNumber(row.request_count)} requests · last used {formatDateTime(row.last_used_at)}</span>
+                      </p>
+                      <button type="button" onClick={() => void revokeDeveloperKey(row.id)} disabled={Boolean(busy) || !row.is_active} className="shrink-0 rounded border border-err/30 px-2 py-1 text-[10px] font-medium text-err hover:bg-err/5 disabled:opacity-40">{row.is_active ? 'Deactivate' : 'Revoked'}</button>
+                    </div>
+                  ))}
+                  {data.security.developer_keys.length === 0 && <p className="border-t border-line py-1.5 text-[11px] text-fg-3">No developer keys.</p>}
+                </div>
+              </div>
             </div>
           </div>
+          {lastResult && (
+            <div role="status" className="mt-3 rounded-md border border-line bg-surface-2/60 px-3 py-2 text-[11px] text-fg-3">
+              <p className="font-semibold text-fg-2">{lastResult.label} · before → after</p>
+              <p className="mt-1 break-words">{lastResult.before} → {lastResult.after}</p>
+            </div>
+          )}
         </Section> : (
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2/50 px-4 py-3 text-xs text-fg-3">
             Support access is read-only. PII stays masked and support actions require an admin.

@@ -661,6 +661,14 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
                             verified
                           </span>
                         )}
+                        {u.pii_masked && (
+                          <span
+                            title="Email and name are masked. Use User 360 to reveal one field with an audited reason."
+                            className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-fg-3"
+                          >
+                            PII masked
+                          </span>
+                        )}
                       </div>
                       {u.name && <p className="mt-0.5 text-xs text-fg-3">{u.name}</p>}
                     </td>

@@ -11,9 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..middleware.auth_middleware import require_admin_actor, require_support_actor
+from ..middleware.auth_middleware import require_admin_actor, require_admin_or_support
 from ..services import admin_user_service
-from ..services.admin_audit_service import AdminActor, audit_row_summary, list_admin_audit
+from ..services.admin_audit_service import (
+    DEFAULT_AUDIT_PAGE_SIZE,
+    MAX_AUDIT_PAGE_SIZE,
+    AdminActor,
+    audit_row_summary,
+    list_admin_audit,
+)
 from ..services.admin_billing_service import admin_billing_service
 from ..services.admin_growth_service import admin_growth_service
 
@@ -55,6 +61,12 @@ class RefundExecuteRequest(BaseModel):
 
 class PiiRevealRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    field: Literal["email", "name"]
+    reason: Reason
+
+
+class CredentialRevokeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     reason: Reason
 
 
@@ -74,6 +86,30 @@ class UserQuotaResetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: Reason
     dimension: Optional[Literal["compilations", "optimizations", "ai_assists"]] = None
+    # Optional for backward compatibility with existing clients; when supplied
+    # it must be the explicit boolean true.
+    confirm: Optional[Literal[True]] = None
+
+
+class UserFeatureOverrideRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feature_key: str = Field(min_length=1, max_length=120)
+    reason: Reason
+    confirm: Literal[True]
+
+
+class UserTrialExtendRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Reason
+    days: int = Field(ge=1, le=365)
+    confirm: Literal[True]
+
+
+class UserTrialEligibilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Reason
+    eligible: bool
+    confirm: Literal[True]
 
 
 class UserApiKeyRevokeRequest(BaseModel):
@@ -101,10 +137,22 @@ def _http_error(exc: Exception) -> HTTPException:
 @router.get("/admin/billing/summary")
 async def get_admin_billing_summary(
     days: int = Query(30, ge=1, le=365),
+    start: Optional[datetime] = Query(None),
+    end: Optional[datetime] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_billing_service.summary(db, days=days)
+    try:
+        return await admin_billing_service.summary(
+            db,
+            days=days,
+            start=start or start_date,
+            end=end or end_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/admin/billing/webhooks")
@@ -112,21 +160,30 @@ async def list_admin_billing_webhooks(
     status: Optional[str] = Query(None, max_length=24),
     event_type: Optional[str] = Query(None, max_length=120),
     acknowledged: Optional[bool] = Query(None),
+    received_after: Optional[datetime] = Query(None),
+    received_before: Optional[datetime] = Query(None),
+    dead_letter: Optional[bool] = Query(None),
     q: Optional[str] = Query(None, max_length=200),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    items, total = await admin_billing_service.list_webhooks(
-        db,
-        status=status,
-        event_type=event_type,
-        acknowledged=acknowledged,
-        q=q,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        items, total = await admin_billing_service.list_webhooks(
+            db,
+            status=status,
+            event_type=event_type,
+            acknowledged=acknowledged,
+            received_after=received_after,
+            received_before=received_before,
+            dead_letter=dead_letter,
+            q=q,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
@@ -274,17 +331,43 @@ async def reconcile_admin_refund_request(
 async def get_admin_user_360(
     user_id: str,
     db: AsyncSession = Depends(get_db),
-    actor: AdminActor = Depends(require_support_actor),
+    actor: AdminActor = Depends(require_admin_or_support),
 ) -> dict[str, Any]:
     try:
         return await admin_user_service.build_user_360(
-            db, user_id=user_id, actor_role=actor.role, reveal=False
+            db, user_id=user_id, actor_role=actor.role
         )
     except Exception as exc:
         raise _http_error(exc) from exc
 
 
-@router.post("/admin/users/{user_id}/pii/reveal")
+async def _reveal_admin_user_pii(
+    user_id: str,
+    body: PiiRevealRequest,
+    request: Request,
+    db: AsyncSession,
+    actor: AdminActor,
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.reveal_user_pii(
+            db,
+            user_id=user_id,
+            field=body.field,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except admin_user_service.RevealRateLimited as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="PII reveal rate limit exceeded; try again later",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/reveal-pii")
 async def reveal_admin_user_pii(
     user_id: str,
     body: PiiRevealRequest,
@@ -292,12 +375,19 @@ async def reveal_admin_user_pii(
     db: AsyncSession = Depends(get_db),
     actor: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    try:
-        return await admin_user_service.reveal_user_pii(
-            db, user_id=user_id, actor=actor, reason=body.reason, request=request
-        )
-    except Exception as exc:
-        raise _http_error(exc) from exc
+    return await _reveal_admin_user_pii(user_id, body, request, db, actor)
+
+
+@router.post("/admin/users/{user_id}/pii/reveal", deprecated=True)
+async def reveal_admin_user_pii_legacy(
+    user_id: str,
+    body: PiiRevealRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Deprecated alias; same single-field contract as /reveal-pii."""
+    return await _reveal_admin_user_pii(user_id, body, request, db, actor)
 
 
 @router.post("/admin/users/{user_id}/plan")
@@ -314,6 +404,92 @@ async def change_admin_user_plan(
             user_id=user_id,
             plan=body.plan,
             status=body.status,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/features/grant")
+async def grant_admin_user_feature(
+    user_id: str,
+    body: UserFeatureOverrideRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.set_user_feature_override(
+            db,
+            user_id=user_id,
+            feature_key=body.feature_key.strip().lower(),
+            enabled=True,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/features/revoke")
+async def revoke_admin_user_feature(
+    user_id: str,
+    body: UserFeatureOverrideRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.set_user_feature_override(
+            db,
+            user_id=user_id,
+            feature_key=body.feature_key.strip().lower(),
+            enabled=False,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/trial/extend")
+async def extend_admin_user_trial(
+    user_id: str,
+    body: UserTrialExtendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.extend_user_trial(
+            db,
+            user_id=user_id,
+            days=body.days,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/trial/eligibility")
+async def set_admin_user_trial_eligibility(
+    user_id: str,
+    body: UserTrialEligibilityRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.set_user_trial_eligibility(
+            db,
+            user_id=user_id,
+            eligible=body.eligible,
             actor=actor,
             reason=body.reason,
             request=request,
@@ -407,6 +583,94 @@ async def revoke_admin_user_api_keys(
         raise _http_error(exc) from exc
 
 
+@router.post("/admin/users/{user_id}/sessions/{session_id}/revoke")
+async def revoke_admin_user_session(
+    user_id: str,
+    session_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_session(
+            db,
+            user_id=user_id,
+            session_id=session_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/passkeys/{passkey_id}/revoke")
+async def revoke_admin_user_passkey(
+    user_id: str,
+    passkey_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_passkey(
+            db,
+            user_id=user_id,
+            passkey_id=passkey_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/byok-keys/{key_id}/revoke")
+async def revoke_admin_user_byok_key(
+    user_id: str,
+    key_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_byok_key(
+            db,
+            user_id=user_id,
+            key_id=key_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/developer-keys/{key_id}/revoke")
+async def revoke_admin_user_developer_key(
+    user_id: str,
+    key_id: str,
+    body: CredentialRevokeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.revoke_user_developer_key(
+            db,
+            user_id=user_id,
+            key_id=key_id,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 # ------------------------------------------------------------------ #
 #  Activation, retention, AI cost, and dimension-filtered series       #
 # ------------------------------------------------------------------ #
@@ -435,26 +699,50 @@ async def get_admin_activation(
 @router.get("/admin/analytics/retention")
 async def get_admin_retention(
     weeks: int = Query(8, ge=1, le=26),
+    signup_month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_growth_service.retention(db, weeks=weeks)
+    try:
+        return await admin_growth_service.retention(db, weeks=weeks, signup_month=signup_month)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/admin/analytics/ai-cost")
 async def get_admin_ai_cost(
     days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    feature: Optional[str] = Query(None, max_length=120),
+    persona: Optional[str] = Query(None, max_length=64),
+    invoice_total_minor: Optional[int] = Query(None, ge=0, le=1_000_000_000),
+    invoice_reference: Optional[str] = Query(None, max_length=120),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_growth_service.ai_cost(db, days=days)
+    return await admin_growth_service.ai_cost(
+        db,
+        days=days,
+        plan=plan,
+        feature=feature,
+        persona=persona,
+        invoice_total_minor=invoice_total_minor,
+        invoice_reference=invoice_reference,
+    )
 
 
 @router.get("/admin/analytics/timeseries")
 async def get_admin_analytics_timeseries(
     days: int = Query(30, ge=1, le=365),
-    metric: Literal["events", "compilations", "optimizations", "revenue"] = Query("events"),
-    dimension: Optional[Literal["plan", "provider", "feature"]] = Query(None),
+    metric: Literal[
+        "events",
+        "compilations",
+        "optimizations",
+        "revenue",
+        "new_users",
+        "active_users",
+    ] = Query("events"),
+    dimension: Optional[Literal["plan", "provider", "feature", "signup_cohort"]] = Query(None),
     value: Optional[str] = Query(None, max_length=120),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
@@ -481,25 +769,37 @@ async def get_admin_audit_log(
     target_id: Optional[str] = Query(None, max_length=255),
     created_after: Optional[datetime] = Query(None),
     created_before: Optional[datetime] = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_AUDIT_PAGE_SIZE, ge=1, le=MAX_AUDIT_PAGE_SIZE),
+    cursor: Optional[str] = Query(None, max_length=500),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    rows, total = await list_admin_audit(
-        db,
-        actor_user_id=actor_user_id,
-        action=action,
-        target_type=target_type,
-        target_id=target_id,
-        created_after=created_after,
-        created_before=created_before,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        rows, total, has_more, next_cursor = await list_admin_audit(
+            db,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "items": [audit_row_summary(row) for row in rows],
         "total": total,
         "limit": limit,
-        "offset": offset,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "filters": {
+            "actor_user_id": actor_user_id,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "created_after": created_after.isoformat() if created_after else None,
+            "created_before": created_before.isoformat() if created_before else None,
+        },
     }

@@ -8,7 +8,6 @@ from typing import Any
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..core.logging import get_logger
 from ..database import models
 from .admin_audit_service import AdminActor, record_admin_audit
@@ -199,33 +198,12 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
             payload={"count": stuck},
         )
 
-    async def spend_cap() -> dict[str, Any] | None:
-        # Monthly spend cap only. Per-user outliers stay in the Growth tab and
-        # are never copied into alert payloads because they identify an account.
-        if float(settings.ADMIN_AI_MONTHLY_SPEND_CAP_USD or 0) <= 0:
-            return None
-        from .admin_growth_service import admin_growth_service
+    async def spend_signals() -> list[dict[str, Any]]:
+        # Spend signals are aggregate-only. Per-user cap and anomaly details stay
+        # in the Growth tab; the alert strip never receives account identifiers.
+        from .admin_ai_cost_service import collect_spend_signals
 
-        cost = await admin_growth_service.ai_cost(db, days=30)
-        cap_alert = next(
-            (alert for alert in cost.get("alerts", []) if alert.get("code") == "ai_monthly_cap"),
-            None,
-        )
-        if not cap_alert:
-            return None
-        month_key = now.strftime("%Y-%m")
-        return _signal(
-            kind="spend.monthly_cap",
-            severity="critical" if cap_alert.get("severity") == "critical" else "medium",
-            owner="Growth",
-            title="Estimated AI spend reached the monthly cap",
-            dedupe_key=f"spend.monthly_cap:{month_key}",
-            payload={
-                "value_usd": cap_alert.get("value"),
-                "threshold_usd": cap_alert.get("threshold"),
-                "month": month_key,
-            },
-        )
+        return await collect_spend_signals(db, now)
 
     async def unverified_domains() -> dict[str, Any] | None:
         count = int(
@@ -288,20 +266,22 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
         ("billing.failed_payments", failed_payments),
         ("billing.past_due", past_due),
         ("jobs.stuck", stuck_jobs),
-        ("spend.monthly_cap", spend_cap),
+        ("spend.caps", spend_signals),
         ("domains.unverified", unverified_domains),
         ("capacity.redis", redis_capacity),
     )
     for rule_name, rule in rules:
         try:
             async with db.begin_nested():
-                signal = await rule()
+                signal_or_signals = await rule()
         except Exception as exc:
             # Rule names and exception classes only: no provider text or PII.
             logger.warning("Admin alert rule %s failed (%s)", rule_name, type(exc).__name__)
             continue
-        if signal:
-            signals.append(signal)
+        if isinstance(signal_or_signals, list):
+            signals.extend(signal_or_signals)
+        elif signal_or_signals:
+            signals.append(signal_or_signals)
 
     return signals
 

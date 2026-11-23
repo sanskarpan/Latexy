@@ -7,11 +7,15 @@ import {
   type AdminAiCostResponse,
   type AdminFilteredTimeseriesResponse,
   type AdminRetentionResponse,
+  type AdminRetentionRow,
+  type AdminTimeseriesDimension,
+  type AdminTimeseriesMetric,
 } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import { formatDateTime, formatMoney, formatNumber, percentage } from './admin-format'
 
-const RANGES = [30, 90] as const
+const RANGES = [7, 30, 90] as const
+const RETENTION_WEEKS = [8, 12, 26] as const
 const PLAN_OPTIONS = ['', 'free', 'basic', 'pro', 'byok', 'team', 'student']
 
 function Card({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
@@ -24,16 +28,53 @@ function Card({ label, value, detail, tone }: { label: string; value: string; de
   )
 }
 
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return '—'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3_600) return `${(seconds / 60).toFixed(1)}m`
+  if (seconds < 86_400) return `${(seconds / 3_600).toFixed(1)}h`
+  return `${(seconds / 86_400).toFixed(1)}d`
+}
+
+function retentionCell(cell: { numerator: number; denominator: number; rate: number | null }): string {
+  return `${formatNumber(cell.numerator)} / ${formatNumber(cell.denominator)} · ${
+    cell.rate == null ? '—' : `${cell.rate}%`
+  }`
+}
+
+function cohortLabel(row: AdminRetentionRow): string {
+  return row.signup_month ?? row.week_start ?? '—'
+}
+
 function Funnel({ data }: { data: AdminActivationResponse }) {
   const max = Math.max(...data.steps.map((step) => step.count), 1)
+  const windows = data.windows ?? {}
+  const windowKeys = Object.keys(windows).sort((left, right) => Number(left) - Number(right))
+  const minimum = data.minimum_segment_size ?? 5
+  const segmentTables = [
+    { key: 'by_plan', title: 'By current plan', rows: data.by_plan, hidden: data.suppressed_segments?.plan ?? 0 },
+    {
+      key: 'by_provider',
+      title: 'By auth provider',
+      rows: data.by_provider,
+      hidden: data.suppressed_segments?.provider ?? 0,
+    },
+    {
+      key: 'by_signup_cohort',
+      title: 'By signup cohort',
+      rows: data.by_signup_cohort ?? [],
+      hidden: data.suppressed_segments?.signup_cohort ?? 0,
+    },
+  ] as const
+
   return (
     <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-fg">Activation funnel</h3>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
-            Users who signed up in the period and reached each milestone within {data.activation_window_days} days.
-            No document content is read for this view.
+            Users who signed up in the selected period and reached each milestone within {data.activation_window_days} days.
+            Each milestone is the first occurrence per account from first-party tables; no document content is read.
           </p>
         </div>
         <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
@@ -52,21 +93,65 @@ function Funnel({ data }: { data: AdminActivationResponse }) {
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2">
               <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(2, Math.round((step.count / max) * 100))}%` }} />
             </div>
-            {step.key !== 'signup' && <p className="mt-1 text-[10px] text-fg-3">Step conversion: {step.from_previous}%</p>}
+            {step.key !== 'signup' && (
+              <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-fg-3">
+                <span>Step conversion: {step.from_previous}%</span>
+                <span>
+                  Drop-off: {formatNumber(step.drop_off ?? 0)} ({(step.drop_off_pct ?? 0).toFixed(1)}%)
+                </span>
+                <span>Median time: {formatDuration(step.median_seconds_from_previous)}</span>
+              </p>
+            )}
           </div>
         ))}
       </div>
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        {(['by_plan', 'by_provider'] as const).map((key) => (
-          <div key={key} className="overflow-hidden rounded-md border border-line">
+
+      {windowKeys.length > 0 && (
+        <div className="mt-5 overflow-x-auto rounded-md border border-line">
+          <table className="w-full min-w-[420px] border-collapse text-xs">
+            <caption className="sr-only">Activation counts by 7, 30 and 90 day window</caption>
+            <thead>
+              <tr className="border-b border-line bg-surface-2/60 text-[10px] uppercase tracking-wider text-fg-3">
+                <th scope="col" className="px-3 py-2 text-left font-semibold">Milestone</th>
+                {windowKeys.map((key) => (
+                  <th key={key} scope="col" className="px-3 py-2 text-right font-semibold">{key}d</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.steps.map((step) => (
+                <tr key={step.key} className="border-t border-line">
+                  <td className="px-3 py-1.5 text-fg-2">{step.label}</td>
+                  {windowKeys.map((key) => (
+                    <td key={key} className="px-3 py-1.5 text-right text-fg">
+                      {formatNumber(windows[key]?.steps.find((item) => item.key === step.key)?.count ?? 0)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        {segmentTables.map((table) => (
+          <div key={table.key} className="overflow-hidden rounded-md border border-line">
             <p className="border-b border-line bg-surface-2/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-fg-3">
-              {key === 'by_plan' ? 'By current plan' : 'By auth provider'}
+              {table.title}
             </p>
             <table className="w-full border-collapse text-xs">
-              <caption className="sr-only">Activation segments {key}</caption>
-              <thead><tr className="text-left text-[10px] uppercase tracking-wider text-fg-3"><th className="px-3 py-1.5">Segment</th><th className="px-3 py-1.5 text-right">Users</th><th className="px-3 py-1.5 text-right">Compiled</th><th className="px-3 py-1.5 text-right">Paid</th></tr></thead>
+              <caption className="sr-only">Activation segments {table.key}</caption>
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wider text-fg-3">
+                  <th className="px-3 py-1.5">Segment</th>
+                  <th className="px-3 py-1.5 text-right">Users</th>
+                  <th className="px-3 py-1.5 text-right">Compiled</th>
+                  <th className="px-3 py-1.5 text-right">Paid</th>
+                </tr>
+              </thead>
               <tbody>
-                {data[key].slice(0, 8).map((segment) => (
+                {table.rows.slice(0, 8).map((segment) => (
                   <tr key={segment.label} className="border-t border-line">
                     <td className="px-3 py-1.5 capitalize text-fg-2">{segment.label}</td>
                     <td className="px-3 py-1.5 text-right text-fg">{formatNumber(segment.users)}</td>
@@ -74,9 +159,21 @@ function Funnel({ data }: { data: AdminActivationResponse }) {
                     <td className="px-3 py-1.5 text-right text-fg-3">{formatNumber(segment.steps.first_paid)}</td>
                   </tr>
                 ))}
-                {data[key].length === 0 && <tr><td colSpan={4} className="px-3 py-4 text-center text-fg-3">No segments.</td></tr>}
+                {table.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-4 text-center text-fg-3">
+                      No segment has at least {minimum} users.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+            {table.hidden > 0 && (
+              <p className="border-t border-line px-3 py-1.5 text-[10px] text-fg-3">
+                {table.hidden} small {table.hidden === 1 ? 'segment' : 'segments'} hidden ({'<'}
+                {minimum} users).
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -85,66 +182,143 @@ function Funnel({ data }: { data: AdminActivationResponse }) {
 }
 
 function Retention({ data }: { data: AdminRetentionResponse }) {
+  const monthlyRows = data.monthly ?? []
+  const rows = data.signup_month ? monthlyRows : data.cohorts
+  const selectedWeekly = data.signup_month ? monthlyRows[0]?.weekly ?? [] : data.curves?.weekly ?? []
+  const hidden = (data.hidden_weekly_cohorts ?? 0) + (data.hidden_monthly_cohorts ?? 0)
+
   return (
     <section className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
-        <h3 className="text-sm font-semibold text-fg">Weekly retention</h3>
+        <h3 className="text-sm font-semibold text-fg">Retention cohorts</h3>
         <p className="mt-1 text-xs leading-relaxed text-fg-3">
-          Activity in the exact day window after signup (D1 = day 1, not day 0). Cohorts below {data.minimum_cohort_size} users
-          do not show rates. Activity is any first-party event, completed compile, or optimization.
+          Activity in the exact day/week window after signup. D1 is day 1, not day 0. Cohorts below{' '}
+          {data.minimum_cohort_size} users are hidden; missing activity is a zero point. {data.activity_definition}
         </p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-sm">
-          <caption className="sr-only">Weekly retention cohorts</caption>
+        <table className="w-full min-w-[860px] border-collapse text-sm">
+          <caption className="sr-only">Retention cohorts by signup week or month</caption>
           <thead>
             <tr className="border-b border-line text-[10px] uppercase tracking-wider text-fg-3">
-              <th className="px-4 py-3 text-left font-semibold">Cohort week</th>
-              <th className="px-4 py-3 text-right font-semibold">Users</th>
-              <th className="px-4 py-3 text-right font-semibold">D1</th>
-              <th className="px-4 py-3 text-right font-semibold">D7</th>
-              <th className="px-4 py-3 text-right font-semibold">D30</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">{data.signup_month ? 'Signup month' : 'Cohort week'}</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Users</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">D1</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">D7</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">D30</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">W1</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">W2+</th>
             </tr>
           </thead>
           <tbody>
-            {data.cohorts.map((row) => (
-              <tr key={row.week_start} className="border-t border-line">
-                <td className="px-4 py-2.5 text-xs text-fg-2">{row.week_start}</td>
+            {rows.map((row) => (
+              <tr key={cohortLabel(row)} className="border-t border-line">
+                <td className="px-4 py-2.5 text-xs text-fg-2">{cohortLabel(row)}</td>
                 <td className="px-4 py-2.5 text-right text-xs text-fg">{formatNumber(row.cohort_size)}</td>
-                {[row.d1, row.d7, row.d30].map((cell, index) => (
+                {[row.d1, row.d7, row.d30, row.w1, row.w2_plus].map((cell, index) => (
                   <td key={index} className="px-4 py-2.5 text-right text-xs text-fg-3">
-                    {cell.rate == null
-                      ? `${formatNumber(cell.count)} / ${formatNumber(cell.eligible)} · —`
-                      : `${formatNumber(cell.count)} / ${formatNumber(cell.eligible)} · ${cell.rate}%`}
+                    {retentionCell(cell)}
                   </td>
                 ))}
               </tr>
             ))}
-            {data.cohorts.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-fg-3">No cohorts in this window.</td></tr>}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-fg-3">
+                  No cohort in this selection has at least {data.minimum_cohort_size} users.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
+      </div>
+      <div className="border-t border-line px-5 py-4">
+        <h4 className="text-xs font-semibold text-fg">Weekly curve</h4>
+        <p className="mt-1 text-[10px] text-fg-3">
+          Weekly activity windows for the selected {data.signup_month ? 'signup month' : 'visible weekly cohorts'}.
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[420px] border-collapse text-xs">
+            <caption className="sr-only">Weekly retention curve</caption>
+            <thead>
+              <tr className="border-b border-line text-[10px] uppercase tracking-wider text-fg-3">
+                <th scope="col" className="px-3 py-2 text-left font-semibold">Week</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Retained / eligible</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Cohort size</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedWeekly.map((point) => (
+                <tr key={point.week} className="border-t border-line">
+                  <td className="px-3 py-1.5 text-fg-2">W{point.week}</td>
+                  <td className="px-3 py-1.5 text-right text-fg-3">
+                    {formatNumber(point.numerator)} / {formatNumber(point.denominator)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-fg-3">{formatNumber(point.cohort_size)}</td>
+                  <td className="px-3 py-1.5 text-right text-fg">{point.rate == null ? '—' : `${point.rate}%`}</td>
+                </tr>
+              ))}
+              {selectedWeekly.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-4 text-center text-fg-3">No weekly points for this selection.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {hidden > 0 && (
+          <p className="mt-2 text-[10px] text-fg-3">
+            {hidden} cohort{hidden === 1 ? '' : 's'} below {data.minimum_cohort_size} users hidden.
+          </p>
+        )}
       </div>
     </section>
   )
 }
 
-function Cost({ data }: { data: AdminAiCostResponse }) {
+function Cost({
+  data,
+  plan,
+  feature,
+  onPlan,
+  onFeature,
+  onApply,
+  loading,
+}: {
+  data: AdminAiCostResponse
+  plan: string
+  feature: string
+  onPlan: (value: string) => void
+  onFeature: (value: string) => void
+  onApply: () => void
+  loading: boolean
+}) {
   const dailySeries = useMemo(
     () => data.by_day.map((row) => ({ date: row.date, value: row.cost_usd })),
     [data.by_day],
   )
+  const hardCapReached = data.caps.global.decision === 'block'
+  const capDetail = data.caps.global.monthly_hard_cap_usd == null
+    ? 'No monthly cap configured'
+    : `${formatMoney(data.caps.global.month_to_date_usd, 'USD')} of ${formatMoney(data.caps.global.monthly_hard_cap_usd, 'USD')} month-to-date`
   return (
     <section className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card label="Estimated AI cost" value={formatMoney(data.total_cost_inr, 'INR')} detail={`$${data.total_cost_usd} · ${formatNumber(data.total_tokens)} tokens`} />
-        <Card label="Optimizations" value={formatNumber(data.optimizations)} detail={`Last ${data.period_days} days`} />
+        <Card
+          label="Gross margin"
+          value={formatMoney(data.gross_margin_inr, 'INR')}
+          detail={`${formatMoney(data.total_revenue_inr, 'INR')} revenue`}
+          tone={data.gross_margin_inr < 0 ? 'text-err' : 'text-ok'}
+        />
         <Card
           label="Monthly cap"
-          value={data.monthly_spend_cap_usd == null ? 'Not set' : `$${data.monthly_spend_cap_usd}`}
-          detail={data.alerts.some((alert) => alert.code === 'ai_monthly_cap') ? 'Cap reached' : 'Within configured cap'}
-          tone={data.alerts.some((alert) => alert.code === 'ai_monthly_cap') ? 'text-err' : 'text-fg'}
+          value={data.caps.global.monthly_hard_cap_usd == null ? 'Not set' : formatMoney(data.caps.global.monthly_hard_cap_usd, 'USD')}
+          detail={capDetail}
+          tone={hardCapReached ? 'text-err' : 'text-fg'}
         />
-        <Card label="USD → INR" value={String(data.usd_inr_rate)} detail="Operator-configured estimate" />
+        <Card label="Pricing version" value={data.pricing_version} detail={`${data.pricing.models.length} configured models`} />
       </div>
       {data.alerts.length > 0 && (
         <div className="space-y-2">
@@ -155,6 +329,24 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
           ))}
         </div>
       )}
+      <div className="flex flex-wrap items-end gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+        <label className="text-[11px] text-fg-2">
+          Cost plan filter
+          <select value={plan} onChange={(event) => onPlan(event.target.value)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+            {PLAN_OPTIONS.map((item) => <option key={item || 'all'} value={item}>{item || 'All plans'}</option>)}
+          </select>
+        </label>
+        <label className="text-[11px] text-fg-2">
+          Cost feature filter
+          <input value={feature} onChange={(event) => onFeature(event.target.value)} maxLength={120} placeholder="optimization_patches" className="mt-1 block min-h-[38px] w-48 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+        </label>
+        <button type="button" onClick={onApply} disabled={loading} className="min-h-[38px] rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
+          Apply cost filters
+        </button>
+        <span className="text-[10px] text-fg-3">
+          Costs in USD minor units (cents); revenue and margin in INR minor units (paise).
+        </span>
+      </div>
       <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
         <h3 className="text-sm font-semibold text-fg">Estimated cost per day</h3>
         <p className="mt-1 text-[11px] text-fg-3">{data.price_note}</p>
@@ -180,7 +372,7 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
           <ul className="mt-2 space-y-1 text-xs">
             {data.top_users.slice(0, 8).map((row) => (
               <li key={row.user_id} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
-                <span className="font-mono text-[10px] text-fg-2">{row.user_id.slice(0, 10)}…</span>
+                <span className="font-mono text-[10px] text-fg-2">{(row.user_id ?? row.label).slice(0, 10)}…</span>
                 <span className="shrink-0 text-fg-3">{row.plan} · ${row.cost_usd}</span>
               </li>
             ))}
@@ -200,6 +392,103 @@ function Cost({ data }: { data: AdminAiCostResponse }) {
           </ul>
         </div>
       </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">By feature</h3>
+          <p className="mt-1 text-[10px] text-fg-3">Revenue is apportioned proportional to AI cost when a feature is selected.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.by_feature.slice(0, 10).map((row) => (
+              <li key={row.feature ?? row.label} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="truncate text-fg-2">{row.feature ?? row.label}</span>
+                <span className="shrink-0 text-fg-3">${row.cost_usd} · {row.revenue_attribution ?? 'unattributed'}</span>
+              </li>
+            ))}
+            {data.by_feature.length === 0 && <li className="py-3 text-center text-fg-3">No feature cost rows.</li>}
+          </ul>
+        </div>
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">By persona</h3>
+          <p className="mt-1 text-[10px] text-fg-3">Best-effort from the resume&apos;s last saved persona; missing values stay unknown.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.by_persona.map((row) => (
+              <li key={row.persona ?? row.label} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="truncate text-fg-2">{row.persona ?? row.label}</span>
+                <span className="shrink-0 text-fg-3">${row.cost_usd} · {formatNumber(row.tokens)}</span>
+              </li>
+            ))}
+            {data.by_persona.length === 0 && <li className="py-3 text-center text-fg-3">No persona cost rows.</li>}
+          </ul>
+        </div>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Cap status</h3>
+          <p className="mt-1 text-[10px] text-fg-3">
+            Hard caps stop new jobs only. In-flight jobs are never interrupted and no account is auto-suspended.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <span className="text-fg-3">Users over hard cap</span>
+            <span className="text-right font-semibold text-fg">{formatNumber(data.caps.summary.users_over_hard_cap)}</span>
+            <span className="text-fg-3">Users over soft cap</span>
+            <span className="text-right font-semibold text-fg">{formatNumber(data.caps.summary.users_over_soft_cap)}</span>
+            <span className="text-fg-3">Unknown pricing users</span>
+            <span className="text-right font-semibold text-fg">{formatNumber(data.caps.summary.users_with_unknown_pricing)}</span>
+            <span className="text-fg-3">Day resets</span>
+            <span className="text-right text-fg-2">{formatDateTime(data.caps.window.day_resets_at)}</span>
+            <span className="text-fg-3">Month resets</span>
+            <span className="text-right text-fg-2">{formatDateTime(data.caps.window.month_resets_at)}</span>
+          </div>
+          <ul className="mt-3 space-y-1 text-xs">
+            {data.caps.users.filter((row) => row.decision !== 'allow').slice(0, 8).map((row) => (
+              <li key={row.user_id} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="font-mono text-[10px] text-fg-2">{row.user_id.slice(0, 10)}…</span>
+                <span className={row.decision === 'block' ? 'text-err' : 'text-warn'}>
+                  {row.decision} · ${row.month_to_date_usd} month / ${row.today_usd} day
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Rolling outliers</h3>
+          <p className="mt-1 text-[10px] text-fg-3">
+            Median + MAD over {data.outliers[0]?.baseline_days ?? 'the configured'} baseline days; a minimum sample window is required before alerting.
+          </p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.outliers.slice(0, 10).map((row) => (
+              <li key={`${row.dimension}-${row.key}`} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="truncate text-fg-2">{row.dimension} · {row.key.slice(0, 24)}</span>
+                <span className="shrink-0 text-warn">${row.today_usd} today vs ${row.baseline_median_usd} median</span>
+              </li>
+            ))}
+            {data.outliers.length === 0 && <li className="py-3 text-center text-fg-3">No rolling outliers today.</li>}
+          </ul>
+        </div>
+      </div>
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+        <h3 className="text-sm font-semibold text-fg">Sampled invoice reconciliation</h3>
+        <p className="mt-1 text-[11px] text-fg-3">
+          Contract {data.reconciliation.contract_version}. No provider credential is read. Status: {data.reconciliation.status}.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3 text-xs">
+          <div><p className="text-fg-3">Ledger</p><p className="font-semibold text-fg">${(data.reconciliation.ledger_total_minor / 100).toFixed(2)}</p></div>
+          <div><p className="text-fg-3">Sampled invoice</p><p className="font-semibold text-fg">{data.reconciliation.sampled_invoice.total_minor == null ? 'Not supplied' : `$${(data.reconciliation.sampled_invoice.total_minor / 100).toFixed(2)}`}</p></div>
+          <div><p className="text-fg-3">Variance</p><p className={`font-semibold ${data.reconciliation.sampled_invoice.variance_minor != null && !data.reconciliation.sampled_invoice.within_tolerance ? 'text-err' : 'text-fg'}`}>{data.reconciliation.sampled_invoice.variance_minor == null ? '—' : `$${(data.reconciliation.sampled_invoice.variance_minor / 100).toFixed(2)}`}</p></div>
+        </div>
+        <ul className="mt-3 space-y-1 text-xs">
+          {data.reconciliation.sources.map((row) => (
+            <li key={row.source} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+              <span className="text-fg-2">{row.source.replace(/_/g, ' ')}</span>
+              <span className="text-fg-3">{row.runs} runs · ${row.cost_usd} · {formatNumber(row.tokens)} tokens</span>
+            </li>
+          ))}
+        </ul>
+        {data.pricing_complete ? null : (
+          <p className="mt-3 rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+            {formatNumber(data.unknown_pricing.runs)} unpriced run(s) use a visible fallback estimate. Add their provider/model price before trusting margin.
+          </p>
+        )}
+      </div>
     </section>
   )
 }
@@ -216,27 +505,38 @@ function Explorer({
   loading,
 }: {
   data: AdminFilteredTimeseriesResponse | null
-  metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
-  dimension: '' | 'plan' | 'provider' | 'feature'
+  metric: AdminTimeseriesMetric
+  dimension: '' | AdminTimeseriesDimension
   value: string
-  onMetric: (value: 'events' | 'compilations' | 'optimizations' | 'revenue') => void
-  onDimension: (value: '' | 'plan' | 'provider' | 'feature') => void
+  onMetric: (value: AdminTimeseriesMetric) => void
+  onDimension: (value: '' | AdminTimeseriesDimension) => void
   onValue: (value: string) => void
   onApply: () => void
   loading: boolean
 }) {
+  const placeholder = dimension === 'feature'
+    ? 'export'
+    : dimension === 'provider'
+      ? 'google, github…'
+      : dimension === 'signup_cohort'
+        ? '2026-11'
+        : 'pro'
+  const minimum = data?.minimum_group_size ?? 5
+
   return (
     <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
       <h3 className="text-sm font-semibold text-fg">Dimension explorer</h3>
       <p className="mt-1 text-xs leading-relaxed text-fg-3">
-        The same first-party series with a plan, provider, or feature filter. Provider labels come from the auth account
-        table; unknown users are grouped as unknown.
+        Daily UTC buckets for account and product activity with a plan, provider, feature, or signup-cohort filter.
+        Small groups under {minimum} users are suppressed; totals stay aggregate only.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="text-[11px] text-fg-2">
           Metric
-          <select value={metric} onChange={(event) => onMetric(event.target.value as typeof metric)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+          <select value={metric} onChange={(event) => onMetric(event.target.value as AdminTimeseriesMetric)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
             <option value="events">Events</option>
+            <option value="new_users">New users</option>
+            <option value="active_users">Active users</option>
             <option value="compilations">Compilations</option>
             <option value="optimizations">Optimizations</option>
             <option value="revenue">Revenue (INR)</option>
@@ -244,16 +544,17 @@ function Explorer({
         </label>
         <label className="text-[11px] text-fg-2">
           Dimension
-          <select value={dimension} onChange={(event) => onDimension(event.target.value as typeof dimension)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+          <select value={dimension} onChange={(event) => onDimension(event.target.value as '' | AdminTimeseriesDimension)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
             <option value="">Overall</option>
             <option value="plan">Plan</option>
             <option value="provider">Auth provider</option>
             <option value="feature" disabled={metric !== 'events'}>Feature / action</option>
+            <option value="signup_cohort">Signup cohort</option>
           </select>
         </label>
         <label className="text-[11px] text-fg-2">
           Filter value
-          <input value={value} onChange={(event) => onValue(event.target.value)} maxLength={120} placeholder={dimension === 'feature' ? 'export' : dimension === 'provider' ? 'google, github…' : 'pro'} className="mt-1 block min-h-[38px] w-44 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          <input value={value} onChange={(event) => onValue(event.target.value)} maxLength={120} placeholder={placeholder} className="mt-1 block min-h-[38px] w-44 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
         </label>
         <button type="button" onClick={onApply} disabled={loading} className="min-h-[38px] rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
           Apply
@@ -261,6 +562,24 @@ function Explorer({
       </div>
       {data && (
         <>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-fg-3">
+            <span>
+              Echo: {data.days ?? '—'} days · {data.filters?.metric ?? data.metric}
+              {data.dimension ? ` by ${data.dimension}` : ''}
+              {data.value ? ` = ${data.value}` : ''} · UTC
+            </span>
+            {data.suppressed && (
+              <span className="rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 font-semibold text-warn">
+                Filtered cohort suppressed ({'<'}
+                {minimum} users)
+              </span>
+            )}
+            {(data.suppressed_groups ?? 0) > 0 && (
+              <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5">
+                {data.suppressed_groups} small group{data.suppressed_groups === 1 ? '' : 's'} hidden
+              </span>
+            )}
+          </div>
           <div className="mt-4"><ActivityAreaChart data={data.points} /></div>
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <div>
@@ -280,6 +599,8 @@ function Explorer({
 
 export default function AdminGrowth() {
   const [days, setDays] = useState<number>(30)
+  const [retentionWeeks, setRetentionWeeks] = useState<number>(8)
+  const [signupMonth, setSignupMonth] = useState('')
   const [activation, setActivation] = useState<AdminActivationResponse | null>(null)
   const [retention, setRetention] = useState<AdminRetentionResponse | null>(null)
   const [cost, setCost] = useState<AdminAiCostResponse | null>(null)
@@ -288,12 +609,15 @@ export default function AdminGrowth() {
   const [error, setError] = useState<string | null>(null)
   const [plan, setPlan] = useState('')
   const [provider, setProvider] = useState('')
-  const [metric, setMetric] = useState<'events' | 'compilations' | 'optimizations' | 'revenue'>('events')
-  const [dimension, setDimension] = useState<'' | 'plan' | 'provider' | 'feature'>('plan')
+  const [costPlan, setCostPlan] = useState('')
+  const [costFeature, setCostFeature] = useState('')
+  const [costApplied, setCostApplied] = useState<{ plan: string; feature: string }>({ plan: '', feature: '' })
+  const [metric, setMetric] = useState<AdminTimeseriesMetric>('events')
+  const [dimension, setDimension] = useState<'' | AdminTimeseriesDimension>('plan')
   const [value, setValue] = useState('pro')
   const [applied, setApplied] = useState<{
-    metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
-    dimension: '' | 'plan' | 'provider' | 'feature'
+    metric: AdminTimeseriesMetric
+    dimension: '' | AdminTimeseriesDimension
     value: string
   }>({ metric: 'events', dimension: 'plan', value: 'pro' })
   const [explorerLoading, setExplorerLoading] = useState(false)
@@ -311,8 +635,12 @@ export default function AdminGrowth() {
           plan: plan || undefined,
           provider: provider || undefined,
         }),
-        apiClient.getAdminRetention(8),
-        apiClient.getAdminAiCost(days),
+        apiClient.getAdminRetention(retentionWeeks, signupMonth || undefined),
+        apiClient.getAdminAiCost({
+          days,
+          plan: costApplied.plan || undefined,
+          feature: costApplied.feature || undefined,
+        }),
       ])
       if (loadGeneration.current !== generation) return
       setActivation(nextActivation)
@@ -325,7 +653,7 @@ export default function AdminGrowth() {
     } finally {
       if (loadGeneration.current === generation) setLoading(false)
     }
-  }, [days, plan, provider])
+  }, [days, plan, provider, retentionWeeks, signupMonth, costApplied])
 
   useEffect(() => {
     void load()
@@ -355,14 +683,17 @@ export default function AdminGrowth() {
     void loadSeries()
   }, [loadSeries])
 
+  const signupMonths = retention?.available_signup_months ?? []
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-fg">Growth, retention, and AI cost</h2>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-3">
-            Milestone activation, weekly cohorts, and estimated provider spend from first-party records. Amounts and
-            margins are labeled estimates; they are not an invoice or a substitute for provider billing.
+            Milestone activation, D1/D7/D30 and weekly cohorts, dimension-filtered daily series, and estimated provider
+            spend from first-party records. Amounts and margins are labeled estimates; they are not an invoice or a
+            substitute for provider billing.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -377,6 +708,15 @@ export default function AdminGrowth() {
             {PLAN_OPTIONS.map((item) => <option key={item || 'all'} value={item}>{item || 'All plans'}</option>)}
           </select>
           <input aria-label="Activation provider filter" value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="provider" className="min-h-[38px] w-28 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          <select aria-label="Retention weeks" value={retentionWeeks} onChange={(event) => setRetentionWeeks(Number(event.target.value))} className="min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+            {RETENTION_WEEKS.map((weeks) => <option key={weeks} value={weeks}>{weeks} weeks</option>)}
+          </select>
+          <select aria-label="Signup month" value={signupMonth} onChange={(event) => setSignupMonth(event.target.value)} className="min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+            <option value="">All signup months</option>
+            {signupMonths.map((month) => (
+              <option key={month.month} value={month.month}>{month.month} · {formatNumber(month.users)} users</option>
+            ))}
+          </select>
           <button type="button" onClick={() => void load()} disabled={loading} className="rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40">
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -388,7 +728,17 @@ export default function AdminGrowth() {
 
       {activation && <Funnel data={activation} />}
       {retention && <Retention data={retention} />}
-      {cost && <Cost data={cost} />}
+      {cost && (
+        <Cost
+          data={cost}
+          plan={costPlan}
+          feature={costFeature}
+          onPlan={setCostPlan}
+          onFeature={setCostFeature}
+          onApply={() => setCostApplied({ plan: costPlan, feature: costFeature })}
+          loading={loading}
+        />
+      )}
 
       <Explorer
         data={series}
@@ -405,7 +755,15 @@ export default function AdminGrowth() {
         onDimension={(next) => {
           if (metric !== 'events' && next === 'feature') return
           setDimension(next)
-          setValue(next === 'plan' ? 'pro' : next === 'feature' ? 'export' : '')
+          setValue(
+            next === 'plan'
+              ? 'pro'
+              : next === 'feature'
+                ? 'export'
+                : next === 'signup_cohort'
+                  ? new Date().toISOString().slice(0, 7)
+                  : '',
+          )
         }}
         onValue={setValue}
         onApply={() => setApplied({ metric, dimension, value })}
@@ -414,7 +772,7 @@ export default function AdminGrowth() {
 
       <p className="text-[10px] text-fg-3">
         Retention requires at least {retention?.minimum_cohort_size ?? 5} users per cohort before rates are shown.
-        AI cost uses {cost?.price_note ?? 'configured provider prices'} Last generated {formatDateTime(cost?.generated_at)}.
+        Activation and timeseries segments below 5 users are hidden. AI cost uses {cost?.price_note ?? 'configured provider prices'} Last generated {formatDateTime(cost?.generated_at)}.
       </p>
       {activation && activation.cohort_size > 0 && (
         <p className="text-[10px] text-fg-3">

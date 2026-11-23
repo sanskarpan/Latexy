@@ -48,6 +48,49 @@ _ADMIN_ROLES = frozenset({"admin", "support"})
 REDIS_BLOB_KEY = "latexy:entitlements"
 _CACHE_TTL = 60  # seconds
 
+# Per-user overrides live in ``users.user_metadata`` so no new table is needed
+# for audited support grants. Canonical shape:
+#
+#   {"entitlement_overrides": {
+#       "exports": {"enabled": true, "updated_at": "...", "updated_by": "...", "reason": "..."}
+#   }}
+#
+# A true override grants that one capability beyond the plan/SKU matrix. A
+# false override denies it even when the plan would allow it. Neither form can
+# bypass a global kill switch or an account-role refusal; those remain the
+# product/security authority. Unknown keys and non-gateable features are
+# ignored (and rejected by the admin writer).
+ENTITLEMENT_OVERRIDES_KEY = "entitlement_overrides"
+_LEGACY_OVERRIDE_KEYS = (ENTITLEMENT_OVERRIDES_KEY, "feature_overrides")
+
+
+def entitlement_overrides_from_metadata(metadata: Any) -> dict[str, bool]:
+    """Return only explicit boolean per-feature overrides from user metadata.
+
+    Malformed containers and unknown shapes are ignored. The admin writer is
+    the only producer, but readers stay defensive because user_metadata also
+    stores integration tokens owned by unrelated features.
+    """
+    if not isinstance(metadata, dict):
+        return {}
+    container: Any = None
+    for key in _LEGACY_OVERRIDE_KEYS:
+        candidate = metadata.get(key)
+        if isinstance(candidate, dict):
+            container = candidate
+            break
+    if not isinstance(container, dict):
+        return {}
+    overrides: dict[str, bool] = {}
+    for key, value in container.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(value, bool):
+            overrides[key] = value
+        elif isinstance(value, dict) and isinstance(value.get("enabled"), bool):
+            overrides[key] = value["enabled"]
+    return overrides
+
 # Quota counters outlive their calendar month by a margin so a late refund (or a
 # clock skew across instances) can still find the key it incremented.
 _QUOTA_TTL = 40 * 86400  # seconds
@@ -124,6 +167,14 @@ def _snapshot_query(keys: tuple[str, ...] | None = None):
         switches = switches.where(FeatureFlag.key.in_(keys))
         grants = grants.where(PlanFeature.feature_key.in_(keys))
     return union_all(switches, grants, roles)
+
+
+def _subject_parts(values: tuple) -> tuple[Any, Any, dict[str, bool]]:
+    """Accept both legacy (role, plan) and current (role, plan, metadata) mocks."""
+    role = values[0] if values else None
+    plan = values[1] if len(values) > 1 else None
+    overrides = entitlement_overrides_from_metadata(values[2] if len(values) > 2 else None)
+    return role, plan, overrides
 
 
 def _blob_from_rows(rows) -> dict:
@@ -248,12 +299,21 @@ class EntitlementService:
 
         identities = select(
             literal("identity"), cast(User.id, String),
-            cast(func.json_build_array(User.role, User.subscription_plan), String), literal(True),
+            cast(
+                func.json_build_array(User.role, User.subscription_plan, User.user_metadata),
+                String,
+            ),
+            literal(True),
         ).where(User.id.in_(user_ids))
         statement = union_all(*_snapshot_query(keys).selects, identities)
         async with get_async_db_session() as db:
             rows = (await db.execute(statement)).all()
-        subjects = {key: tuple(json.loads(value)) for kind, key, value, _ in rows if kind == "identity"}
+        raw_subjects = {
+            key: tuple(json.loads(value)) for kind, key, value, _ in rows if kind == "identity"
+        }
+        # Keep the raw identity tuple here; callers normalize legacy two-item
+        # mocks and the current (role, plan, user_metadata) shape identically.
+        subjects = {key: tuple(values) for key, values in raw_subjects.items()}
         if set(subjects) != set(user_ids):
             raise LookupError("Entitlement owner no longer exists")
         return subjects, _blob_from_rows(rows)
@@ -264,13 +324,14 @@ class EntitlementService:
         user_id = user if isinstance(user, str) else getattr(user, "id", None)
         if isinstance(user_id, str) and user_id:
             subjects, blob = await self._subject_snapshot((user_id,))
-            role, plan = subjects[user_id]
+            role, plan, overrides = _subject_parts(tuple(subjects[user_id]))
             # Product capabilities use the same current billing authority for
             # every account role. Admin/support can administer controls, but
             # their role must not preserve a stale paid subscription grant.
             plan = await self._effective_plan_for_billing_status(
                 user_id, plan, product_capability=True,
             )
+            blob["overrides"] = overrides
             return role, plan, blob
         role, plan = await self._resolve_user_role_plan(user)
         return role, plan, await self._get_blob()
@@ -324,18 +385,36 @@ class EntitlementService:
             keys = tuple(item.key for item in feature_ancestry(key) if item.gateable)
             subjects, blob = await self._subject_snapshot(tuple(ids), keys)
             effective_subjects = []
-            for user_id, (role, plan) in subjects.items():
+            for user_id, raw_identity in subjects.items():
+                role, plan, overrides = _subject_parts(tuple(raw_identity))
                 plan = await self._effective_plan_for_billing_status(
                     user_id, plan, product_capability=True,
                 )
-                effective_subjects.append((role, plan))
-            return all(self._decide(blob, key, plan, role) for role, plan in effective_subjects)
+                effective_subjects.append((role, plan, overrides))
+            return all(
+                self._decide(blob, key, plan, role, overrides=overrides)
+                for role, plan, overrides in effective_subjects
+            )
         except Exception:
             logger.warning("Batch entitlement authorization unavailable", exc_info=True)
             return False
 
-    def _decide(self, blob: dict, key: str, plan: Optional[str], role: Optional[str] = "anonymous") -> bool:
-        """Intersect global, account-role, family, SKU and every ancestor grant."""
+    def _decide(
+        self,
+        blob: dict,
+        key: str,
+        plan: Optional[str],
+        role: Optional[str] = "anonymous",
+        *,
+        overrides: dict[str, bool] | None = None,
+    ) -> bool:
+        """Intersect global, account-role, family, SKU and every ancestor grant.
+
+        A per-user true override can grant one capability beyond the plan/SKU
+        matrix; a false override denies it even when the plan allows it. Global
+        kill switches and account-role restrictions are never overridden, so a
+        support grant cannot bypass a product shutdown or security policy.
+        """
         feature = get_feature(key)
         if feature is None:
             return False
@@ -343,11 +422,19 @@ class EntitlementService:
             return True
         if role not in CAPABILITY_ROLES:
             return False
+        if not isinstance(blob, dict):
+            return False
         normalized = (plan or "free").strip().lower()
         sku = PLAN_SKU_ALIASES.get(normalized, normalized)
         if sku not in PLAN_KEYS:
             return False
         family = resolve_plan_family(sku)
+        effective_overrides = (
+            overrides if overrides is not None else blob.get("overrides")
+        )
+        effective_overrides = (
+            effective_overrides if isinstance(effective_overrides, dict) else {}
+        )
         try:
             for item in feature_ancestry(key):
                 if not item.gateable:
@@ -356,6 +443,11 @@ class EntitlementService:
                     return False
                 if blob["kill"].get(item.key) is not True:
                     return False
+                override = effective_overrides.get(item.key)
+                if override is False:
+                    return False
+                if override is True:
+                    continue
                 if blob["matrix"].get(family, {}).get(item.key) is not True:
                     return False
                 if sku != family and blob["matrix"].get(sku, {}).get(item.key) is not True:
@@ -962,6 +1054,62 @@ class EntitlementService:
             },
         }
 
+    async def reset_quota(
+        self,
+        *,
+        user_id: str,
+        dimensions: tuple[str, ...] | list[str],
+        plan: Optional[str],
+    ) -> dict:
+        """Reset only the requested dimensions for each dimension's current window.
+
+        This is the administrative quota API: callers never construct Redis
+        keys themselves. The effective plan and the versioned quota policy are
+        resolved through the same authority used by consumption, so a reset
+        cannot silently target another user, dimension, or calendar period.
+        """
+        requested = list(dimensions)
+        if not requested or any(dimension not in QUOTA_DIMENSIONS for dimension in requested):
+            raise KeyError("Unknown quota dimension")
+        if not await _quota_authority_active():
+            raise RuntimeError("Quota authority is unavailable")
+        plan = await self._effective_plan_for_billing_status(user_id, plan)
+        from .quota_policy_service import quota_policy_service
+
+        try:
+            policies = await quota_policy_service.resolve(plan)
+        except Exception as exc:
+            raise RuntimeError("Quota policy is unavailable") from exc
+
+        try:
+            from ..core.redis import get_redis_cache_client
+
+            redis = await get_redis_cache_client()
+            results: list[dict[str, Any]] = []
+            for dimension in requested:
+                window = policies[dimension]["window"]
+                period = _current_period(window)
+                key = f"latexy:quota:{dimension}:{user_id}:{period}"
+                raw_before = await redis.get(key)
+                before_used = int(raw_before or 0)
+                deleted = int(await redis.delete(key))
+                after_used = int(await redis.get(key) or 0)
+                results.append(
+                    {
+                        "dimension": dimension,
+                        "window": window,
+                        "period": period,
+                        "limit": policies[dimension]["limit"],
+                        "before_used": before_used,
+                        "after_used": after_used,
+                        "deleted": deleted,
+                    }
+                )
+        except Exception as exc:
+            logger.warning("Quota reset unavailable", exc_info=True)
+            raise RuntimeError("Quota counters are unavailable") from exc
+        return {"results": results, "deleted_keys": sum(row["deleted"] for row in results)}
+
     # ---------------------------------------------------------------- #
     #  Sync access (Celery workers)                                    #
     # ---------------------------------------------------------------- #
@@ -975,8 +1123,12 @@ class EntitlementService:
             return True
         try:
             blob = self._sync_get_blob(user_id=user_id) if user_id else self._sync_get_blob()
-            role, plan = blob["identity"] if user_id else ("anonymous", plan_family)
-            return self._decide(blob, key, plan, role)
+            if user_id:
+                role, plan, _metadata = (tuple(blob["identity"]) + (None, None, None))[:3]
+                overrides = entitlement_overrides_from_metadata(_metadata)
+            else:
+                role, plan, overrides = "anonymous", plan_family, {}
+            return self._decide(blob, key, plan, role, overrides=overrides)
         except Exception:
             logger.warning("sync_has_feature(%s) unavailable", key, exc_info=True)
             return False
@@ -1006,7 +1158,10 @@ class EntitlementService:
                 cursor.execute("SET LOCAL lock_timeout = '1s'")
                 identity = None
                 if user_id is not None:
-                    cursor.execute("SELECT role, subscription_plan FROM users WHERE id = %s", (user_id,))
+                    cursor.execute(
+                        "SELECT role, subscription_plan, user_metadata FROM users WHERE id = %s",
+                        (user_id,),
+                    )
                     identity = cursor.fetchone()
                     if identity is None:
                         raise LookupError("Entitlement owner no longer exists")
@@ -1035,6 +1190,23 @@ def _set_cache(blob: dict) -> None:
 def _clear_cache() -> None:
     global _cache
     _cache = None
+
+
+async def invalidate_entitlement_cache() -> None:
+    """Drop every compatibility cache after an entitlement mutation.
+
+    Authorization always re-reads PostgreSQL, so this is a latency/consistency
+    courtesy for legacy readers rather than the source of truth. A Redis outage
+    must not fail an already-committed grant/revoke.
+    """
+    _clear_cache()
+    try:
+        from ..core.redis import get_redis_cache_client
+
+        redis = await get_redis_cache_client()
+        await redis.delete(REDIS_BLOB_KEY)
+    except Exception:
+        logger.warning("Entitlement cache invalidation unavailable", exc_info=True)
 
 
 # Module-level singleton
