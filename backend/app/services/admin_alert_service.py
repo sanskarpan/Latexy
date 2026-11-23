@@ -102,210 +102,284 @@ async def _failure_signal(
 
 
 async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any]]:
-    """Return current alertable conditions; no PII or provider errors."""
+    """Return current alertable conditions; no PII or provider errors.
+
+    Each rule runs inside its own savepoint. A rule that raises — including a
+    database error — is rolled back to that savepoint and logged by rule name,
+    so it cannot suppress the remaining rules in the shared transaction.
+    """
     signals: list[dict[str, Any]] = []
 
-    webhook = await _failure_signal(
-        db,
-        model=models.BillingWebhookEvent,
-        status_condition=(
-            (models.BillingWebhookEvent.status == "failed")
-            & models.BillingWebhookEvent.acknowledged_at.is_(None)
-        ),
-        kind="billing.webhook_failures",
-        severity="critical",
-        owner="Billing",
-        title="Unacknowledged billing webhook failures",
-        dedupe_key="billing.webhook_failures",
-        timestamp_column=models.BillingWebhookEvent.received_at,
-        now=now,
-    )
-    if webhook:
-        signals.append(webhook)
-
-    failed_payments = await _failure_signal(
-        db,
-        model=models.Payment,
-        status_condition=(models.Payment.status == "failed"),
-        kind="billing.failed_payments",
-        severity="critical",
-        owner="Billing",
-        title="Failed payments need reconciliation",
-        dedupe_key="billing.failed_payments",
-        timestamp_column=models.Payment.created_at,
-        now=now,
-    )
-    if failed_payments:
-        signals.append(failed_payments)
-
-    past_due = int(
-        (
-            await db.execute(
-                select(func.count(models.Subscription.id)).where(
-                    models.Subscription.status.in_(("past_due", "on_hold"))
-                )
-            )
-        ).scalar()
-        or 0
-    )
-    if past_due:
-        signals.append(
-            _signal(
-                kind="billing.past_due",
-                severity="high",
-                owner="Billing",
-                title="Past-due or on-hold subscriptions",
-                dedupe_key="billing.past_due",
-                payload={"count": past_due},
-            )
+    async def webhook_failures() -> dict[str, Any] | None:
+        return await _failure_signal(
+            db,
+            model=models.BillingWebhookEvent,
+            status_condition=(
+                (models.BillingWebhookEvent.status == "failed")
+                & models.BillingWebhookEvent.acknowledged_at.is_(None)
+            ),
+            kind="billing.webhook_failures",
+            severity="critical",
+            owner="Billing",
+            title="Unacknowledged billing webhook failures",
+            dedupe_key="billing.webhook_failures",
+            timestamp_column=models.BillingWebhookEvent.received_at,
+            now=now,
         )
 
-    cutoff = now - timedelta(minutes=15)
-    stuck_compilations = int(
-        (
-            await db.execute(
-                select(func.count(models.Compilation.id)).where(
-                    models.Compilation.status.in_(("queued", "pending", "processing", "running")),
-                    models.Compilation.created_at < cutoff,
-                )
-            )
-        ).scalar()
-        or 0
-    )
-    stale_finalizations = int(
-        (
-            await db.execute(
-                select(func.count(models.JobFinalization.id)).where(
-                    models.JobFinalization.state.in_(("pending", "committing")),
-                    models.JobFinalization.created_at < cutoff,
-                )
-            )
-        ).scalar()
-        or 0
-    )
-    stuck = stuck_compilations + stale_finalizations
-    if stuck:
-        signals.append(
-            _signal(
-                kind="jobs.stuck",
-                severity="high",
-                owner="Platform",
-                title="Jobs stuck beyond 15 minutes",
-                dedupe_key="jobs.stuck",
-                payload={"count": stuck},
-            )
+    async def failed_payments() -> dict[str, Any] | None:
+        return await _failure_signal(
+            db,
+            model=models.Payment,
+            status_condition=(models.Payment.status == "failed"),
+            kind="billing.failed_payments",
+            severity="critical",
+            owner="Billing",
+            title="Failed payments need reconciliation",
+            dedupe_key="billing.failed_payments",
+            timestamp_column=models.Payment.created_at,
+            now=now,
         )
 
-    # Monthly spend cap only. Per-user outliers stay in the Growth tab and are
-    # never copied into alert payloads because they identify an account.
-    cap_signal: dict[str, Any] | None = None
-    try:
-        if float(settings.ADMIN_AI_MONTHLY_SPEND_CAP_USD or 0) > 0:
-            from .admin_growth_service import admin_growth_service
+    async def past_due() -> dict[str, Any] | None:
+        count = int(
+            (
+                await db.execute(
+                    select(func.count(models.Subscription.id)).where(
+                        models.Subscription.status.in_(("past_due", "on_hold"))
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        if not count:
+            return None
+        return _signal(
+            kind="billing.past_due",
+            severity="high",
+            owner="Billing",
+            title="Past-due or on-hold subscriptions",
+            dedupe_key="billing.past_due",
+            payload={"count": count},
+        )
 
-            # A failed spend query must not poison the shared transaction and
-            # suppress the remaining alert rules.
+    async def stuck_jobs() -> dict[str, Any] | None:
+        cutoff = now - timedelta(minutes=15)
+        stuck_compilations = int(
+            (
+                await db.execute(
+                    select(func.count(models.Compilation.id)).where(
+                        models.Compilation.status.in_(("queued", "pending", "processing", "running")),
+                        models.Compilation.created_at < cutoff,
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        stale_finalizations = int(
+            (
+                await db.execute(
+                    select(func.count(models.JobFinalization.id)).where(
+                        models.JobFinalization.state.in_(("pending", "committing")),
+                        models.JobFinalization.created_at < cutoff,
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        stuck = stuck_compilations + stale_finalizations
+        if not stuck:
+            return None
+        return _signal(
+            kind="jobs.stuck",
+            severity="high",
+            owner="Platform",
+            title="Jobs stuck beyond 15 minutes",
+            dedupe_key="jobs.stuck",
+            payload={"count": stuck},
+        )
+
+    async def spend_cap() -> dict[str, Any] | None:
+        # Monthly spend cap only. Per-user outliers stay in the Growth tab and
+        # are never copied into alert payloads because they identify an account.
+        if float(settings.ADMIN_AI_MONTHLY_SPEND_CAP_USD or 0) <= 0:
+            return None
+        from .admin_growth_service import admin_growth_service
+
+        cost = await admin_growth_service.ai_cost(db, days=30)
+        cap_alert = next(
+            (alert for alert in cost.get("alerts", []) if alert.get("code") == "ai_monthly_cap"),
+            None,
+        )
+        if not cap_alert:
+            return None
+        month_key = now.strftime("%Y-%m")
+        return _signal(
+            kind="spend.monthly_cap",
+            severity="critical" if cap_alert.get("severity") == "critical" else "medium",
+            owner="Growth",
+            title="Estimated AI spend reached the monthly cap",
+            dedupe_key=f"spend.monthly_cap:{month_key}",
+            payload={
+                "value_usd": cap_alert.get("value"),
+                "threshold_usd": cap_alert.get("threshold"),
+                "month": month_key,
+            },
+        )
+
+    async def unverified_domains() -> dict[str, Any] | None:
+        count = int(
+            (
+                await db.execute(
+                    select(func.count(models.Tenant.id)).where(
+                        models.Tenant.custom_domain.is_not(None),
+                        models.Tenant.domain_verified_at.is_(None),
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        if not count:
+            return None
+        return _signal(
+            kind="domains.unverified",
+            severity="low",
+            owner="Growth",
+            title="Unverified custom domains",
+            dedupe_key="domains.unverified",
+            payload={
+                "count": count,
+                "expiry_metadata_configured": False,
+            },
+        )
+
+    rules = (
+        ("billing.webhook_failures", webhook_failures),
+        ("billing.failed_payments", failed_payments),
+        ("billing.past_due", past_due),
+        ("jobs.stuck", stuck_jobs),
+        ("spend.monthly_cap", spend_cap),
+        ("domains.unverified", unverified_domains),
+    )
+    for rule_name, rule in rules:
+        try:
             async with db.begin_nested():
-                cost = await admin_growth_service.ai_cost(db, days=30)
-                cap_alert = next(
-                    (alert for alert in cost.get("alerts", []) if alert.get("code") == "ai_monthly_cap"),
-                    None,
-                )
-            if cap_alert:
-                month_key = now.strftime("%Y-%m")
-                cap_signal = _signal(
-                    kind="spend.monthly_cap",
-                    severity="critical" if cap_alert.get("severity") == "critical" else "medium",
-                    owner="Growth",
-                    title="Estimated AI spend reached the monthly cap",
-                    dedupe_key=f"spend.monthly_cap:{month_key}",
-                    payload={
-                        "value_usd": cap_alert.get("value"),
-                        "threshold_usd": cap_alert.get("threshold"),
-                        "month": month_key,
-                    },
-                )
-    except Exception as exc:
-        logger.warning("Admin alert spend evaluation failed (%s)", type(exc).__name__)
-    if cap_signal:
-        signals.append(cap_signal)
-
-    unverified_domains = int(
-        (
-            await db.execute(
-                select(func.count(models.Tenant.id)).where(
-                    models.Tenant.custom_domain.is_not(None),
-                    models.Tenant.domain_verified_at.is_(None),
-                )
-            )
-        ).scalar()
-        or 0
-    )
-    if unverified_domains:
-        signals.append(
-            _signal(
-                kind="domains.unverified",
-                severity="low",
-                owner="Growth",
-                title="Unverified custom domains",
-                dedupe_key="domains.unverified",
-                payload={
-                    "count": unverified_domains,
-                    "expiry_metadata_configured": False,
-                },
-            )
-        )
+                signal = await rule()
+        except Exception as exc:
+            # Rule names and exception classes only: no provider text or PII.
+            logger.warning("Admin alert rule %s failed (%s)", rule_name, type(exc).__name__)
+            continue
+        if signal:
+            signals.append(signal)
 
     return signals
 
 
-async def evaluate_alerts(db: AsyncSession, *, now: datetime | None = None) -> dict[str, int]:
-    """Upsert current signals, reopen expired snoozes and auto-resolve clears."""
+async def evaluate_alerts(
+    db: AsyncSession,
+    now: datetime | None = None,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Upsert current signals, reopen expired snoozes and auto-resolve clears.
+
+    ``dry_run`` computes the same preview from existing active rows without
+    issuing an INSERT/UPDATE/DELETE; the caller must not commit mutations.
+    """
     now = now or datetime.now(timezone.utc)
     # Serialize overlapping five-minute evaluations so the SELECT-then-INSERT
     # dedupe path cannot race the partial unique index.
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('latexy_admin_alerts'))"))
     signals = await collect_signals(db, now)
-    seen: set[str] = set()
+    seen: set[str] = set(signal["dedupe_key"] for signal in signals)
+
+    if dry_run:
+        active = (
+            await db.execute(
+                select(models.AdminAlert).where(models.AdminAlert.state.in_(ACTIVE_STATES))
+            )
+        ).scalars().all()
+        active_by_key = {row.dedupe_key: row for row in active}
+        would_open = sum(1 for key in seen if key not in active_by_key)
+        would_update = sum(1 for key in seen if key in active_by_key)
+        would_resolve = sum(
+            1
+            for row in active
+            if row.dedupe_key not in seen
+            and not (
+                row.state == "snoozed"
+                and row.snooze_until
+                and row.snooze_until > now
+            )
+        )
+        return {
+            "dry_run": True,
+            "signals": signals,
+            "would_open": would_open,
+            "would_update": would_update,
+            "would_resolve": would_resolve,
+        }
+
     opened = 0
     updated = 0
 
     for signal in signals:
-        seen.add(signal["dedupe_key"])
-        existing = (
-            await db.execute(
-                select(models.AdminAlert).where(
-                    models.AdminAlert.dedupe_key == signal["dedupe_key"],
-                    models.AdminAlert.state.in_(ACTIVE_STATES),
-                )
+        action: str | None = None
+        try:
+            # One savepoint per signal: a bad row or constraint failure rolls
+            # back only that signal instead of aborting the whole evaluation.
+            async with db.begin_nested():
+                existing = (
+                    await db.execute(
+                        select(models.AdminAlert).where(
+                            models.AdminAlert.dedupe_key == signal["dedupe_key"],
+                            models.AdminAlert.state.in_(ACTIVE_STATES),
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing is None:
+                    db.add(
+                        models.AdminAlert(
+                            **signal,
+                            state="open",
+                            occurrence_count=1,
+                            first_seen_at=now,
+                            last_seen_at=now,
+                        )
+                    )
+                    action = "opened"
+                else:
+                    existing.severity = signal["severity"]
+                    existing.owner = signal["owner"]
+                    existing.title = signal["title"]
+                    existing.payload = signal["payload"]
+                    existing.runbook_url = signal["runbook_url"]
+                    existing.last_seen_at = now
+                    existing.occurrence_count = int(existing.occurrence_count or 0) + 1
+                    if (
+                        existing.state == "snoozed"
+                        and existing.snooze_until
+                        and existing.snooze_until <= now
+                    ):
+                        existing.state = "open"
+                        existing.snoozed_by = None
+                        existing.snoozed_at = None
+                        existing.snooze_until = None
+                    action = "updated"
+                # Flush inside the savepoint so database-level failures are
+                # contained to this signal as well.
+                await db.flush()
+        except Exception as exc:
+            logger.warning(
+                "Admin alert upsert %s failed (%s)",
+                signal["dedupe_key"],
+                type(exc).__name__,
             )
-        ).scalar_one_or_none()
-        if existing is None:
-            db.add(
-                models.AdminAlert(
-                    **signal,
-                    state="open",
-                    occurrence_count=1,
-                    first_seen_at=now,
-                    last_seen_at=now,
-                )
-            )
-            opened += 1
             continue
-
-        existing.severity = signal["severity"]
-        existing.owner = signal["owner"]
-        existing.title = signal["title"]
-        existing.payload = signal["payload"]
-        existing.runbook_url = signal["runbook_url"]
-        existing.last_seen_at = now
-        existing.occurrence_count = int(existing.occurrence_count or 0) + 1
-        if existing.state == "snoozed" and existing.snooze_until and existing.snooze_until <= now:
-            existing.state = "open"
-            existing.snoozed_by = None
-            existing.snoozed_at = None
-            existing.snooze_until = None
-        updated += 1
+        if action == "opened":
+            opened += 1
+        elif action == "updated":
+            updated += 1
 
     resolved = 0
     stale = (
@@ -319,12 +393,21 @@ async def evaluate_alerts(db: AsyncSession, *, now: datetime | None = None) -> d
         if row.state == "snoozed" and row.snooze_until and row.snooze_until > now:
             # A flapping condition must not bypass an operator's snooze.
             continue
-        row.state = "resolved"
-        row.resolved_at = now
-        row.resolution = "auto_clear"
+        try:
+            async with db.begin_nested():
+                row.state = "resolved"
+                row.resolved_at = now
+                row.resolution = "auto_clear"
+                await db.flush()
+        except Exception as exc:
+            logger.warning(
+                "Admin alert resolution %s failed (%s)",
+                row.dedupe_key,
+                type(exc).__name__,
+            )
+            continue
         resolved += 1
 
-    await db.flush()
     return {"opened": opened, "updated": updated, "resolved": resolved}
 
 
@@ -333,6 +416,8 @@ async def list_alerts(
     *,
     state: str | None = None,
     severity: str | None = None,
+    owner: str | None = None,
+    kind: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -343,6 +428,10 @@ async def list_alerts(
         filters.append(models.AdminAlert.state == state)
     if severity:
         filters.append(models.AdminAlert.severity == severity)
+    if owner:
+        filters.append(models.AdminAlert.owner == owner)
+    if kind:
+        filters.append(models.AdminAlert.kind == kind)
     total = int(
         (
             await db.execute(

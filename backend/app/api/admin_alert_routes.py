@@ -30,6 +30,8 @@ class AlertActionRequest(BaseModel):
 async def list_admin_alerts(
     state: str | None = Query(default=None, max_length=16),
     severity: str | None = Query(default=None, max_length=16),
+    owner: str | None = Query(default=None, max_length=32),
+    kind: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -39,10 +41,21 @@ async def list_admin_alerts(
         db,
         state=state,
         severity=severity,
+        owner=owner,
+        kind=kind,
         limit=limit,
         offset=offset,
     )
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.post("/admin/alerts/dry-run")
+async def dry_run_admin_alerts(
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Collect-only preview; never opens, updates or resolves an alert."""
+    return await admin_alert_service.evaluate_alerts(db, dry_run=True)
 
 
 @router.patch("/admin/alerts/{alert_id}")

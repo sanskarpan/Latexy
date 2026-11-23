@@ -36,6 +36,8 @@ const ALERT_SEVERITY_TONE: Record<AdminAlert['severity'], string> = {
   low: 'border-line bg-surface-2 text-fg-3',
 }
 
+const DEFAULT_ALERT_OWNERS = ['Billing', 'Growth', 'Platform']
+
 const SECTION_LABEL: Record<string, string> = {
   database: 'Database',
   redis: 'Redis',
@@ -248,13 +250,32 @@ function AlertStrip({ refreshKey, onUpdated }: { refreshKey: number; onUpdated: 
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [unavailable, setUnavailable] = useState(false)
+  const [owner, setOwner] = useState('')
+  const [kind, setKind] = useState('')
+  const [seenOwners, setSeenOwners] = useState<string[]>([])
+  const [seenKinds, setSeenKinds] = useState<string[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     setUnavailable(false)
     try {
-      setData(await apiClient.getAdminAlerts({ state: 'active', limit: 20 }))
+      const result = await apiClient.getAdminAlerts({
+        state: 'active',
+        limit: 20,
+        ...(owner ? { owner } : {}),
+        ...(kind ? { kind } : {}),
+      })
+      setData(result)
+      // Keep every owner/rule seen across loads so selecting one filter does
+      // not erase the other selectable options. These are operational labels,
+      // never user data.
+      setSeenOwners((current) =>
+        Array.from(new Set([...current, ...result.items.map((alert) => alert.owner)])).sort(),
+      )
+      setSeenKinds((current) =>
+        Array.from(new Set([...current, ...result.items.map((alert) => alert.kind)])).sort(),
+      )
     } catch (err) {
       if (isMissingEndpoint(err)) {
         setUnavailable(true)
@@ -264,13 +285,16 @@ function AlertStrip({ refreshKey, onUpdated }: { refreshKey: number; onUpdated: 
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [owner, kind])
 
   useEffect(() => {
     void load()
   }, [load, refreshKey])
 
   if (unavailable) return null
+
+  const ownerOptions = Array.from(new Set([...DEFAULT_ALERT_OWNERS, ...seenOwners])).sort()
+  const kindOptions = seenKinds
 
   return (
     <section aria-labelledby="admin-alerts-heading" className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
@@ -281,11 +305,41 @@ function AlertStrip({ refreshKey, onUpdated }: { refreshKey: number; onUpdated: 
             Durable incidents with owner, acknowledgement and snooze. Nothing is paged or auto-actioned from this strip.
           </p>
         </div>
-        {data && (
-          <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-fg-3">
-            {data.total} active
-          </span>
-        )}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            <span className="mb-1 block">Source</span>
+            <select
+              aria-label="Filter alerts by source"
+              value={owner}
+              onChange={(event) => setOwner(event.target.value)}
+              className="block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-fg"
+            >
+              <option value="">All sources</option>
+              {ownerOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            <span className="mb-1 block">Rule</span>
+            <select
+              aria-label="Filter alerts by rule"
+              value={kind}
+              onChange={(event) => setKind(event.target.value)}
+              className="block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-fg"
+            >
+              <option value="">All rules</option>
+              {kindOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+          {data && (
+            <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+              {data.total} active
+            </span>
+          )}
+        </div>
       </div>
 
       {loading && !data && <p role="status" className="mt-4 text-xs text-fg-3">Loading alerts…</p>}
