@@ -86,6 +86,30 @@ class UserQuotaResetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: Reason
     dimension: Optional[Literal["compilations", "optimizations", "ai_assists"]] = None
+    # Optional for backward compatibility with existing clients; when supplied
+    # it must be the explicit boolean true.
+    confirm: Optional[Literal[True]] = None
+
+
+class UserFeatureOverrideRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feature_key: str = Field(min_length=1, max_length=120)
+    reason: Reason
+    confirm: Literal[True]
+
+
+class UserTrialExtendRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Reason
+    days: int = Field(ge=1, le=365)
+    confirm: Literal[True]
+
+
+class UserTrialEligibilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Reason
+    eligible: bool
+    confirm: Literal[True]
 
 
 class UserApiKeyRevokeRequest(BaseModel):
@@ -380,6 +404,92 @@ async def change_admin_user_plan(
             user_id=user_id,
             plan=body.plan,
             status=body.status,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/features/grant")
+async def grant_admin_user_feature(
+    user_id: str,
+    body: UserFeatureOverrideRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.set_user_feature_override(
+            db,
+            user_id=user_id,
+            feature_key=body.feature_key.strip().lower(),
+            enabled=True,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/features/revoke")
+async def revoke_admin_user_feature(
+    user_id: str,
+    body: UserFeatureOverrideRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.set_user_feature_override(
+            db,
+            user_id=user_id,
+            feature_key=body.feature_key.strip().lower(),
+            enabled=False,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/trial/extend")
+async def extend_admin_user_trial(
+    user_id: str,
+    body: UserTrialExtendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.extend_user_trial(
+            db,
+            user_id=user_id,
+            days=body.days,
+            actor=actor,
+            reason=body.reason,
+            request=request,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/admin/users/{user_id}/trial/eligibility")
+async def set_admin_user_trial_eligibility(
+    user_id: str,
+    body: UserTrialEligibilityRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await admin_user_service.set_user_trial_eligibility(
+            db,
+            user_id=user_id,
+            eligible=body.eligible,
             actor=actor,
             reason=body.reason,
             request=request,

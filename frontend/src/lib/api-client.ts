@@ -787,6 +787,9 @@ export interface AdminAttentionItem {
   href: string
   detail: string
   source_status: 'ok' | 'partial' | 'unavailable'
+  next_expiry_at?: string | null
+  days_until_expiry?: number | null
+  metadata_status?: 'complete' | 'partial' | 'unknown'
 }
 
 export interface AdminAttentionSource {
@@ -794,6 +797,12 @@ export interface AdminAttentionSource {
   status: 'ok' | 'partial' | 'unavailable'
   count?: number
   detail?: string
+  metadata_status?: 'complete' | 'partial' | 'unknown'
+  domain_expiring?: number
+  certificate_expiring?: number
+  unverified?: number
+  unknown_domain_expiry?: number
+  unknown_certificate_expiry?: number
 }
 
 export interface AdminAttentionResponse {
@@ -1177,6 +1186,26 @@ export interface AdminUser360 {
       last_used_at: string | null
     }>
   }
+  entitlements: {
+    effective: Record<string, boolean>
+    overrides: Record<string, { enabled: boolean }>
+    available_features: Array<{
+      key: string
+      label: string
+      category: string
+      parent_key: string | null
+    }>
+    available: boolean
+  }
+  quota: AdminUserQuotaSnapshot
+  trial: {
+    trial_used: boolean
+    eligible: boolean
+    extended_until: string | null
+    updated_at: string | null
+    updated_by: string | null
+    source: string
+  }
   recent_admin_actions: AdminAuditEntry[]
 }
 
@@ -1185,6 +1214,45 @@ export interface AdminCredentialRevokeResponse {
   item_id: string
   revoked: boolean
   already_revoked: boolean
+}
+
+export interface AdminUserQuotaDimension {
+  used: number | null
+  limit: number | null
+  policy_available: boolean
+  window: 'day' | 'month'
+  period: string
+  resets_at: string
+}
+
+export interface AdminUserQuotaSnapshot {
+  period: string
+  resets_at: string
+  policy_available: boolean
+  authority_available: boolean
+  dimensions: Record<string, AdminUserQuotaDimension>
+}
+
+export interface AdminUserActionEffective {
+  feature_key: string
+  changed: boolean
+  override: boolean
+  before: { override: boolean | null }
+  after: { override: boolean | null }
+  effective: boolean
+  available: boolean
+  features: Record<string, boolean>
+  entitlement?: { features: Record<string, boolean>; available: boolean }
+  quota?: AdminUserQuotaSnapshot
+}
+
+export interface AdminUserTrialActionResult {
+  changed: boolean
+  days?: number
+  device_trials_reset: number
+  before: AdminUser360['trial']
+  after: AdminUser360['trial']
+  trial: AdminUser360['trial']
 }
 
 export interface AdminAuditEntry {
@@ -4843,13 +4911,66 @@ class ApiClient {
     )
   }
 
+  async grantAdminUserFeature(
+    id: string,
+    body: { feature_key: string; reason: string },
+  ): Promise<AdminUserActionEffective> {
+    return this.request<AdminUserActionEffective>(
+      `/admin/users/${encodeURIComponent(id)}/features/grant`,
+      { method: 'POST', body: JSON.stringify({ ...body, confirm: true }) },
+    )
+  }
+
+  async revokeAdminUserFeature(
+    id: string,
+    body: { feature_key: string; reason: string },
+  ): Promise<AdminUserActionEffective> {
+    return this.request<AdminUserActionEffective>(
+      `/admin/users/${encodeURIComponent(id)}/features/revoke`,
+      { method: 'POST', body: JSON.stringify({ ...body, confirm: true }) },
+    )
+  }
+
+  async extendAdminUserTrial(
+    id: string,
+    body: { days: number; reason: string },
+  ): Promise<AdminUserTrialActionResult> {
+    return this.request<AdminUserTrialActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/trial/extend`,
+      { method: 'POST', body: JSON.stringify({ ...body, confirm: true }) },
+    )
+  }
+
+  async setAdminUserTrialEligibility(
+    id: string,
+    body: { eligible: boolean; reason: string },
+  ): Promise<AdminUserTrialActionResult> {
+    return this.request<AdminUserTrialActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/trial/eligibility`,
+      { method: 'POST', body: JSON.stringify({ ...body, confirm: true }) },
+    )
+  }
+
   async resetAdminUserQuota(
     id: string,
     body: { reason: string; dimension?: 'compilations' | 'optimizations' | 'ai_assists' },
-  ): Promise<{ dimensions: string[]; deleted_keys: number }> {
-    return this.request<{ dimensions: string[]; deleted_keys: number }>(
+  ): Promise<{
+    dimensions: string[]
+    deleted_keys: number
+    results: Array<{
+      dimension: string
+      window: 'day' | 'month'
+      period: string
+      limit: number | null
+      before_used: number
+      after_used: number
+      deleted: number
+    }>
+    quota: AdminUserQuotaSnapshot
+  }> {
+    return this.request(
       `/admin/users/${encodeURIComponent(id)}/quota/reset`,
-      { method: 'POST', body: JSON.stringify(body) },
+      { method: 'POST', body: JSON.stringify({ ...body, confirm: true }) },
     )
   }
 

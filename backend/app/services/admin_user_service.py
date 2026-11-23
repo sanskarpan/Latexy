@@ -13,12 +13,20 @@ from typing import Any
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
-from ..core.config import QUOTA_DIMENSIONS, get_plan_quota_window, settings
+from ..core.config import QUOTA_DIMENSIONS, settings
+from ..core.feature_registry import FEATURE_REGISTRY, get_feature
 from ..core.logging import get_logger
 from ..core.redis import cache_manager, get_redis_client
 from ..database import models
 from .admin_audit_service import AdminActor, audit_row_summary, record_admin_audit
+from .entitlement_service import (
+    ENTITLEMENT_OVERRIDES_KEY,
+    entitlement_overrides_from_metadata,
+    entitlement_service,
+    invalidate_entitlement_cache,
+)
 
 logger = get_logger(__name__)
 
@@ -127,6 +135,93 @@ async def invalidate_user_360_cache(user_id: str) -> None:
             await cache_manager.delete(_user_360_cache_key(user_id, role))
         except Exception:
             continue
+
+
+TRIAL_METADATA_KEY = "trial"
+
+
+def _metadata_dict(user: User) -> dict[str, Any]:
+    return dict(user.user_metadata) if isinstance(user.user_metadata, dict) else {}
+
+
+def _override_container(metadata: dict[str, Any]) -> dict[str, Any]:
+    raw = metadata.get(ENTITLEMENT_OVERRIDES_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _override_enabled(metadata: dict[str, Any], feature_key: str) -> bool | None:
+    return entitlement_overrides_from_metadata(metadata).get(feature_key)
+
+
+def _parse_trial_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
+def _trial_state(user: User) -> dict[str, Any]:
+    metadata = _metadata_dict(user)
+    trial = metadata.get(TRIAL_METADATA_KEY)
+    trial = trial if isinstance(trial, dict) else {}
+    return {
+        "trial_used": bool(user.trial_used),
+        "eligible": not bool(user.trial_used),
+        "extended_until": trial.get("extended_until"),
+        "updated_at": trial.get("updated_at"),
+        "updated_by": trial.get("updated_by"),
+        "source": "support_override" if trial else "account",
+    }
+
+
+def _ensure_not_self_target(actor: AdminActor, user_id: str) -> None:
+    """Privilege/quota-changing support actions cannot target the actor."""
+    if actor.user_id == user_id:
+        raise PermissionError("Admin actions cannot target your own account")
+
+
+async def _locked_user(db: AsyncSession, user_id: str) -> User:
+    user = (
+        await db.execute(select(User).where(User.id == user_id).with_for_update())
+    ).scalar_one_or_none()
+    if user is None:
+        raise KeyError("User not found")
+    return user
+
+
+async def _effective_feature_state(user_id: str, feature_key: str) -> dict[str, Any]:
+    snapshot = await entitlement_service.effective_snapshot(user_id)
+    return {
+        "feature_key": feature_key,
+        "effective": bool(snapshot["features"].get(feature_key)),
+        "available": bool(snapshot.get("available")),
+        "features": snapshot["features"],
+    }
+
+
+async def _reset_device_trials(db: AsyncSession, user_id: str) -> int:
+    fingerprints = [
+        row[0]
+        for row in (
+            await db.execute(
+                select(UsageAnalytics.device_fingerprint)
+                .where(UsageAnalytics.user_id == user_id, UsageAnalytics.device_fingerprint.is_not(None))
+                .distinct()
+            )
+        ).all()
+        if row[0]
+    ]
+    if not fingerprints:
+        return 0
+    result = await db.execute(
+        update(models.DeviceTrial)
+        .where(models.DeviceTrial.device_fingerprint.in_(fingerprints))
+        .values(usage_count=0, blocked=False)
+    )
+    return int(result.rowcount or 0)
 
 
 async def build_user_360(
@@ -319,6 +414,23 @@ async def _compose_user_360(
             .limit(1)
         )
     ).one_or_none()
+
+    # Entitlement/quota state is read through the same authority product routes
+    # use. The override map is the support-plane delta, not a second policy
+    # snapshot; global and role restrictions are already folded into effective.
+    override_map = entitlement_overrides_from_metadata(user.user_metadata)
+    effective_snapshot = await entitlement_service.effective_snapshot(user_id)
+    quota_snapshot = await entitlement_service.quota_snapshot(user_id, user.subscription_plan)
+    gateable_features = [
+        {
+            "key": feature.key,
+            "label": feature.label,
+            "category": feature.category,
+            "parent_key": feature.parent_key,
+        }
+        for feature in FEATURE_REGISTRY
+        if feature.gateable
+    ]
     referrals_made = int(
         (
             await db.execute(
@@ -506,6 +618,22 @@ async def _compose_user_360(
                 for row in developer_keys
             ],
         },
+        "entitlements": {
+            "effective": {
+                key: bool(value)
+                for key, value in effective_snapshot["features"].items()
+                if get_feature(key) is not None and get_feature(key).gateable
+            },
+            "overrides": {
+                key: {"enabled": enabled}
+                for key, enabled in override_map.items()
+                if get_feature(key) is not None and get_feature(key).gateable
+            },
+            "available_features": gateable_features,
+            "available": bool(effective_snapshot.get("available")),
+        },
+        "quota": quota_snapshot,
+        "trial": _trial_state(user),
         "recent_admin_actions": [audit_row_summary(row) for row in admin_actions],
     }
 
@@ -815,6 +943,242 @@ async def revoke_user_developer_key(
     )
 
 
+async def set_user_feature_override(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    feature_key: str,
+    enabled: bool,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Idempotently grant/revoke one gateable feature in row-locked metadata."""
+    feature = get_feature(feature_key)
+    if feature is None or not feature.gateable:
+        raise ValueError("Unknown or non-gateable feature key")
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be a boolean")
+    cleaned_reason = " ".join((reason or "").split())[:1000]
+    if not cleaned_reason:
+        raise ValueError("A reason is required for a feature override")
+    _ensure_not_self_target(actor, user_id)
+
+    user = await _locked_user(db, user_id)
+    plan = user.subscription_plan
+    metadata = _metadata_dict(user)
+    container = _override_container(metadata)
+    current = _override_enabled(metadata, feature_key)
+    if current is enabled:
+        # The row lock still serializes concurrent identical requests; a no-op
+        # must not create a duplicate audit row or rewrite metadata.
+        await db.rollback()
+        effective = await _effective_feature_state(user_id, feature_key)
+        quota = await entitlement_service.quota_snapshot(user_id, plan)
+        return {
+            "feature_key": feature_key,
+            "changed": False,
+            "override": enabled,
+            "before": {"override": current},
+            "after": {"override": current},
+            **effective,
+            "entitlement": {
+                "features": effective["features"],
+                "available": effective["available"],
+            },
+            "quota": quota,
+        }
+
+    now = datetime.now(timezone.utc)
+    container[feature_key] = {
+        "enabled": enabled,
+        "updated_at": now.isoformat(),
+        "updated_by": actor.user_id,
+        "reason": cleaned_reason,
+    }
+    metadata[ENTITLEMENT_OVERRIDES_KEY] = container
+    user.user_metadata = metadata
+    flag_modified(user, "user_metadata")
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="user.feature.grant" if enabled else "user.feature.revoke",
+        target_type="user",
+        target_id=user_id,
+        reason=cleaned_reason,
+        before={"feature_key": feature_key, "override": current},
+        after={"feature_key": feature_key, "override": enabled},
+        request=request,
+    )
+    await db.commit()
+    await db.refresh(user)
+    await invalidate_user_360_cache(user_id)
+    await invalidate_entitlement_cache()
+    effective = await _effective_feature_state(user_id, feature_key)
+    quota = await entitlement_service.quota_snapshot(user_id, plan)
+    return {
+        "feature_key": feature_key,
+        "changed": True,
+        "override": enabled,
+        "before": {"override": current},
+        "after": {"override": enabled},
+        **effective,
+        "entitlement": {
+            "features": effective["features"],
+            "available": effective["available"],
+        },
+        "quota": quota,
+    }
+
+
+async def extend_user_trial(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    days: int,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Extend support-granted trial eligibility without a new table."""
+    if isinstance(days, bool) or not isinstance(days, int) or not 1 <= days <= 365:
+        raise ValueError("Trial extension must be between 1 and 365 days")
+    cleaned_reason = " ".join((reason or "").split())[:1000]
+    if not cleaned_reason:
+        raise ValueError("A reason is required to extend a trial")
+    _ensure_not_self_target(actor, user_id)
+
+    user = await _locked_user(db, user_id)
+    metadata = _metadata_dict(user)
+    trial = dict(metadata.get(TRIAL_METADATA_KEY)) if isinstance(metadata.get(TRIAL_METADATA_KEY), dict) else {}
+    now = datetime.now(timezone.utc)
+    existing_until = _parse_trial_datetime(trial.get("extended_until"))
+    base = max(now, existing_until) if existing_until else now
+    extended_until = base + timedelta(days=days)
+    before = {
+        "trial_used": bool(user.trial_used),
+        "extended_until": trial.get("extended_until"),
+    }
+    device_trials_reset = await _reset_device_trials(db, user_id)
+    user.trial_used = False
+    trial.update(
+        {
+            "eligible": True,
+            "extended_until": extended_until.isoformat(),
+            "updated_at": now.isoformat(),
+            "updated_by": actor.user_id,
+            "reason": cleaned_reason,
+            "days": days,
+        }
+    )
+    metadata[TRIAL_METADATA_KEY] = trial
+    user.user_metadata = metadata
+    flag_modified(user, "user_metadata")
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="user.trial.extend",
+        target_type="user",
+        target_id=user_id,
+        reason=cleaned_reason,
+        before=before,
+        after={
+            "trial_used": False,
+            "extended_until": extended_until.isoformat(),
+            "device_trials_reset": device_trials_reset,
+        },
+        request=request,
+    )
+    await db.commit()
+    await db.refresh(user)
+    await invalidate_user_360_cache(user_id)
+    return {
+        "changed": True,
+        "days": days,
+        "device_trials_reset": device_trials_reset,
+        "before": before,
+        "after": _trial_state(user),
+        "trial": _trial_state(user),
+    }
+
+
+async def set_user_trial_eligibility(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    eligible: bool,
+    actor: AdminActor,
+    reason: str,
+    request=None,
+) -> dict[str, Any]:
+    """Set trial eligibility explicitly; repeated identical calls are no-ops."""
+    if not isinstance(eligible, bool):
+        raise ValueError("eligible must be a boolean")
+    cleaned_reason = " ".join((reason or "").split())[:1000]
+    if not cleaned_reason:
+        raise ValueError("A reason is required to change trial eligibility")
+    _ensure_not_self_target(actor, user_id)
+
+    user = await _locked_user(db, user_id)
+    metadata = _metadata_dict(user)
+    trial = dict(metadata.get(TRIAL_METADATA_KEY)) if isinstance(metadata.get(TRIAL_METADATA_KEY), dict) else {}
+    currently_eligible = not bool(user.trial_used)
+    if currently_eligible is eligible and bool(trial.get("eligible", currently_eligible)) is eligible:
+        unchanged = _trial_state(user)
+        await db.rollback()
+        return {
+            "changed": False,
+            "before": unchanged,
+            "after": unchanged,
+            "trial": unchanged,
+        }
+
+    before = _trial_state(user)
+    now = datetime.now(timezone.utc)
+    device_trials_reset = 0
+    if eligible:
+        device_trials_reset = await _reset_device_trials(db, user_id)
+    user.trial_used = not eligible
+    trial.update(
+        {
+            "eligible": eligible,
+            "updated_at": now.isoformat(),
+            "updated_by": actor.user_id,
+            "reason": cleaned_reason,
+        }
+    )
+    if not eligible:
+        trial["extended_until"] = None
+    metadata[TRIAL_METADATA_KEY] = trial
+    user.user_metadata = metadata
+    flag_modified(user, "user_metadata")
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="user.trial.eligibility",
+        target_type="user",
+        target_id=user_id,
+        reason=cleaned_reason,
+        before=before,
+        after={
+            "eligible": eligible,
+            "trial_used": not eligible,
+            "device_trials_reset": device_trials_reset,
+        },
+        request=request,
+    )
+    await db.commit()
+    await db.refresh(user)
+    await invalidate_user_360_cache(user_id)
+    return {
+        "changed": True,
+        "device_trials_reset": device_trials_reset,
+        "before": before,
+        "after": _trial_state(user),
+        "trial": _trial_state(user),
+    }
+
+
 async def set_user_plan(
     db: AsyncSession,
     *,
@@ -929,20 +1293,13 @@ async def reset_user_quota(
     user = await db.get(User, user_id)
     if user is None:
         raise KeyError("User not found")
+    _ensure_not_self_target(actor, user_id)
     cleaned_reason = " ".join((reason or "").split())[:1000]
     if not cleaned_reason:
         raise ValueError("A reason is required to reset quota")
     dimensions = list(QUOTA_DIMENSIONS) if dimension is None else [dimension]
     if any(item not in QUOTA_DIMENSIONS for item in dimensions):
         raise ValueError("Unknown quota dimension")
-    from .entitlement_service import _current_period
-
-    keys: list[str] = []
-    for item in dimensions:
-        window = get_plan_quota_window(user.subscription_plan, item)
-        period = _current_period(window)
-        keys.append(f"latexy:quota:{item}:{user_id}:{period}")
-    from ..core.redis import get_redis_cache_client
 
     # Persist the intent before the external mutation. If Redis succeeds and
     # the completion audit fails, the immutable started row still proves who
@@ -954,13 +1311,16 @@ async def reset_user_quota(
         target_type="user",
         target_id=user_id,
         reason=cleaned_reason,
-        before={"dimensions": dimensions, "counter_keys": len(keys)},
+        before={"dimensions": dimensions},
         request=request,
         commit=True,
     )
     try:
-        redis = await get_redis_cache_client()
-        deleted = int(await redis.delete(*keys)) if keys else 0
+        reset = await entitlement_service.reset_quota(
+            user_id=user_id,
+            dimensions=dimensions,
+            plan=user.subscription_plan,
+        )
     except Exception:
         await record_admin_audit(
             db,
@@ -969,13 +1329,14 @@ async def reset_user_quota(
             target_type="user",
             target_id=user_id,
             reason=cleaned_reason,
-            before={"dimensions": dimensions, "counter_keys": len(keys)},
+            before={"dimensions": dimensions},
             after={"deleted_keys": 0},
             metadata={"operation_id": intent.id},
             request=request,
             commit=True,
         )
         raise
+    quota = await entitlement_service.quota_snapshot(user_id, user.subscription_plan)
     await record_admin_audit(
         db,
         actor=actor,
@@ -983,14 +1344,22 @@ async def reset_user_quota(
         target_type="user",
         target_id=user_id,
         reason=cleaned_reason,
-        before={"dimensions": dimensions, "counter_keys": len(keys)},
-        after={"deleted_keys": deleted},
+        before={"dimensions": dimensions},
+        after={
+            "deleted_keys": reset["deleted_keys"],
+            "counters": reset["results"],
+        },
         metadata={"operation_id": intent.id},
         request=request,
         commit=True,
     )
     await invalidate_user_360_cache(user_id)
-    return {"dimensions": dimensions, "deleted_keys": deleted}
+    return {
+        "dimensions": dimensions,
+        "deleted_keys": reset["deleted_keys"],
+        "results": reset["results"],
+        "quota": quota,
+    }
 
 
 async def revoke_user_sessions(

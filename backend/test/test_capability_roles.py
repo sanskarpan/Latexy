@@ -108,7 +108,7 @@ def test_sync_blob_uses_pool_compatible_transaction_local_timeouts(monkeypatch):
 
     connection = MagicMock()
     cursor = connection.cursor.return_value.__enter__.return_value
-    cursor.fetchone.return_value = ("user", "free")
+    cursor.fetchone.return_value = ("user", "free", None)
     cursor.fetchall.return_value = [("kill", "c22", "", True)]
     connect = Mock(return_value=connection)
     monkeypatch.setitem(sys.modules, "psycopg2", SimpleNamespace(connect=connect))
@@ -125,9 +125,9 @@ def test_sync_blob_uses_pool_compatible_transaction_local_timeouts(monkeypatch):
         "SET LOCAL statement_timeout = '2s'",
         "SET LOCAL lock_timeout = '1s'",
     ]
-    assert "SELECT role, subscription_plan FROM users" in statements[2]
+    assert "SELECT role, subscription_plan, user_metadata FROM users" in statements[2]
     assert "FROM feature_flags" in statements[3]
-    assert blob["identity"] == ("user", "free")
+    assert blob["identity"] == ("user", "free", None)
     connection.close.assert_called_once_with()
 
 

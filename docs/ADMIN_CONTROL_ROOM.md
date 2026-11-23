@@ -20,6 +20,8 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Customers | `GET /admin/users/{id}/360` | Masked account, activation, usage, billing, security, and integration summary |
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
+| Customers | `POST /admin/users/{id}/features/grant\|revoke` | Row-locked, idempotent per-user feature override stored in `users.user_metadata`; confirmation and reason required |
+| Customers | `POST /admin/users/{id}/trial/extend` · `POST /trial/eligibility` | Support trial extension or explicit eligibility, confirmation and reason required |
 | Audit | `GET /admin/audit` | Append-only operator audit trail with cursor pagination |
 | Overview | `GET /analytics/admin/overview` | Six executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
@@ -60,8 +62,15 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   strings, credentials, document content and customer identifiers are never
   returned.
 - Attention rows are read-only. Nothing in the queue auto-retries, refunds,
-  cancels or acknowledges a provider event. Domain expiry is explicitly marked
-  partial until certificate/DNS metadata is connected.
+  cancels or acknowledges a provider event. Custom-domain and certificate
+  expiry inside 30 days is actionable; null metadata is reported as `unknown`
+  or `partial`, never as healthy or far-future. Every row links to its filtered
+  Revenue, Job queue or Customers view.
+- Per-user feature overrides live in `users.user_metadata.entitlement_overrides`
+  and are consumed by `entitlement_service`. A grant supplements the plan/SKU
+  matrix for one capability; a revoke denies it. Neither bypasses a global kill
+  switch or account-role refusal. Writes take a row lock, are idempotent, and
+  invalidate the User 360 and compatibility entitlement caches.
 - Alerts deduplicate on a stable key while active, update an occurrence count
   and auto-resolve when the condition clears. A resolved incident may create a
   new row if it returns later. Acknowledgement and snooze require a reason and
@@ -97,6 +106,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 
 - `admin_alerts` with one active row per `dedupe_key` (partial unique index)
 - severity/state/history indexes and a fixed severity/state check constraint
+
+`0079_tenant_domain_expiry` adds nullable `tenants.domain_expires_at` and
+`tenants.domain_certificate_expires_at` timestamps. Null means unknown, so the
+attention view reports partial coverage rather than assuming a far-future date.
 
 The evaluator runs from the existing five-minute Modal maintenance fan-out; it
 upserts signals, reopens expired snoozes and auto-resolves cleared conditions.

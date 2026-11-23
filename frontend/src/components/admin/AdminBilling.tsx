@@ -720,13 +720,43 @@ export default function AdminBilling() {
     receivedAfter: string
     receivedBefore: string
     deadLetter: boolean
-  }>({
-    status: 'failed',
-    acknowledged: 'unacknowledged',
-    q: '',
-    receivedAfter: '',
-    receivedBefore: '',
-    deadLetter: true,
+  }>(() => {
+    if (typeof window === 'undefined') {
+      return {
+        status: 'failed',
+        acknowledged: 'unacknowledged',
+        q: '',
+        receivedAfter: '',
+        receivedBefore: '',
+        deadLetter: true,
+      }
+    }
+    const params = new URLSearchParams(window.location.search)
+    // Attention deep links use webhook_status; `status` is accepted too so
+    // older bookmarks and hand-written links keep working.
+    const requestedStatus = params.get('webhook_status') ?? params.get('status')
+    const requestedAck = params.get('acknowledged')
+    return {
+      status: ['failed', 'processed', 'processing'].includes(requestedStatus ?? '')
+        ? (requestedStatus as string)
+        : 'failed',
+      acknowledged: requestedAck === 'all' || requestedAck === 'acknowledged'
+        ? (requestedAck as AckFilter)
+        : 'unacknowledged',
+      q: params.get('q')?.slice(0, 200) ?? '',
+      receivedAfter: '',
+      receivedBefore: '',
+      deadLetter: true,
+    }
+  })
+  const [attentionFilter] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    const subscription = params.get('subscription_status')
+    const payment = params.get('payment_status')
+    if (subscription) return `subscriptions: ${subscription}`
+    if (payment) return `payments: ${payment}`
+    return null
   })
   const [webhookOffset, setWebhookOffset] = useState(0)
   const [reconciliationOffset, setReconciliationOffset] = useState(0)
@@ -1048,6 +1078,13 @@ export default function AdminBilling() {
       {error && (
         <div role="alert" className="rounded-[var(--radius-md)] border border-err/20 bg-err/[0.06] px-4 py-3 text-xs text-err">
           {error}
+        </div>
+      )}
+
+      {attentionFilter && (
+        <div className="rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-4 py-3 text-xs text-warn">
+          Attention filter · {attentionFilter}. Use the subscription and payment records below the KPI strip to review
+          the affected accounts; no automatic retry or refund is performed.
         </div>
       )}
 
