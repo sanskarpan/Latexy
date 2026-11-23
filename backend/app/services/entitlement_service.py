@@ -422,6 +422,8 @@ class EntitlementService:
             return True
         if role not in CAPABILITY_ROLES:
             return False
+        if not isinstance(blob, dict):
+            return False
         normalized = (plan or "free").strip().lower()
         sku = PLAN_SKU_ALIASES.get(normalized, normalized)
         if sku not in PLAN_KEYS:
