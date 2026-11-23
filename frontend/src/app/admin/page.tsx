@@ -506,6 +506,7 @@ function FragmentGroup({
 function AlwaysOnDot({ reason }: { reason?: string | null }) {
   return (
     <span
+      role="img"
       title={reason ?? 'Always on'}
       className="inline-block h-2.5 w-2.5 rounded-full bg-ok/70 align-middle"
       aria-label="Always on"
