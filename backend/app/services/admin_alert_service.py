@@ -253,6 +253,36 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
             },
         )
 
+    async def redis_capacity() -> dict[str, Any] | None:
+        # The public health snapshot is already cached (5 minutes) and returns
+        # aggregate provider data only. Surface warning/critical/blind states in
+        # the durable admin alert strip, which is the operator's on-call surface.
+        from .redis_capacity_service import redis_capacity_service
+
+        snapshot = await redis_capacity_service.snapshot()
+        if snapshot.status in {"ok", "not_applicable"}:
+            return None
+        severity = (
+            "critical"
+            if snapshot.status in {"critical", "exhausted", "unavailable", "misconfigured"}
+            else "warning"
+        )
+        return _signal(
+            kind="capacity.redis",
+            severity=severity,
+            owner="Platform",
+            title=f"Redis provider capacity is {snapshot.status}",
+            dedupe_key="capacity.redis",
+            payload={
+                "status": snapshot.status,
+                "provider": snapshot.provider,
+                "configured": snapshot.configured,
+                "monthly_requests": snapshot.monthly_requests,
+                "request_limit": snapshot.request_limit,
+                "utilization_ratio": snapshot.utilization_ratio,
+            },
+        )
+
     rules = (
         ("billing.webhook_failures", webhook_failures),
         ("billing.failed_payments", failed_payments),
@@ -260,6 +290,7 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
         ("jobs.stuck", stuck_jobs),
         ("spend.monthly_cap", spend_cap),
         ("domains.unverified", unverified_domains),
+        ("capacity.redis", redis_capacity),
     )
     for rule_name, rule in rules:
         try:
