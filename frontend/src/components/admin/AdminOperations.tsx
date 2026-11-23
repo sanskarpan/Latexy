@@ -29,6 +29,20 @@ const SEVERITY_LABEL: Record<AdminAttentionItem['severity'], string> = {
   low: 'Low',
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  'billing.webhooks': 'Billing webhooks',
+  'billing.subscriptions': 'Subscriptions',
+  'billing.payments': 'Payments',
+  'jobs.stuck': 'Job queue',
+  'domains.custom': 'Custom domains',
+}
+
+const METADATA_STATUS_LABEL: Record<string, string> = {
+  complete: 'metadata complete',
+  partial: 'metadata partial',
+  unknown: 'metadata unknown',
+}
+
 const ALERT_SEVERITY_TONE: Record<AdminAlert['severity'], string> = {
   critical: 'border-err/30 bg-err/10 text-err',
   high: 'border-warn/30 bg-warn/10 text-warn',
@@ -80,6 +94,17 @@ function formatAge(iso: string | null): string {
 
 function statusClass(status: AdminOperationsStatus): string {
   return STATUS_TONE[status] ?? STATUS_TONE.degraded
+}
+
+function formatExpiry(iso: string | null | undefined, days: number | null | undefined): string {
+  if (!iso) return 'expiry unknown'
+  const parsed = new Date(iso)
+  if (!Number.isFinite(parsed.getTime())) return 'expiry unknown'
+  const when = parsed.toLocaleDateString()
+  if (typeof days !== 'number') return when
+  if (days < 0) return `${when} · overdue`
+  if (days === 0) return `${when} · today`
+  return `${when} · in ${days}d`
 }
 
 function metricText(section: Record<string, unknown>): string[] {
@@ -364,9 +389,11 @@ function AlertStrip({ refreshKey, onUpdated }: { refreshKey: number; onUpdated: 
 }
 
 function AttentionRow({ item }: { item: AdminAttentionItem }) {
+  const isDomain = item.key.startsWith('domains.')
   return (
     <a
       href={item.href}
+      aria-label={`${item.title}. Open the filtered admin view.`}
       className="flex flex-wrap items-start justify-between gap-3 rounded-[var(--radius-md)] border border-line bg-surface px-4 py-3 transition hover:border-line-2 hover:bg-surface-2"
     >
       <div className="min-w-0 flex-1">
@@ -378,8 +405,19 @@ function AttentionRow({ item }: { item: AdminAttentionItem }) {
           <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] text-fg-3">
             {item.owner}
           </span>
+          {item.metadata_status && item.metadata_status !== 'complete' && (
+            <span className="rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 text-[10px] text-warn">
+              {METADATA_STATUS_LABEL[item.metadata_status]}
+            </span>
+          )}
         </div>
         <p className="mt-1 text-xs leading-relaxed text-fg-3">{item.detail}</p>
+        {isDomain && (
+          <p className="mt-1 text-[11px] text-fg-3">
+            Next expiry: {formatExpiry(item.next_expiry_at, item.days_until_expiry)}
+          </p>
+        )}
+        <p className="mt-1 text-[10px] font-medium text-accent-strong">Open filtered view →</p>
       </div>
       <div className="text-right">
         <p className="text-lg font-semibold text-fg">{item.count}</p>
@@ -459,7 +497,7 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
       )}
       {data && data.items.length === 0 && !error && (
         <p className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface-2/60 px-3 py-3 text-xs text-fg-3">
-          No failed webhooks, past-due subscriptions, failed payments or stuck jobs are waiting.
+          No failed webhooks, past-due subscriptions, failed payments, stuck jobs or expiring custom domains are waiting.
         </p>
       )}
 
@@ -467,7 +505,9 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
         <div className="mt-3 space-y-1 border-t border-line pt-3">
           {partialSources.map((source) => (
             <p key={source.key} className="text-[11px] text-fg-3">
-              <span className="font-medium text-warn">{source.key}</span>
+              <span className="font-medium text-warn">{SOURCE_LABEL[source.key] ?? source.key}</span>
+              {` · ${source.status}`}
+              {source.metadata_status ? ` · ${METADATA_STATUS_LABEL[source.metadata_status] ?? source.metadata_status}` : ''}
               {source.detail ? ` · ${source.detail}` : ' · source unavailable'}
             </p>
           ))}

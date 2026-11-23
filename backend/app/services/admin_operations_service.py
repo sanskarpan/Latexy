@@ -9,6 +9,7 @@ blank the rest of the response.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -25,6 +26,8 @@ logger = get_logger(__name__)
 ACTIVE_JOB_STATUSES = ("queued", "pending", "processing", "running")
 PAST_DUE_STATUSES = ("past_due", "on_hold")
 STUCK_AFTER = timedelta(minutes=15)
+DOMAIN_EXPIRY_WINDOW = timedelta(days=30)
+DOMAIN_CRITICAL_WINDOW = timedelta(days=7)
 HEALTH_CACHE_SECONDS = 45
 
 _health_cache: tuple[float, dict[str, Any]] | None = None
@@ -44,6 +47,27 @@ def _age_seconds(value: datetime | None, now: datetime) -> int | None:
     if value is None:
         return None
     return max(0, int((now - value).total_seconds()))
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _days_until(value: datetime | None, now: datetime) -> int | None:
+    normalized = _as_utc(value)
+    if normalized is None:
+        return None
+    return math.ceil((normalized - now).total_seconds() / 86400)
+
+
+def _expiry_severity(*values: datetime | None, now: datetime) -> str:
+    """Past and near-term expiry is critical; anything inside 30 days is high."""
+    normalized = [_as_utc(value) for value in values]
+    if any(value is not None and value <= now + DOMAIN_CRITICAL_WINDOW for value in normalized):
+        return "critical"
+    return "high"
 
 
 def _section(
@@ -93,8 +117,11 @@ def _attention_item(
     href: str,
     detail: str,
     source_status: str = "ok",
+    next_expiry_at: datetime | None = None,
+    days_until_expiry: int | None = None,
+    metadata_status: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "key": key,
         "title": title,
         "severity": severity,
@@ -105,6 +132,13 @@ def _attention_item(
         "detail": detail,
         "source_status": source_status,
     }
+    if next_expiry_at is not None:
+        payload["next_expiry_at"] = _iso(next_expiry_at)
+    if days_until_expiry is not None:
+        payload["days_until_expiry"] = days_until_expiry
+    if metadata_status is not None:
+        payload["metadata_status"] = metadata_status
+    return payload
 
 
 async def _count_and_oldest(db: AsyncSession, statement) -> tuple[int, datetime | None]:
@@ -141,7 +175,7 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
                     owner="Billing",
                     count=count,
                     oldest_at=oldest,
-                    href="/admin?tab=billing#admin-billing-webhooks",
+                    href="/admin?tab=billing&webhook_status=failed&acknowledged=false&status=failed#admin-billing-webhooks",
                     detail="Review the provider event and reconcile or acknowledge it with a reason.",
                 )
             )
@@ -173,7 +207,7 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
                     owner="Billing",
                     count=count,
                     oldest_at=oldest,
-                    href="/admin?tab=billing",
+                    href="/admin?tab=billing&subscription_status=past_due&status=past_due#admin-billing",
                     detail="Check provider retry state and whether the account needs support.",
                 )
             )
@@ -205,7 +239,7 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
                     owner="Billing",
                     count=count,
                     oldest_at=oldest,
-                    href="/admin?tab=billing",
+                    href="/admin?tab=billing&payment_status=failed&status=failed#admin-billing",
                     detail="Failed payments stay visible until the provider outcome is reconciled.",
                 )
             )
@@ -271,46 +305,155 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
                 owner="Platform",
                 count=stuck_count,
                 oldest_at=stuck_oldest,
-                href="/admin#admin-job-queue",
+                href="/admin?tab=analytics&job_status=processing&queue=stuck#admin-job-queue",
                 detail="Inspect the queue before retrying or cancelling; no action runs automatically.",
                 source_status=jobs_status,
             )
         )
 
-    # Custom-domain expiry/certificate metadata is not stored yet. Be explicit
-    # instead of implying the domain source is healthy or empty.
+    # Custom-domain metadata is externally owned. Known expiry values are
+    # actionable; null values stay explicitly unknown instead of being treated
+    # as far-future or healthy. Only timestamps and counts cross this boundary.
     try:
-        count = int(
-            (
-                await db.execute(
-                    select(func.count(models.Tenant.id)).where(
-                        models.Tenant.custom_domain.is_not(None),
-                        models.Tenant.domain_verified_at.is_(None),
-                    )
-                )
-            ).scalar_one()
-            or 0
-        )
+        domain_rows = (
+            await db.execute(
+                select(
+                    models.Tenant.domain_verified_at,
+                    models.Tenant.domain_expires_at,
+                    models.Tenant.domain_certificate_expires_at,
+                    models.Tenant.created_at,
+                ).where(models.Tenant.custom_domain.is_not(None))
+            )
+        ).all()
+        domain_total = len(domain_rows)
+        unverified_rows = [row for row in domain_rows if row[0] is None]
+        domain_expiring_rows = [
+            row
+            for row in domain_rows
+            if _as_utc(row[1]) is not None and _as_utc(row[1]) <= now + DOMAIN_EXPIRY_WINDOW
+        ]
+        certificate_expiring_rows = [
+            row
+            for row in domain_rows
+            if _as_utc(row[2]) is not None and _as_utc(row[2]) <= now + DOMAIN_EXPIRY_WINDOW
+        ]
+        unknown_domain_expiry = sum(1 for row in domain_rows if _as_utc(row[1]) is None)
+        unknown_certificate_expiry = sum(1 for row in domain_rows if _as_utc(row[2]) is None)
+
+        if not domain_total:
+            metadata_status = "complete"
+            source_status = "ok"
+            source_detail = "No custom domains are configured."
+        elif unknown_domain_expiry == domain_total and unknown_certificate_expiry == domain_total:
+            metadata_status = "unknown"
+            source_status = "partial"
+            source_detail = (
+                "Certificate/DNS expiry metadata is not configured; "
+                "expiry is unknown for every custom domain."
+            )
+            if unverified_rows:
+                source_detail += f" {len(unverified_rows)} of {domain_total} custom domains are unverified."
+        elif unknown_domain_expiry or unknown_certificate_expiry or unverified_rows:
+            metadata_status = "partial"
+            source_status = "partial"
+            parts: list[str] = []
+            unknown = max(unknown_domain_expiry, unknown_certificate_expiry)
+            if unknown:
+                parts.append(f"{unknown} of {domain_total} custom domains have unknown expiry metadata")
+            if unverified_rows:
+                parts.append(f"{len(unverified_rows)} of {domain_total} custom domains are unverified")
+            source_detail = "; ".join(parts) + "."
+        else:
+            metadata_status = "complete"
+            source_status = "ok"
+            source_detail = "All custom-domain expiry metadata is known."
+
         sources.append(
             {
                 "key": "domains.custom",
-                "status": "partial",
-                "count": count,
-                "detail": "Certificate/DNS expiry metadata is not configured; only unverified custom domains are reported.",
+                "status": source_status,
+                "count": domain_total,
+                "metadata_status": metadata_status,
+                "domain_expiring": len(domain_expiring_rows),
+                "certificate_expiring": len(certificate_expiring_rows),
+                "unverified": len(unverified_rows),
+                "unknown_domain_expiry": unknown_domain_expiry,
+                "unknown_certificate_expiry": unknown_certificate_expiry,
+                "detail": source_detail,
             }
         )
-        if count:
+
+        if domain_expiring_rows:
+            next_domain_expiry = min(
+                _as_utc(row[1]) for row in domain_expiring_rows if _as_utc(row[1]) is not None
+            )
+            oldest_domain = min(
+                (_as_utc(row[3]) for row in domain_expiring_rows if row[3] is not None),
+                default=None,
+            )
             items.append(
                 _attention_item(
-                    key="domains.custom",
+                    key="domains.expiry",
+                    title="Custom domains expiring within 30 days",
+                    severity=_expiry_severity(
+                        *(row[1] for row in domain_expiring_rows), now=now
+                    ),
+                    owner="Growth",
+                    count=len(domain_expiring_rows),
+                    oldest_at=oldest_domain,
+                    href="/admin?tab=customers&domain_status=expiring&domain_window=30#admin-panel-customers",
+                    detail="Renew or remove the custom domain before DNS resolution fails; no automatic action runs.",
+                    source_status=source_status,
+                    next_expiry_at=next_domain_expiry,
+                    days_until_expiry=_days_until(next_domain_expiry, now),
+                    metadata_status=metadata_status,
+                )
+            )
+
+        if certificate_expiring_rows:
+            next_certificate_expiry = min(
+                _as_utc(row[2]) for row in certificate_expiring_rows if _as_utc(row[2]) is not None
+            )
+            oldest_certificate = min(
+                (_as_utc(row[3]) for row in certificate_expiring_rows if row[3] is not None),
+                default=None,
+            )
+            items.append(
+                _attention_item(
+                    key="domains.certificate_expiry",
+                    title="Custom-domain certificates expiring within 30 days",
+                    severity=_expiry_severity(
+                        *(row[2] for row in certificate_expiring_rows), now=now
+                    ),
+                    owner="Growth",
+                    count=len(certificate_expiring_rows),
+                    oldest_at=oldest_certificate,
+                    href="/admin?tab=customers&domain_certificate=expiring&domain_window=30#admin-panel-customers",
+                    detail="Certificate renewal is externally managed; verify the host is still served after renewal.",
+                    source_status=source_status,
+                    next_expiry_at=next_certificate_expiry,
+                    days_until_expiry=_days_until(next_certificate_expiry, now),
+                    metadata_status=metadata_status,
+                )
+            )
+
+        if unverified_rows:
+            oldest_unverified = min(
+                (_as_utc(row[3]) for row in unverified_rows if row[3] is not None),
+                default=None,
+            )
+            items.append(
+                _attention_item(
+                    key="domains.verification",
                     title="Unverified custom domains",
                     severity="low",
                     owner="Growth",
-                    count=count,
-                    oldest_at=None,
-                    href="/admin?tab=customers",
-                    detail="Domain expiry is unavailable until certificate/DNS metadata is connected.",
-                    source_status="partial",
+                    count=len(unverified_rows),
+                    oldest_at=oldest_unverified,
+                    href="/admin?tab=customers&domain_status=unverified#admin-panel-customers",
+                    detail="Ownership verification is incomplete; expiry remains unknown until DNS metadata is connected.",
+                    source_status=source_status,
+                    metadata_status=metadata_status,
                 )
             )
     except Exception:
@@ -319,16 +462,18 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
             {
                 "key": "domains.custom",
                 "status": "unavailable",
+                "metadata_status": "unknown",
                 "detail": "Custom-domain state could not be checked",
             }
         )
 
     items.sort(key=lambda item: (item["severity"] != "critical", item["severity"] != "high", item["title"]))
     unavailable = any(source["status"] == "unavailable" for source in sources)
+    partial = any(source["status"] in {"partial", "unavailable"} for source in sources)
     return {
         "generated_at": now.isoformat(),
         "overall": "attention" if items or unavailable else "clear",
-        "partial": unavailable,
+        "partial": partial,
         "items": items,
         "sources": sources,
     }

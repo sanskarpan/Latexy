@@ -1947,6 +1947,12 @@ class Tenant(Base):
     slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     custom_domain: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
     domain_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Nullable because an external DNS/TLS automation owns these facts. Null is
+    # surfaced as "unknown expiry", never as an unlimited/far-future domain.
+    domain_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    domain_certificate_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     logo_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     primary_color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
