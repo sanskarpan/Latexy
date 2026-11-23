@@ -435,10 +435,14 @@ async def get_admin_activation(
 @router.get("/admin/analytics/retention")
 async def get_admin_retention(
     weeks: int = Query(8, ge=1, le=26),
+    signup_month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    return await admin_growth_service.retention(db, weeks=weeks)
+    try:
+        return await admin_growth_service.retention(db, weeks=weeks, signup_month=signup_month)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/admin/analytics/ai-cost")
@@ -453,8 +457,15 @@ async def get_admin_ai_cost(
 @router.get("/admin/analytics/timeseries")
 async def get_admin_analytics_timeseries(
     days: int = Query(30, ge=1, le=365),
-    metric: Literal["events", "compilations", "optimizations", "revenue"] = Query("events"),
-    dimension: Optional[Literal["plan", "provider", "feature"]] = Query(None),
+    metric: Literal[
+        "events",
+        "compilations",
+        "optimizations",
+        "revenue",
+        "new_users",
+        "active_users",
+    ] = Query("events"),
+    dimension: Optional[Literal["plan", "provider", "feature", "signup_cohort"]] = Query(None),
     value: Optional[str] = Query(None, max_length=120),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),

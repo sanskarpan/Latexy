@@ -1158,6 +1158,23 @@ export interface AdminActivationStep {
   count: number
   from_previous: number
   from_signup: number
+  drop_off?: number
+  drop_off_pct?: number
+  median_seconds_from_previous?: number | null
+  median_days_from_previous?: number | null
+}
+
+export interface AdminActivationSegment {
+  label: string
+  users: number
+  steps: Record<string, number>
+  windows?: Record<string, Record<string, number>>
+}
+
+export interface AdminActivationWindow {
+  window_days: number
+  cohort_size: number
+  steps: AdminActivationStep[]
 }
 
 export interface AdminActivationResponse {
@@ -1165,35 +1182,83 @@ export interface AdminActivationResponse {
   activation_window_days: number
   cohort_size: number
   steps: AdminActivationStep[]
-  by_plan: Array<{
+  windows?: Record<string, AdminActivationWindow>
+  by_plan: AdminActivationSegment[]
+  by_provider: AdminActivationSegment[]
+  by_signup_cohort?: AdminActivationSegment[]
+  suppressed_segments?: Record<string, number>
+  minimum_segment_size?: number
+  milestone_definitions?: Array<{
+    key: string
     label: string
-    users: number
-    steps: Record<string, number>
+    source: string
+    definition: string
   }>
-  by_provider: Array<{
-    label: string
-    users: number
-    steps: Record<string, number>
-  }>
+  reconciliation?: Record<string, { source: string; users: number }>
   generated_at: string
+}
+
+export interface AdminRetentionCell {
+  count: number
+  eligible: number
+  numerator: number
+  denominator: number
+  cohort_size: number
+  rate: number | null
+}
+
+export interface AdminRetentionPoint {
+  cohort: string
+  cohort_size: number
+  numerator: number
+  denominator: number
+  rate: number | null
+}
+
+export interface AdminRetentionWeeklyPoint extends AdminRetentionCell {
+  week: number
+}
+
+export interface AdminRetentionRow {
+  week_start?: string
+  signup_month?: string
+  cohort_size: number
+  d1: AdminRetentionCell
+  d7: AdminRetentionCell
+  d30: AdminRetentionCell
+  w1: AdminRetentionCell
+  w2_plus: AdminRetentionCell
+  weekly: AdminRetentionWeeklyPoint[]
 }
 
 export interface AdminRetentionResponse {
   weeks: number
-  cohorts: Array<{
-    week_start: string
-    cohort_size: number
-    d1: { count: number; eligible: number; rate: number | null }
-    d7: { count: number; eligible: number; rate: number | null }
-    d30: { count: number; eligible: number; rate: number | null }
-  }>
+  signup_month?: string | null
+  available_signup_months?: Array<{ month: string; users: number }>
+  cohorts: AdminRetentionRow[]
+  monthly?: AdminRetentionRow[]
+  curves?: {
+    d1: AdminRetentionPoint[]
+    d7: AdminRetentionPoint[]
+    d30: AdminRetentionPoint[]
+    w1: AdminRetentionPoint[]
+    w2_plus: AdminRetentionPoint[]
+    weekly: Array<AdminRetentionWeeklyPoint & { numerator: number; denominator: number; cohort_size: number; rate: number | null }>
+  }
   overall: {
     cohort_size: number
-    d1: { count: number; eligible: number; rate: number | null }
-    d7: { count: number; eligible: number; rate: number | null }
-    d30: { count: number; eligible: number; rate: number | null }
+    d1: AdminRetentionCell
+    d7: AdminRetentionCell
+    d30: AdminRetentionCell
+    w1?: AdminRetentionCell
+    w2_plus?: AdminRetentionCell
+    weekly?: AdminRetentionWeeklyPoint[]
   }
   minimum_cohort_size: number
+  hidden_weekly_cohorts?: number
+  hidden_monthly_cohorts?: number
+  activity_definition?: string
+  period?: { start: string; end: string }
   generated_at: string
 }
 
@@ -1244,13 +1309,38 @@ export interface AdminAiCostResponse {
   }>
 }
 
+export type AdminTimeseriesMetric =
+  | 'events'
+  | 'compilations'
+  | 'optimizations'
+  | 'revenue'
+  | 'new_users'
+  | 'active_users'
+
+export type AdminTimeseriesDimension = 'plan' | 'provider' | 'feature' | 'signup_cohort'
+
 export interface AdminFilteredTimeseriesResponse {
-  metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
-  dimension: 'plan' | 'provider' | 'feature' | null
+  metric: AdminTimeseriesMetric
+  dimension: AdminTimeseriesDimension | null
   value: string | null
+  days?: number
+  start_date?: string
+  end_date?: string
   points: Array<{ date: string; value: number }>
-  breakdown: Array<{ label: string; value: number }>
+  breakdown: Array<{ label: string; value: number; users?: number }>
   total: number
+  suppressed?: boolean
+  suppressed_groups?: number
+  minimum_group_size?: number
+  filters?: {
+    days: number
+    metric: AdminTimeseriesMetric
+    dimension: AdminTimeseriesDimension | null
+    value: string | null
+    start_date: string
+    end_date: string
+    timezone: string
+  }
   generated_at: string
 }
 
@@ -4222,8 +4312,10 @@ class ApiClient {
     return this.request<AdminActivationResponse>(`/admin/analytics/activation${suffix}`)
   }
 
-  async getAdminRetention(weeks = 8): Promise<AdminRetentionResponse> {
-    return this.request<AdminRetentionResponse>(`/admin/analytics/retention?weeks=${weeks}`)
+  async getAdminRetention(weeks = 8, signupMonth?: string): Promise<AdminRetentionResponse> {
+    const qs = new URLSearchParams({ weeks: String(weeks) })
+    if (signupMonth) qs.set('signup_month', signupMonth)
+    return this.request<AdminRetentionResponse>(`/admin/analytics/retention?${qs}`)
   }
 
   async getAdminAiCost(days = 30): Promise<AdminAiCostResponse> {
@@ -4232,8 +4324,8 @@ class ApiClient {
 
   async getAdminFilteredTimeseries(params: {
     days?: number
-    metric: 'events' | 'compilations' | 'optimizations' | 'revenue'
-    dimension?: 'plan' | 'provider' | 'feature'
+    metric: AdminTimeseriesMetric
+    dimension?: AdminTimeseriesDimension
     value?: string
   }): Promise<AdminFilteredTimeseriesResponse> {
     const qs = new URLSearchParams({ metric: params.metric })
