@@ -382,7 +382,7 @@ class RoleUpdateRequest(BaseModel):
 def _user_summary(user: User, *, masked: bool = False) -> UserSummary:
     return UserSummary(
         id=user.id,
-        email=mask_email(user.email) if masked else user.email,
+        email=(mask_email(user.email) or "***") if masked else user.email,
         name=mask_name(user.name) if masked else user.name,
         role=user.role,
         subscription_plan=user.subscription_plan,

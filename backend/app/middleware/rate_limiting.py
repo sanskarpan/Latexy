@@ -68,13 +68,7 @@ def client_ip_id(request: Request) -> str:
     return f"ip:{request.client.host if request.client else 'unknown'}"
 
 
-def _spoof_resistant_client_id(request: Request) -> str:
-    """Shared, spoofing-resistant client identifier used by all rate limiters.
-
-    Keys on the caller's own credential (session token / bearer) when present —
-    unforgeable, unlike a plain X-User-ID header. Falls back to the peer IP;
-    X-Forwarded-For is only honoured behind a trusted proxy (TRUST_PROXY_HEADERS).
-    """
+def _presented_token(request: Request) -> Optional[str]:
     token: Optional[str] = None
     auth = request.headers.get("Authorization")
     if auth and auth.lower().startswith("bearer "):
@@ -86,6 +80,17 @@ def _spoof_resistant_client_id(request: Request) -> str:
         )
         if cookie_tok:
             token = cookie_tok.split(".", 1)[0]
+    return token or None
+
+
+def _spoof_resistant_client_id(request: Request) -> str:
+    """Shared, spoofing-resistant client identifier used by all rate limiters.
+
+    Keys on the caller's own credential (session token / bearer) when present —
+    unforgeable, unlike a plain X-User-ID header. Falls back to the peer IP;
+    X-Forwarded-For is only honoured behind a trusted proxy (TRUST_PROXY_HEADERS).
+    """
+    token = _presented_token(request)
     if token:
         return "user:" + hashlib.sha256(token.encode()).hexdigest()[:32]
 
@@ -181,10 +186,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Get client identifier (IP address or user ID)
         client_id = self.get_client_id(request)
+        ip_id = client_ip_id(request)
 
-        # Check rate limits
+        # Check rate limits. A token-based bucket alone is bypassable by sending
+        # a fresh random Bearer value per request, so authenticated calls also
+        # consume a shared IP budget. The IP cap is deliberately higher than the
+        # per-token default to keep NAT/office traffic usable.
         try:
             await self.check_rate_limit(client_id, request.url.path)
+            if client_id != ip_id:
+                await self.check_rate_limit(
+                    ip_id,
+                    request.url.path,
+                    per_minute=300,
+                    per_hour=6000,
+                    bucket_suffix=":ip",
+                )
         except HTTPException as e:
             retry_after = e.headers.get("Retry-After", "60") if e.headers else "60"
             return Response(
@@ -211,26 +228,37 @@ if h == 1 then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
 return {m, h}
 """
 
-    async def check_rate_limit(self, client_id: str, endpoint: str):
+    async def check_rate_limit(
+        self,
+        client_id: str,
+        endpoint: str,
+        *,
+        per_minute: int | None = None,
+        per_hour: int | None = None,
+        bucket_suffix: str = "",
+    ):
         """Check if client has exceeded rate limits using a single atomic script."""
         if not redis_manager.redis_client:
             # If Redis is not available, allow the request (fail-open).
             _warn_fail_open("rate limiting")
             return
 
+        if per_minute is not None:
+            minute_limit, hour_limit = per_minute, per_hour or per_minute * 20
+            bucket = f"rate_limit:{client_id}{bucket_suffix}"
         # Lightweight paths get their own bucket (namespaced ":lw:") so they
         # never share budget with compile/AI calls — see _LIGHTWEIGHT_PATHS.
-        if endpoint in _LIGHTWEIGHT_PATHS:
-            per_minute, per_hour = _LIGHTWEIGHT_CALLS_PER_MINUTE, _LIGHTWEIGHT_CALLS_PER_HOUR
+        elif endpoint in _LIGHTWEIGHT_PATHS:
+            minute_limit, hour_limit = _LIGHTWEIGHT_CALLS_PER_MINUTE, _LIGHTWEIGHT_CALLS_PER_HOUR
             bucket = f"rate_limit:{client_id}:lw"
         # OAuth "Connect" buttons get their own, distinct bucket (namespaced
         # ":int:") so a busy session's default-bucket usage can never 429 a
         # deliberate, infrequent click — see _INTEGRATION_PATHS.
         elif endpoint in _INTEGRATION_PATHS:
-            per_minute, per_hour = _INTEGRATION_CALLS_PER_MINUTE, _INTEGRATION_CALLS_PER_HOUR
+            minute_limit, hour_limit = _INTEGRATION_CALLS_PER_MINUTE, _INTEGRATION_CALLS_PER_HOUR
             bucket = f"rate_limit:{client_id}:int"
         else:
-            per_minute, per_hour = self.calls_per_minute, self.calls_per_hour
+            minute_limit, hour_limit = self.calls_per_minute, self.calls_per_hour
             bucket = f"rate_limit:{client_id}"
 
         current_time = int(time.time())
@@ -242,16 +270,16 @@ return {m, h}
                 self._LUA_INCR_EXPIRE_2, 2, minute_key, hour_key, 60, 3600
             )
             minute_count, hour_count = int(counts[0]), int(counts[1])
-            if minute_count > per_minute:
+            if minute_count > minute_limit:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded: {per_minute} calls per minute",
+                    detail=f"Rate limit exceeded: {minute_limit} calls per minute",
                     headers={"Retry-After": "60"},
                 )
-            if hour_count > per_hour:
+            if hour_count > hour_limit:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded: {per_hour} calls per hour",
+                    detail=f"Rate limit exceeded: {hour_limit} calls per hour",
                     headers={"Retry-After": "3600"},
                 )
 

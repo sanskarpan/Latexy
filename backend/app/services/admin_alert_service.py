@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
@@ -198,33 +198,37 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
 
     # Monthly spend cap only. Per-user outliers stay in the Growth tab and are
     # never copied into alert payloads because they identify an account.
+    cap_signal: dict[str, Any] | None = None
     try:
         if float(settings.ADMIN_AI_MONTHLY_SPEND_CAP_USD or 0) > 0:
             from .admin_growth_service import admin_growth_service
 
-            cost = await admin_growth_service.ai_cost(db, days=30)
-            cap_alert = next(
-                (alert for alert in cost.get("alerts", []) if alert.get("code") == "ai_monthly_cap"),
-                None,
-            )
+            # A failed spend query must not poison the shared transaction and
+            # suppress the remaining alert rules.
+            async with db.begin_nested():
+                cost = await admin_growth_service.ai_cost(db, days=30)
+                cap_alert = next(
+                    (alert for alert in cost.get("alerts", []) if alert.get("code") == "ai_monthly_cap"),
+                    None,
+                )
             if cap_alert:
                 month_key = now.strftime("%Y-%m")
-                signals.append(
-                    _signal(
-                        kind="spend.monthly_cap",
-                        severity="critical" if cap_alert.get("severity") == "critical" else "medium",
-                        owner="Growth",
-                        title="Estimated AI spend reached the monthly cap",
-                        dedupe_key=f"spend.monthly_cap:{month_key}",
-                        payload={
-                            "value_usd": cap_alert.get("value"),
-                            "threshold_usd": cap_alert.get("threshold"),
-                            "month": month_key,
-                        },
-                    )
+                cap_signal = _signal(
+                    kind="spend.monthly_cap",
+                    severity="critical" if cap_alert.get("severity") == "critical" else "medium",
+                    owner="Growth",
+                    title="Estimated AI spend reached the monthly cap",
+                    dedupe_key=f"spend.monthly_cap:{month_key}",
+                    payload={
+                        "value_usd": cap_alert.get("value"),
+                        "threshold_usd": cap_alert.get("threshold"),
+                        "month": month_key,
+                    },
                 )
     except Exception as exc:
         logger.warning("Admin alert spend evaluation failed (%s)", type(exc).__name__)
+    if cap_signal:
+        signals.append(cap_signal)
 
     unverified_domains = int(
         (
@@ -258,6 +262,9 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
 async def evaluate_alerts(db: AsyncSession, *, now: datetime | None = None) -> dict[str, int]:
     """Upsert current signals, reopen expired snoozes and auto-resolve clears."""
     now = now or datetime.now(timezone.utc)
+    # Serialize overlapping five-minute evaluations so the SELECT-then-INSERT
+    # dedupe path cannot race the partial unique index.
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('latexy_admin_alerts'))"))
     signals = await collect_signals(db, now)
     seen: set[str] = set()
     opened = 0
@@ -308,6 +315,9 @@ async def evaluate_alerts(db: AsyncSession, *, now: datetime | None = None) -> d
     ).scalars().all()
     for row in stale:
         if row.dedupe_key in seen:
+            continue
+        if row.state == "snoozed" and row.snooze_until and row.snooze_until > now:
+            # A flapping condition must not bypass an operator's snooze.
             continue
         row.state = "resolved"
         row.resolved_at = now
@@ -361,7 +371,9 @@ async def list_alerts(
 
 
 async def get_alert(db: AsyncSession, alert_id: str) -> models.AdminAlert:
-    row = await db.get(models.AdminAlert, alert_id)
+    row = await db.scalar(
+        select(models.AdminAlert).where(models.AdminAlert.id == alert_id).with_for_update()
+    )
     if row is None:
         raise KeyError("Alert not found")
     return row
@@ -373,6 +385,7 @@ async def acknowledge_alert(
     alert_id: str,
     actor: AdminActor,
     reason: str,
+    request: Any = None,
 ) -> dict[str, Any]:
     row = await get_alert(db, alert_id)
     if row.state == "resolved":
@@ -395,6 +408,7 @@ async def acknowledge_alert(
         reason=reason,
         before=before,
         after={"state": "acknowledged"},
+        request=request,
     )
     await db.commit()
     await db.refresh(row)
@@ -408,6 +422,7 @@ async def snooze_alert(
     actor: AdminActor,
     reason: str,
     minutes: int,
+    request: Any = None,
 ) -> dict[str, Any]:
     if minutes < 5 or minutes > 24 * 60:
         raise ValueError("Snooze must be between 5 and 1440 minutes")
@@ -429,6 +444,7 @@ async def snooze_alert(
         reason=reason,
         before=before,
         after={"state": "snoozed", "snooze_until": row.snooze_until.isoformat()},
+        request=request,
     )
     await db.commit()
     await db.refresh(row)

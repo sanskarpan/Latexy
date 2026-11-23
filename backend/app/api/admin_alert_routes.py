@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,7 @@ async def list_admin_alerts(
 async def update_admin_alert(
     alert_id: UUID,
     body: AlertActionRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     actor: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
@@ -56,7 +57,7 @@ async def update_admin_alert(
     try:
         if body.state == "acknowledged":
             return await admin_alert_service.acknowledge_alert(
-                db, alert_id=target_id, actor=actor, reason=body.reason
+                db, alert_id=target_id, actor=actor, reason=body.reason, request=request
             )
         if body.snooze_minutes is None:
             raise ValueError("snooze_minutes is required when snoozing an alert")
@@ -66,6 +67,7 @@ async def update_admin_alert(
             actor=actor,
             reason=body.reason,
             minutes=body.snooze_minutes,
+            request=request,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0]) if exc.args else "Alert not found") from None

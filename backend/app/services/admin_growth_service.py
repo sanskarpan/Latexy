@@ -463,7 +463,7 @@ class AdminGrowthService:
             )
         ).all()
         refund_by_plan = {plan or "free": int(amount or 0) for plan, amount in refund_rows}
-        rate = settings.ADMIN_AI_COST_USD_INR_RATE
+        inr_rate = settings.ADMIN_AI_COST_USD_INR_RATE
         margin_by_plan = []
         for plan_id, amount in revenue_rows:
             label = plan_id or "free"
@@ -474,9 +474,9 @@ class AdminGrowthService:
                 {
                     "plan": label,
                     "revenue_inr": round(revenue_inr - refund_inr, 2),
-                    "ai_cost_inr": round(cost * rate, 2),
+                    "ai_cost_inr": round(cost * inr_rate, 2),
                     "ai_cost_usd": round(cost, 2),
-                    "gross_margin_inr": round(revenue_inr - refund_inr - cost * rate, 2),
+                    "gross_margin_inr": round(revenue_inr - refund_inr - cost * inr_rate, 2),
                     "estimated": True,
                 }
             )
@@ -485,8 +485,8 @@ class AdminGrowthService:
         for user_id, provider, model, tokens, created_at in month_rows:
             if not created_at:
                 continue
-            rate = self._price_per_million(provider or "unknown", model or "unknown")
-            cost = int(tokens or 0) / 1_000_000 * rate
+            unit_rate = self._price_per_million(provider or "unknown", model or "unknown")
+            cost = int(tokens or 0) / 1_000_000 * unit_rate
             monthly_cost += cost
             if user_id:
                 daily_user_cost[(str(user_id), created_at.date().isoformat())] += cost
@@ -523,11 +523,11 @@ class AdminGrowthService:
             "generated_at": now.isoformat(),
             "estimated": True,
             "price_note": "Cost uses total tokens and a blended per-million rate because the input/output split is unavailable. Rows marked fallback_price=true use the $3/M estimate because that provider:model has no configured price.",
-            "usd_inr_rate": rate,
+            "usd_inr_rate": inr_rate,
             "monthly_spend_cap_usd": cap or None,
             "total_tokens": total_tokens,
             "total_cost_usd": round(total_cost, 2),
-            "total_cost_inr": round(total_cost * rate, 2),
+            "total_cost_inr": round(total_cost * inr_rate, 2),
             "optimizations": sum(item["runs"] for item in by_model.values()),
             "by_model": sorted(
                 ({**item, "cost_usd": round(item["cost_usd"], 2)} for item in by_model.values()),

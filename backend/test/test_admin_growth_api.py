@@ -9,6 +9,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+
 
 async def _create_user(
     db: AsyncSession,
@@ -197,6 +199,10 @@ class TestAiCost:
         assert body["top_users"]
         assert any(row["plan"] == "pro" for row in body["margin_by_plan"])
         assert any(row["user_id"] == user_id for row in body["top_users"])
+        assert body["usd_inr_rate"] == settings.ADMIN_AI_COST_USD_INR_RATE
+        assert body["total_cost_inr"] == round(
+            body["total_cost_usd"] * settings.ADMIN_AI_COST_USD_INR_RATE, 2
+        )
 
 
 class TestDimensionTimeseries:

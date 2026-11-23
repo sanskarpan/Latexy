@@ -88,6 +88,21 @@ async def test_bootstrap_allowlist_does_not_include_related_routes(counter_redis
     assert "rate_limit:user:test:lw:minute:120" not in counter_redis.counts
 
 
+async def test_shared_ip_budget_caps_rotated_tokens(counter_redis):
+    limiter = rate_limiting.RateLimitMiddleware(FastAPI())
+    counter_redis.counts["rate_limit:ip:1.2.3.4:ip:minute:120"] = 300
+    with pytest.raises(HTTPException) as exc:
+        await limiter.check_rate_limit(
+            "ip:1.2.3.4",
+            "/compile",
+            per_minute=300,
+            per_hour=6000,
+            bucket_suffix=":ip",
+        )
+    assert exc.value.status_code == 429
+    assert exc.value.detail == "Rate limit exceeded: 300 calls per minute"
+
+
 async def test_middleware_routes_bootstrap_to_bounded_lightweight_budget(counter_redis):
     app = FastAPI()
     app.add_middleware(rate_limiting.RateLimitMiddleware)

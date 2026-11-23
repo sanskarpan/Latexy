@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_plan_config
@@ -549,6 +550,8 @@ class AdminBillingService:
         payment = await db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
         if payment is None:
             raise KeyError("Payment not found")
+        if payment.provider != "dodo":
+            raise ValueError("Only Dodo payments can be refunded from this console")
         if payment.status in {"refunded", "failed", "cancelled"}:
             raise ValueError("This payment cannot be refunded")
         if payment.status not in {"paid", "partially_refunded", "captured", "succeeded"}:
@@ -600,7 +603,11 @@ class AdminBillingService:
             requested_email=actor.email[:255] if actor.email else None,
         )
         db.add(row)
-        await db.flush()
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            raise ValueError("An open refund request already exists for this payment") from None
         await record_admin_audit(
             db,
             actor=actor,
@@ -691,6 +698,8 @@ class AdminBillingService:
         payment = await db.get(Payment, row.payment_id)
         if payment is None or not payment.provider_payment_id:
             raise ValueError("The payment has no provider identifier")
+        if payment.provider != "dodo":
+            raise ValueError("Only Dodo payments can be refunded from this console")
         already_refunded = int(
             (
                 await db.execute(
@@ -735,6 +744,9 @@ class AdminBillingService:
 
         provider_refund_id: str | None = None
         provider_error: str | None = None
+        ledger_error: str | None = None
+        provider_status = "pending"
+        refund_amount = row.amount if row.amount is not None else remaining
         try:
             result = await payment_service.provider.create_refund(
                 payment.provider_payment_id,
@@ -747,6 +759,30 @@ class AdminBillingService:
             provider_refund_id = str(resource.get("refund_id") or resource.get("id") or "") or None
             if provider_refund_id is None:
                 provider_error = "Provider accepted the request without returning a refund identifier"
+            else:
+                raw_status = str(resource.get("status") or "").lower()
+                if raw_status in {"succeeded", "processed", "completed"}:
+                    provider_status = "succeeded"
+                elif raw_status in {"failed", "cancelled"}:
+                    provider_status = "failed"
+                else:
+                    provider_status = "pending"
+                # Write the local receipt before declaring success. The webhook
+                # path may race; the provider refund identifier is idempotent.
+                ledger = await payment_service._handle_refund_event(
+                    db,
+                    f"refund.{provider_status}",
+                    {
+                        "refund_id": provider_refund_id,
+                        "payment_id": payment.provider_payment_id,
+                        "amount": refund_amount,
+                        "currency": payment.currency or "INR",
+                        "status": provider_status,
+                        "reason": row.reason,
+                    },
+                )
+                if not ledger.get("success"):
+                    ledger_error = str(ledger.get("error") or "Local refund ledger update failed")
         except Exception as exc:
             provider_error = f"{type(exc).__name__}: provider refund request failed"
 
@@ -757,12 +793,29 @@ class AdminBillingService:
             row.status = "failed"
             row.last_error = provider_error[:1000]
             action = "billing.refund.execution_failed"
-        else:
+        elif ledger_error:
+            # The provider may have accepted the refund. Never invite a resubmit:
+            # keep the identifier and require reconciliation with Dodo.
+            row.status = "failed"
+            row.provider_refund_id = provider_refund_id
+            row.last_error = f"Provider refund accepted but local ledger update failed: {ledger_error}"[:1000]
+            action = "billing.refund.ledger_reconciliation_required"
+        elif provider_status == "succeeded":
             row.status = "executed"
             row.provider_refund_id = provider_refund_id
             row.executed_at = datetime.now(timezone.utc)
             row.last_error = None
             action = "billing.refund.executed"
+        elif provider_status == "failed":
+            row.status = "failed"
+            row.provider_refund_id = provider_refund_id
+            row.last_error = "Provider reported the refund as failed"
+            action = "billing.refund.execution_failed"
+        else:
+            row.status = "executing"
+            row.provider_refund_id = provider_refund_id
+            row.last_error = None
+            action = "billing.refund.execution_pending"
         await record_admin_audit(
             db,
             actor=actor,

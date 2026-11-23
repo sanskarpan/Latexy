@@ -955,7 +955,12 @@ class AnalyticsService:
             )
         ).all()
 
-        def sparkline(metric: str, *, cumulative_from: int | None = None) -> List[Dict[str, Any]]:
+        def sparkline(
+            metric: str,
+            *,
+            cumulative_from: int | None = None,
+            current: float | int | None = None,
+        ) -> List[Dict[str, Any]]:
             points: List[Dict[str, Any]] = []
             running = cumulative_from
             for point in timeseries:
@@ -978,6 +983,16 @@ class AnalyticsService:
                     "date": day,
                     "value": round(float(value), 2) if metric == "revenue_inr" else int(value),
                 })
+            # The KPI window starts at now - days, while the daily series starts
+            # at midnight of the first day. A record in that partial-day gap is
+            # in the KPI but would otherwise be missing from the sparkline. Add
+            # the residual to the last point so the series and the card agree.
+            if points and current is not None:
+                residual = float(current) - sum(float(point["value"]) for point in points)
+                if metric == "revenue_inr":
+                    points[-1]["value"] = round(float(points[-1]["value"]) + residual, 2)
+                else:
+                    points[-1]["value"] = max(0, int(points[-1]["value"]) + int(round(residual)))
             if metric == "active_subscriptions" and points:
                 points[-1]["value"] = int(system["active_subscriptions"])
             if metric == "total_users" and points:

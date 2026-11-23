@@ -200,6 +200,12 @@ async def test_kpi_trends_are_complete_finite_and_cached(
         assert item["sparkline"]
         assert all("date" in point and "value" in point for point in item["sparkline"])
 
+    for key in ("total_compilations", "total_optimizations", "trial_users", "total_revenue_inr"):
+        trend = trends[key]
+        assert sum(point["value"] for point in trend["sparkline"]) == pytest.approx(
+            trend["current"], abs=0.01
+        )
+
     users = _trend(body, "total_users")
     # Total users is a snapshot: all five seeded users increase it, while only
     # the two users created before the period start increase the prior value.
