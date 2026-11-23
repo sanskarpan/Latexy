@@ -80,6 +80,11 @@ describe('admin control room surfaces', () => {
     expect(userDetail).toContain('resetAdminUserQuota')
     expect(audit.toLowerCase()).toContain('append-only')
     expect(audit).toContain('UPDATE and DELETE')
+    expect(audit).toContain('Load more')
+    expect(audit).toContain('next_cursor')
+    expect(audit).toContain('created_after')
+    expect(apiClient).toContain("qs.set('cursor'")
+    expect(apiClient).toContain('has_more')
   })
 })
 
