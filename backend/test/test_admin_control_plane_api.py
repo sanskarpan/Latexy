@@ -190,7 +190,11 @@ class TestListUsers:
         found = {u["id"]: u for u in body["users"]}
         assert target_id in found
         assert found[target_id]["role"] == "support"
-        assert found[target_id]["email"] == target_email
+        # Masked by default even for an admin; the full address is only
+        # available through the single-field audited reveal endpoint.
+        assert found[target_id]["email"] != target_email
+        assert "*" in found[target_id]["email"]
+        assert found[target_id]["pii_masked"] is True
 
     async def test_search_filters(self, client: AsyncClient, db_session: AsyncSession):
         admin_headers = await _admin_headers(db_session)

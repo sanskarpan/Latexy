@@ -939,6 +939,8 @@ export interface AdminUser {
   id: string
   email: string
   name: string | null
+  /** Always true on list responses; reveal one field through the audited endpoint. */
+  pii_masked: boolean
   role: UserRole
   subscription_plan: string | null
   email_verified: boolean
@@ -1123,10 +1125,37 @@ export interface AdminUser360 {
     }>
     session_count: number
     passkey_count: number
-    byok_keys: Array<Record<string, unknown>>
-    developer_keys: Array<Record<string, unknown>>
+    passkeys: Array<{
+      id: string
+      name: string | null
+      device_type: string | null
+      backed_up: boolean
+      created_at: string | null
+    }>
+    byok_keys: Array<{
+      id: string
+      provider: string
+      name: string | null
+      is_active: boolean
+      created_at: string | null
+    }>
+    developer_keys: Array<{
+      id: string
+      prefix: string
+      name: string | null
+      is_active: boolean
+      request_count: number
+      last_used_at: string | null
+    }>
   }
   recent_admin_actions: AdminAuditEntry[]
+}
+
+export interface AdminCredentialRevokeResponse {
+  kind: 'session' | 'passkey' | 'byok' | 'developer'
+  item_id: string
+  revoked: boolean
+  already_revoked: boolean
 }
 
 export interface AdminAuditEntry {
@@ -4373,10 +4402,14 @@ class ApiClient {
     return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360`)
   }
 
-  async revealAdminUserPii(id: string, reason: string): Promise<{ email: string | null; name: string | null }> {
-    return this.request<{ email: string | null; name: string | null }>(
-      `/admin/users/${encodeURIComponent(id)}/pii/reveal`,
-      { method: 'POST', body: JSON.stringify({ reason }) },
+  async revealAdminUserPii(
+    id: string,
+    field: 'email' | 'name',
+    reason: string,
+  ): Promise<{ field: 'email' | 'name'; value: string | null }> {
+    return this.request<{ field: 'email' | 'name'; value: string | null }>(
+      `/admin/users/${encodeURIComponent(id)}/reveal-pii`,
+      { method: 'POST', body: JSON.stringify({ field, reason }) },
     )
   }
 
@@ -4428,6 +4461,50 @@ class ApiClient {
     return this.request<{ revoked_byok_keys: number; revoked_developer_keys: number }>(
       `/admin/users/${encodeURIComponent(id)}/api-keys/revoke`,
       { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async revokeAdminUserSession(
+    id: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<AdminCredentialRevokeResponse> {
+    return this.request<AdminCredentialRevokeResponse>(
+      `/admin/users/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sessionId)}/revoke`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async revokeAdminUserPasskey(
+    id: string,
+    passkeyId: string,
+    reason: string,
+  ): Promise<AdminCredentialRevokeResponse> {
+    return this.request<AdminCredentialRevokeResponse>(
+      `/admin/users/${encodeURIComponent(id)}/passkeys/${encodeURIComponent(passkeyId)}/revoke`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async revokeAdminUserByokKey(
+    id: string,
+    keyId: string,
+    reason: string,
+  ): Promise<AdminCredentialRevokeResponse> {
+    return this.request<AdminCredentialRevokeResponse>(
+      `/admin/users/${encodeURIComponent(id)}/byok-keys/${encodeURIComponent(keyId)}/revoke`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async revokeAdminUserDeveloperKey(
+    id: string,
+    keyId: string,
+    reason: string,
+  ): Promise<AdminCredentialRevokeResponse> {
+    return this.request<AdminCredentialRevokeResponse>(
+      `/admin/users/${encodeURIComponent(id)}/developer-keys/${encodeURIComponent(keyId)}/revoke`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
     )
   }
 
