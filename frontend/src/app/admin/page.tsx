@@ -237,7 +237,6 @@ function MatrixTab() {
   // Scope-prefixed keys distinguish role cells from similarly named plan cells.
   // Only merge the written cell: independent in-flight writes can finish in any order.
   const toggle = useCallback(async (scope: string, featureKey: string, next: boolean) => {
-    if (scope === 'global' && !window.confirm(`Change the global ${featureKey} permission for every plan and role?`)) return
     const cellId = `${scope}:${featureKey}`
     if (!pendingRef.current.acquire(cellId)) return
     const readCell = (fresh: AdminEntitlementsState) => scope === 'global'
