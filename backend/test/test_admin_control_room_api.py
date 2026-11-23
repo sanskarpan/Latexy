@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
@@ -11,6 +12,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services import admin_user_service
 from app.services.admin_billing_service import _monthly_amount
 from app.services.payment_service import payment_service
 
@@ -696,6 +698,55 @@ class TestUser360:
         assert audit.status_code == 200
         assert audit.json()["total"] == 1
         assert audit.json()["items"][0]["reason"] == "Ticket 1234 contact customer"
+
+    async def test_user_360_cache_is_masked_and_invalidated(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch
+    ):
+        class FakeCache:
+            def __init__(self):
+                self.values: dict[str, object] = {}
+                self.ttls: dict[str, int] = {}
+
+            async def get(self, key: str):
+                return self.values.get(key)
+
+            async def set(self, key: str, value, ttl: int = 3600):
+                self.values[key] = value
+                self.ttls[key] = ttl
+
+            async def delete(self, key: str):
+                self.values.pop(key, None)
+
+        fake = FakeCache()
+        monkeypatch.setattr(admin_user_service, "cache_manager", fake)
+        admin_headers = await _headers(db_session, "admin")
+        user_id, email = await _create_user(db_session)
+        await self._seed_user_data(db_session, user_id)
+
+        first = await client.get(f"/admin/users/{user_id}/360", headers=admin_headers)
+        assert first.status_code == 200
+        assert fake.values
+        cached = next(iter(fake.values.values()))
+        assert isinstance(cached, dict)
+        assert cached["user"]["pii_masked"] is True
+        assert email not in json.dumps(cached)
+        assert all(ttl == admin_user_service.USER_360_CACHE_TTL for ttl in fake.ttls.values())
+
+        second = await client.get(f"/admin/users/{user_id}/360", headers=admin_headers)
+        assert second.status_code == 200
+        assert second.json() == first.json()
+
+        changed = await client.post(
+            f"/admin/users/{user_id}/plan",
+            json={"plan": "pro", "status": "comped", "reason": "Cache invalidation test"},
+            headers=admin_headers,
+        )
+        assert changed.status_code == 200
+        assert fake.values == {}
+
+        refreshed = await client.get(f"/admin/users/{user_id}/360", headers=admin_headers)
+        assert refreshed.status_code == 200
+        assert refreshed.json()["user"]["subscription_plan"] == "pro"
 
     async def test_support_actions_audited_and_sessions_revoked(
         self, client: AsyncClient, db_session: AsyncSession

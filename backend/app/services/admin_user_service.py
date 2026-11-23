@@ -14,8 +14,12 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import QUOTA_DIMENSIONS, get_plan_quota_window, settings
+from ..core.redis import cache_manager
 from ..database import models
 from .admin_audit_service import AdminActor, audit_row_summary, record_admin_audit
+
+USER_360_CACHE_TTL = 60
+USER_360_CACHE_PREFIX = "admin:user360:v1"
 
 User = models.User
 Resume = models.Resume
@@ -28,6 +32,8 @@ PaymentRefund = models.PaymentRefund
 AdminRefundRequest = models.AdminRefundRequest
 UserAPIKey = models.UserAPIKey
 DeveloperAPIKey = models.DeveloperAPIKey
+TenantMember = models.TenantMember
+ReferralAttribution = models.ReferralAttribution
 
 
 def mask_email(value: str | None) -> str | None:
@@ -61,6 +67,40 @@ def _provider_presence(user: User) -> dict[str, bool]:
     }
 
 
+def _user_360_cache_key(user_id: str, actor_role: str) -> str:
+    return f"{USER_360_CACHE_PREFIX}:{user_id}:{actor_role}"
+
+
+async def _read_user_360_cache(user_id: str, actor_role: str) -> dict[str, Any] | None:
+    try:
+        cached = await cache_manager.get(_user_360_cache_key(user_id, actor_role))
+    except Exception:
+        return None
+    return cached if isinstance(cached, dict) else None
+
+
+async def _write_user_360_cache(user_id: str, actor_role: str, payload: dict[str, Any]) -> None:
+    # The cached document is always masked; revealed PII is overlaid live and
+    # never enters Redis. A cache outage must not make the support view fail.
+    try:
+        await cache_manager.set(
+            _user_360_cache_key(user_id, actor_role),
+            payload,
+            ttl=USER_360_CACHE_TTL,
+        )
+    except Exception:
+        return
+
+
+async def invalidate_user_360_cache(user_id: str) -> None:
+    """Drop both role variants after a support action changes the account."""
+    for role in ("admin", "support"):
+        try:
+            await cache_manager.delete(_user_360_cache_key(user_id, role))
+        except Exception:
+            continue
+
+
 async def build_user_360(
     db: AsyncSession,
     *,
@@ -68,15 +108,70 @@ async def build_user_360(
     actor_role: str,
     reveal: bool = False,
 ) -> dict[str, Any]:
+    if not reveal:
+        cached = await _read_user_360_cache(user_id, actor_role)
+        if cached is not None:
+            return cached
+
     user = await db.get(User, user_id)
     if user is None:
         raise KeyError("User not found")
+    payload = await _compose_user_360(db, user=user, actor_role=actor_role)
+    if reveal and actor_role == "admin":
+        payload["user"]["email"] = user.email
+        payload["user"]["name"] = user.name
+        payload["user"]["pii_masked"] = False
+    else:
+        await _write_user_360_cache(user_id, actor_role, payload)
+    return payload
+
+
+async def _compose_user_360(
+    db: AsyncSession,
+    *,
+    user: User,
+    actor_role: str,
+) -> dict[str, Any]:
+    user_id = user.id
     now = datetime.now(timezone.utc)
     since_30d = now - timedelta(days=30)
 
-    resume_count = int(
-        (await db.execute(select(func.count()).select_from(Resume).where(Resume.user_id == user_id))).scalar_one()
-    )
+    aggregate = (
+        await db.execute(
+            text(
+                "SELECT "
+                "(SELECT count(*) FROM resumes WHERE user_id = CAST(:uid AS uuid)), "
+                "(SELECT count(*) FROM compilations WHERE user_id = CAST(:uid AS uuid)), "
+                "(SELECT count(*) FROM compilations WHERE user_id = CAST(:uid AS uuid) AND status = 'completed'), "
+                "(SELECT count(*) FROM compilations WHERE user_id = CAST(:uid AS uuid) AND status = 'failed'), "
+                "(SELECT max(created_at) FROM compilations WHERE user_id = CAST(:uid AS uuid)), "
+                "(SELECT count(*) FROM optimizations WHERE user_id = CAST(:uid AS uuid)), "
+                "(SELECT max(created_at) FROM optimizations WHERE user_id = CAST(:uid AS uuid)), "
+                "(SELECT count(*) FROM usage_analytics WHERE user_id = CAST(:uid AS uuid) AND created_at >= :since), "
+                "(SELECT max(created_at) FROM usage_analytics WHERE user_id = CAST(:uid AS uuid)), "
+                "EXISTS(SELECT 1 FROM usage_analytics WHERE user_id = CAST(:uid AS uuid) "
+                "AND action IN ('export', 'pdf_export', 'docx_export', 'download')), "
+                "EXISTS(SELECT 1 FROM subscriptions WHERE user_id = CAST(:uid AS uuid) "
+                "AND status IN ('active', 'cancel_scheduled', 'past_due', 'on_hold', 'paused')), "
+                "(SELECT count(*) FROM session WHERE CAST(\"userId\" AS uuid) = CAST(:uid AS uuid)), "
+                "(SELECT count(*) FROM passkey WHERE CAST(\"userId\" AS uuid) = CAST(:uid AS uuid))"
+            ),
+            {"uid": user_id, "since": since_30d},
+        )
+    ).one()
+    resume_count = int(aggregate[0] or 0)
+    compilation_count = int(aggregate[1] or 0)
+    successful_compilations = int(aggregate[2] or 0)
+    failed_compilations = int(aggregate[3] or 0)
+    last_compilation = aggregate[4]
+    optimization_count = int(aggregate[5] or 0)
+    last_optimization = aggregate[6]
+    usage_30d = int(aggregate[7] or 0)
+    last_activity = aggregate[8]
+    has_export = bool(aggregate[9])
+    has_paid = bool(aggregate[10])
+    session_count = int(aggregate[11] or 0)
+    passkey_count = int(aggregate[12] or 0)
     recent_resumes = (
         await db.execute(
             select(Resume.id, Resume.title, Resume.document_type, Resume.created_at, Resume.updated_at)
@@ -85,21 +180,6 @@ async def build_user_360(
             .limit(8)
         )
     ).all()
-    compilation_row = (
-        await db.execute(
-            select(
-                func.count(),
-                func.count().filter(Compilation.status == "completed"),
-                func.count().filter(Compilation.status == "failed"),
-                func.max(Compilation.created_at),
-            ).where(Compilation.user_id == user_id)
-        )
-    ).one()
-    optimization_row = (
-        await db.execute(
-            select(func.count(), func.max(Optimization.created_at)).where(Optimization.user_id == user_id)
-        )
-    ).one()
     usage_rows = (
         await db.execute(
             select(UsageAnalytics.action, func.count(), func.max(UsageAnalytics.created_at))
@@ -117,31 +197,6 @@ async def build_user_360(
             .limit(20)
         )
     ).all()
-    usage_30d = int(
-        (
-            await db.execute(
-                select(func.count()).select_from(UsageAnalytics).where(
-                    UsageAnalytics.user_id == user_id, UsageAnalytics.created_at >= since_30d
-                )
-            )
-        ).scalar_one()
-    )
-    last_activity = (await db.execute(
-        select(func.max(UsageAnalytics.created_at)).where(UsageAnalytics.user_id == user_id)
-    )).scalar_one()
-    activation_flags = (
-        await db.execute(
-            text(
-                "SELECT "
-                "EXISTS(SELECT 1 FROM usage_analytics WHERE user_id = CAST(:uid AS uuid) "
-                "AND action IN ('export', 'pdf_export', 'docx_export', 'download')), "
-                "EXISTS(SELECT 1 FROM subscriptions WHERE user_id = CAST(:uid AS uuid) "
-                "AND status IN ('active', 'cancel_scheduled', 'past_due', 'on_hold', 'paused')), "
-                "(SELECT count(*) FROM session WHERE CAST(\"userId\" AS uuid) = CAST(:uid AS uuid))"
-            ),
-            {"uid": user_id},
-        )
-    ).one()
 
     subscriptions = (
         await db.execute(
@@ -177,9 +232,6 @@ async def build_user_360(
             {"uid": user_id},
         )
     ).all()
-    passkey_count = int(
-        (await db.execute(text('SELECT count(*) FROM passkey WHERE "userId" = :uid'), {"uid": user_id})).scalar_one()
-    )
     byok_keys = (
         await db.execute(
             select(UserAPIKey.id, UserAPIKey.provider, UserAPIKey.key_name, UserAPIKey.is_active, UserAPIKey.created_at)
@@ -217,12 +269,37 @@ async def build_user_360(
             )
         ).scalars().all()
 
+    tenant_rows = (
+        await db.execute(
+            select(TenantMember.tenant_id, TenantMember.role, TenantMember.joined_at)
+            .where(TenantMember.user_id == user_id)
+            .order_by(TenantMember.joined_at.desc())
+            .limit(10)
+        )
+    ).all()
+    referral_row = (
+        await db.execute(
+            select(ReferralAttribution.status, ReferralAttribution.referrer_user_id)
+            .where(ReferralAttribution.referred_user_id == user_id)
+            .limit(1)
+        )
+    ).one_or_none()
+    referrals_made = int(
+        (
+            await db.execute(
+                select(func.count()).select_from(ReferralAttribution).where(
+                    ReferralAttribution.referrer_user_id == user_id
+                )
+            )
+        ).scalar_one()
+    )
+
     return {
         "user": {
             "id": user.id,
-            "email": user.email if reveal and actor_role == "admin" else mask_email(user.email),
-            "name": user.name if reveal and actor_role == "admin" else mask_name(user.name),
-            "pii_masked": not (reveal and actor_role == "admin"),
+            "email": mask_email(user.email),
+            "name": mask_name(user.name),
+            "pii_masked": True,
             "role": user.role,
             "subscription_plan": user.subscription_plan,
             "subscription_status": user.subscription_status,
@@ -237,10 +314,10 @@ async def build_user_360(
         },
         "activation": {
             "has_resume": resume_count > 0,
-            "has_compile": int(compilation_row[0] or 0) > 0,
-            "has_optimization": int(optimization_row[0] or 0) > 0,
-            "has_export": bool(activation_flags[0]),
-            "has_paid": bool(activation_flags[1]),
+            "has_compile": compilation_count > 0,
+            "has_optimization": optimization_count > 0,
+            "has_export": has_export,
+            "has_paid": has_paid,
             "last_activity_at": _iso(last_activity),
         },
         "usage": {
@@ -266,12 +343,32 @@ async def build_user_360(
                 }
                 for resume_id, title, document_type, created_at, updated_at in recent_resumes
             ],
-            "compilations": int(compilation_row[0] or 0),
-            "successful_compilations": int(compilation_row[1] or 0),
-            "failed_compilations": int(compilation_row[2] or 0),
-            "last_compilation_at": _iso(compilation_row[3]),
-            "optimizations": int(optimization_row[0] or 0),
-            "last_optimization_at": _iso(optimization_row[1]),
+            "compilations": compilation_count,
+            "successful_compilations": successful_compilations,
+            "failed_compilations": failed_compilations,
+            "last_compilation_at": _iso(last_compilation),
+            "optimizations": optimization_count,
+            "last_optimization_at": _iso(last_optimization),
+        },
+        "links": {
+            "default_tenant_id": user.default_tenant_id,
+            "tenants": [
+                {
+                    "tenant_id": tenant_id,
+                    "role": role,
+                    "joined_at": _iso(joined_at),
+                }
+                for tenant_id, role, joined_at in tenant_rows
+            ],
+            "referral": (
+                {
+                    "referred_by_user_id": referral_row[1],
+                    "status": referral_row[0],
+                }
+                if referral_row is not None
+                else None
+            ),
+            "referrals_made": referrals_made,
         },
         "integrations": _provider_presence(user),
         "billing": {
@@ -338,7 +435,7 @@ async def build_user_360(
                 }
                 for row in sessions
             ],
-            "session_count": int(activation_flags[2]),
+            "session_count": session_count,
             "passkey_count": passkey_count,
             "byok_keys": [
                 {
@@ -438,6 +535,7 @@ async def set_user_plan(
     )
     await db.commit()
     await db.refresh(user)
+    await invalidate_user_360_cache(user_id)
     return {
         "subscription_plan": user.subscription_plan,
         "subscription_status": user.subscription_status,
@@ -492,6 +590,7 @@ async def reset_user_trial(
         request=request,
     )
     await db.commit()
+    await invalidate_user_360_cache(user_id)
     return {"trial_used": False, "device_trials_reset": reset_count}
 
 
@@ -567,6 +666,7 @@ async def reset_user_quota(
         request=request,
         commit=True,
     )
+    await invalidate_user_360_cache(user_id)
     return {"dimensions": dimensions, "deleted_keys": deleted}
 
 
@@ -598,6 +698,7 @@ async def revoke_user_sessions(
         request=request,
     )
     await db.commit()
+    await invalidate_user_360_cache(user_id)
     return {"revoked_sessions": count}
 
 
@@ -629,6 +730,7 @@ async def revoke_user_passkeys(
         request=request,
     )
     await db.commit()
+    await invalidate_user_360_cache(user_id)
     return {"revoked_passkeys": count}
 
 
@@ -674,4 +776,5 @@ async def revoke_user_api_keys(
         request=request,
     )
     await db.commit()
+    await invalidate_user_360_cache(user_id)
     return {"revoked_byok_keys": byok_count, "revoked_developer_keys": developer_count}
