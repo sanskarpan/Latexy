@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import models
 from app.services import admin_alert_service
+from app.services.redis_capacity_service import RedisCapacitySnapshot, redis_capacity_service
 
 
 async def _create_user(
@@ -434,6 +435,50 @@ async def test_rule_failure_does_not_stop_other_signals(
     )
     assert "billing.failed_payments" in opened_keys
     assert "billing.webhook_failures" not in opened_keys
+
+
+async def test_redis_capacity_signal_is_durable_and_typed(monkeypatch, db_session: AsyncSession):
+    for status, severity in (
+        ("warning", "warning"),
+        ("critical", "critical"),
+        ("exhausted", "critical"),
+        ("unavailable", "critical"),
+        ("misconfigured", "critical"),
+    ):
+        async def snapshot_for(value=status):
+            return RedisCapacitySnapshot(
+                provider="upstash",
+                status=value,
+                configured=True,
+                monthly_requests=950,
+                request_limit=1000,
+                utilization_ratio=0.95,
+            )
+
+        monkeypatch.setattr(redis_capacity_service, "snapshot", snapshot_for)
+        signals = await admin_alert_service.collect_signals(db_session, FIXED_NOW)
+        capacity = next((row for row in signals if row["dedupe_key"] == "capacity.redis"), None)
+        assert capacity is not None
+        assert capacity["severity"] == severity
+        assert capacity["owner"] == "Platform"
+        assert capacity["payload"]["status"] == status
+        assert capacity["payload"]["utilization_ratio"] == 0.95
+
+
+async def test_healthy_redis_capacity_does_not_alert(monkeypatch, db_session: AsyncSession):
+    async def fake_snapshot():
+        return RedisCapacitySnapshot(
+            provider="upstash",
+            status="ok",
+            configured=True,
+            monthly_requests=10,
+            request_limit=1000,
+            utilization_ratio=0.01,
+        )
+
+    monkeypatch.setattr(redis_capacity_service, "snapshot", fake_snapshot)
+    signals = await admin_alert_service.collect_signals(db_session, FIXED_NOW)
+    assert all(row["dedupe_key"] != "capacity.redis" for row in signals)
 
 
 async def test_dry_run_previews_without_mutating(db_session: AsyncSession):
