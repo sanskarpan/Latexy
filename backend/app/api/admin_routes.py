@@ -111,6 +111,17 @@ async def update_feature_flag(
         flag = await feature_flag_service.update_flag(key, body.enabled, db, commit=False)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Feature flag {key!r} not found")
+    # The upsert path may leave the identity-mapped flag partially expired.
+    await db.refresh(flag)
+    # Snapshot the response before commit expires the ORM instance; accessing an
+    # expired attribute after commit would attempt sync IO and raise.
+    detail = FlagDetail(
+        key=flag.key,
+        enabled=flag.enabled,
+        label=flag.label,
+        description=flag.description,
+        updated_at=flag.updated_at,
+    )
     try:
         await record_admin_audit(
             db,
@@ -119,7 +130,7 @@ async def update_feature_flag(
             target_type="feature_flag",
             target_id=key,
             before={"enabled": before_enabled},
-            after={"enabled": flag.enabled},
+            after={"enabled": body.enabled},
             request=request,
         )
         await db.commit()
@@ -127,7 +138,7 @@ async def update_feature_flag(
         await db.rollback()
         raise HTTPException(status_code=500, detail="The change could not be audited, so it was not applied")
     if key in PUBLIC_FLAG_KEYS:
-        await feature_flag_service.sync_flag_cache(key, flag.enabled)
+        await feature_flag_service.sync_flag_cache(key, body.enabled)
     # Keep every request-derived value out of the log sink. The immutable admin
     # audit row above is the authoritative actor/target/state record.
     logger.info("admin_feature_flag_updated")
@@ -136,13 +147,7 @@ async def update_feature_flag(
         "backend_admin_flag_changed",
         {"feature_key": key, "enabled": body.enabled, "surface": "admin"},
     )
-    return FlagDetail(
-        key=flag.key,
-        enabled=flag.enabled,
-        label=flag.label,
-        description=flag.description,
-        updated_at=flag.updated_at,
-    )
+    return detail
 
 
 # ------------------------------------------------------------------ #
