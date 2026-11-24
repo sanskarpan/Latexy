@@ -4609,11 +4609,13 @@ class ApiClient {
 
   async getAdminUsers(params?: {
     q?: string
+    id?: string
     limit?: number
     offset?: number
   }): Promise<AdminUsersResponse> {
     const qs = new URLSearchParams()
     if (params?.q) qs.set('q', params.q)
+    if (params?.id) qs.set('id', params.id)
     if (params?.limit != null) qs.set('limit', String(params.limit))
     if (params?.offset != null) qs.set('offset', String(params.offset))
     const suffix = qs.toString() ? `?${qs}` : ''
