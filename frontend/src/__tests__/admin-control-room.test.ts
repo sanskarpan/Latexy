@@ -110,6 +110,14 @@ describe('admin control room surfaces', () => {
     expect(apiClient).toContain("qs.set('cursor'")
     expect(apiClient).toContain('has_more')
   })
+
+  it('lets operators search by exact user and billing identifiers', () => {
+    expect(page).toContain('PROVIDER_ID_LIKE_RE')
+    expect(page).toContain('isIdentifier')
+    expect(page).toContain('Paste a user UUID')
+    expect(page).toContain('id: asId')
+    expect(apiClient).toContain("qs.set('id', params.id)")
+  })
 })
 
 describe('PostHog privacy hardening', () => {

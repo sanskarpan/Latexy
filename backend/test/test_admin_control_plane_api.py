@@ -81,6 +81,84 @@ async def _user_headers(db: AsyncSession, role: str = "user") -> tuple[str, dict
     return user_id, {"Authorization": f"Bearer {token}"}
 
 
+async def _create_payment(
+    db: AsyncSession, user_id: str, *, provider_payment_id: str | None = None
+) -> str:
+    payment_id = str(uuid.uuid4())
+    await db.execute(
+        text(
+            "INSERT INTO payments (id, user_id, provider, provider_payment_id, "
+            "amount, currency, status, created_at) "
+            "VALUES (:id, :uid, 'dodo', :ppid, 59900, 'INR', 'paid', now())"
+        ),
+        {
+            "id": payment_id,
+            "uid": user_id,
+            "ppid": provider_payment_id or f"pay_{uuid.uuid4().hex[:16]}",
+        },
+    )
+    await db.commit()
+    return payment_id
+
+
+async def _create_subscription(
+    db: AsyncSession,
+    user_id: str,
+    *,
+    provider_subscription_id: str | None = None,
+    checkout_session_id: str | None = None,
+) -> str:
+    subscription_id = str(uuid.uuid4())
+    await db.execute(
+        text(
+            "INSERT INTO subscriptions (id, user_id, provider, "
+            "provider_subscription_id, provider_checkout_session_id, plan_id, status) "
+            "VALUES (:id, :uid, 'dodo', :psid, :chk, 'pro', 'active')"
+        ),
+        {
+            "id": subscription_id,
+            "uid": user_id,
+            "psid": provider_subscription_id,
+            "chk": checkout_session_id,
+        },
+    )
+    await db.commit()
+    return subscription_id
+
+
+async def _create_refund_request(db: AsyncSession, payment_id: str) -> str:
+    request_id = str(uuid.uuid4())
+    await db.execute(
+        text(
+            "INSERT INTO admin_refund_requests (id, payment_id, status, reason, requested_by) "
+            "VALUES (:id, :pid, 'pending', 'customer request', :reqby)"
+        ),
+        {"id": request_id, "pid": payment_id, "reqby": str(uuid.uuid4())},
+    )
+    await db.commit()
+    return request_id
+
+
+async def _create_payment_refund(
+    db: AsyncSession, payment_id: str, *, provider_refund_id: str | None = None
+) -> str:
+    refund_id = str(uuid.uuid4())
+    await db.execute(
+        text(
+            "INSERT INTO payment_refunds (id, payment_id, provider, provider_refund_id, "
+            "status, amount, currency, reason, created_at) "
+            "VALUES (:id, :pid, 'dodo', :prid, 'succeeded', 1000, 'INR', 'goodwill', now())"
+        ),
+        {
+            "id": refund_id,
+            "pid": payment_id,
+            "prid": provider_refund_id or f"ref_{uuid.uuid4().hex[:16]}",
+        },
+    )
+    await db.commit()
+    return refund_id
+
+
 # ── GET /admin/entitlements ──────────────────────────────────────────────────
 
 class TestGetEntitlements:
@@ -228,6 +306,185 @@ class TestListUsers:
         _, headers = await _user_headers(db_session)
         resp = await client.get("/admin/users", headers=headers)
         assert resp.status_code == 403
+
+
+class TestListUsersByIdentifier:
+
+    async def test_user_uuid(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, target_email = await _create_user(db_session, name="UUID Target")
+
+        resp = await client.get(f"/admin/users?id={target_id}", headers=admin_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [u["id"] for u in body["users"]] == [target_id]
+        assert body["total"] == 1
+        # Masked even when resolved by identifier.
+        assert body["users"][0]["email"] != target_email
+        assert body["users"][0]["name"] != "UUID Target"
+        assert body["users"][0]["pii_masked"] is True
+
+    async def test_payment_provider_id(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Payment Owner")
+        provider_payment_id = f"pay_{uuid.uuid4().hex[:16]}"
+        await _create_payment(db_session, target_id, provider_payment_id=provider_payment_id)
+        other_id, _ = await _create_user(db_session, name="Other Owner")
+        await _create_payment(db_session, other_id, provider_payment_id=f"pay_{uuid.uuid4().hex[:16]}")
+
+        resp = await client.get(
+            f"/admin/users?id={provider_payment_id}", headers=admin_headers
+        )
+        assert resp.status_code == 200
+        ids = [u["id"] for u in resp.json()["users"]]
+        assert ids == [target_id]
+        assert other_id not in ids
+
+    async def test_payment_uuid(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Payment UUID Owner")
+        payment_id = await _create_payment(db_session, target_id)
+
+        resp = await client.get(f"/admin/users?id={payment_id}", headers=admin_headers)
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
+
+    async def test_subscription_provider_id(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Subscription Owner")
+        provider_subscription_id = f"sub_{uuid.uuid4().hex[:16]}"
+        await _create_subscription(
+            db_session, target_id, provider_subscription_id=provider_subscription_id
+        )
+
+        resp = await client.get(
+            f"/admin/users?id={provider_subscription_id}", headers=admin_headers
+        )
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
+
+    async def test_subscription_uuid(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Subscription UUID Owner")
+        subscription_id = await _create_subscription(db_session, target_id)
+
+        resp = await client.get(f"/admin/users?id={subscription_id}", headers=admin_headers)
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
+
+    async def test_checkout_session_id(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Checkout Owner")
+        checkout_id = f"chk_{uuid.uuid4().hex[:16]}"
+        await _create_subscription(db_session, target_id, checkout_session_id=checkout_id)
+
+        resp = await client.get(f"/admin/users?id={checkout_id}", headers=admin_headers)
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
+
+    async def test_refund_request_uuid(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Refund Request Owner")
+        payment_id = await _create_payment(db_session, target_id)
+        request_id = await _create_refund_request(db_session, payment_id)
+
+        resp = await client.get(f"/admin/users?id={request_id}", headers=admin_headers)
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
+
+    async def test_refund_provider_id(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Refund Owner")
+        payment_id = await _create_payment(db_session, target_id)
+        provider_refund_id = f"ref_{uuid.uuid4().hex[:16]}"
+        await _create_payment_refund(db_session, payment_id, provider_refund_id=provider_refund_id)
+
+        resp = await client.get(
+            f"/admin/users?id={provider_refund_id}", headers=admin_headers
+        )
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
+
+    async def test_not_found(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        resp = await client.get(
+            f"/admin/users?id=pay_{uuid.uuid4().hex[:16]}", headers=admin_headers
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["users"] == []
+        assert body["total"] == 0
+
+    async def test_support_can_search_by_identifier_masked(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        _, support_headers = await _user_headers(db_session, role="support")
+        target_id, target_email = await _create_user(db_session, name="Support Search Target")
+
+        resp = await client.get(f"/admin/users?id={target_id}", headers=support_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [u["id"] for u in body["users"]] == [target_id]
+        # Support access is unchanged: read-only and masked.
+        assert body["users"][0]["email"] != target_email
+        assert body["users"][0]["pii_masked"] is True
+
+    async def test_malformed_uuid_400(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        resp = await client.get(
+            "/admin/users?id=123e4567-e89b-12d3-a456-42661417400g", headers=admin_headers
+        )
+        assert resp.status_code == 400
+
+    async def test_malformed_identifier_400(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        admin_headers = await _admin_headers(db_session)
+        resp = await client.get("/admin/users?id=hello", headers=admin_headers)
+        assert resp.status_code == 400
+
+    async def test_identifier_with_special_chars_400(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        admin_headers = await _admin_headers(db_session)
+        resp = await client.get(
+            "/admin/users", params={"id": "pay_'; DROP TABLE users; --"}, headers=admin_headers
+        )
+        assert resp.status_code == 400
+
+    async def test_identifier_over_max_length_422(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        admin_headers = await _admin_headers(db_session)
+        resp = await client.get(
+            "/admin/users", params={"id": "pay_" + "a" * 300}, headers=admin_headers
+        )
+        assert resp.status_code == 422
+
+    async def test_pagination_bounds_for_id(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Paged ID Owner")
+        page1 = await client.get(
+            f"/admin/users?id={target_id}&limit=1&offset=0", headers=admin_headers
+        )
+        assert page1.status_code == 200
+        assert [u["id"] for u in page1.json()["users"]] == [target_id]
+        page2 = await client.get(
+            f"/admin/users?id={target_id}&limit=1&offset=1", headers=admin_headers
+        )
+        assert page2.status_code == 200
+        assert page2.json()["users"] == []
+
+    async def test_id_precedence_over_q(self, client: AsyncClient, db_session: AsyncSession):
+        admin_headers = await _admin_headers(db_session)
+        target_id, _ = await _create_user(db_session, name="Precedence Owner")
+        resp = await client.get(
+            f"/admin/users?id={target_id}&q=no_such_substring", headers=admin_headers
+        )
+        assert resp.status_code == 200
+        assert [u["id"] for u in resp.json()["users"]] == [target_id]
 
 
 # ── PATCH /admin/users/{id}/role ─────────────────────────────────────────────

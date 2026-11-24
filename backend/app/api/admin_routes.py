@@ -5,6 +5,8 @@ GET  /admin/feature-flags        — admin only — full objects
 PATCH /admin/feature-flags/{key} — admin only — {enabled: bool}
 """
 
+import re
+import uuid as uuid_module
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -17,7 +19,13 @@ from ..core.errors import error_body
 from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import User
+from ..database.models import (
+    AdminRefundRequest,
+    Payment,
+    PaymentRefund,
+    Subscription,
+    User,
+)
 from ..middleware.auth_middleware import (
     require_admin,
     require_admin_actor,
@@ -403,22 +411,189 @@ def _user_summary(user: User) -> UserSummary:
     )
 
 
+# Provider IDs (Dodo) are opaque, exact-match strings such as ``pay_…``,
+# ``sub_…``, ``chk_…`` or ``ref_…``. This bounded shape rejects arbitrary
+# free-text (and any embedded ``@``/``.``) so an email never turns into an
+# identifier table scan; anything else is a malformed identifier.
+_PROVIDER_ID_RE = re.compile(r"^[A-Za-z0-9]{1,16}_[A-Za-z0-9_-]{1,200}$")
+
+
+def _parse_uuid(value: str) -> Optional[str]:
+    """Return the canonical UUID string, or ``None`` for a malformed value.
+
+    ``uuid.UUID`` is deliberately lenient (hex, braces, URN forms), so this only
+    fails for strings that are not UUIDs at all — which then fall through to the
+    provider-ID path instead of raising a 500.
+    """
+    try:
+        return str(uuid_module.UUID(value))
+    except (ValueError, TypeError):
+        return None
+
+
+async def _payment_owner(payment_id: str, db: AsyncSession) -> Optional[str]:
+    """Resolve a payment row to its owning user id (indexed PK lookup)."""
+    return (
+        await db.execute(select(Payment.user_id).where(Payment.id == payment_id))
+    ).scalar_one_or_none()
+
+
+async def _resolve_identifier_to_user_ids(
+    value: str, db: AsyncSession
+) -> tuple[List[str], str]:
+    """Resolve an exact admin identifier to the owning user id(s).
+
+    Returns ``(user_ids, query_type)``. The query type is a fixed enum string —
+    never the raw identifier — so it can be logged safely. Every lookup is an
+    exact match against a primary key or a unique provider index; there are no
+    substring or broad table scans here.
+    """
+    # 1. Internal UUIDs: user, subscription, payment, refund request, refund.
+    uuid_val = _parse_uuid(value)
+    if uuid_val is not None:
+        user_id = (
+            await db.execute(select(User.id).where(User.id == uuid_val))
+        ).scalar_one_or_none()
+        if user_id is not None:
+            return [user_id], "user_id"
+
+        sub_uid = (
+            await db.execute(
+                select(Subscription.user_id).where(Subscription.id == uuid_val)
+            )
+        ).scalar_one_or_none()
+        if sub_uid is not None:
+            return [sub_uid], "subscription_id"
+
+        pay_uid = (
+            await db.execute(select(Payment.user_id).where(Payment.id == uuid_val))
+        ).scalar_one_or_none()
+        if pay_uid is not None:
+            return [pay_uid], "payment_id"
+
+        refund_payment_id = (
+            await db.execute(
+                select(AdminRefundRequest.payment_id).where(
+                    AdminRefundRequest.id == uuid_val
+                )
+            )
+        ).scalar_one_or_none()
+        if refund_payment_id is not None:
+            owner = await _payment_owner(refund_payment_id, db)
+            if owner is not None:
+                return [owner], "refund_id"
+
+        prefund_payment_id = (
+            await db.execute(
+                select(PaymentRefund.payment_id).where(PaymentRefund.id == uuid_val)
+            )
+        ).scalar_one_or_none()
+        if prefund_payment_id is not None:
+            owner = await _payment_owner(prefund_payment_id, db)
+            if owner is not None:
+                return [owner], "refund_id"
+
+        return [], "uuid"
+
+    # 2. Provider identifiers (Dodo payment/subscription/checkout/refund IDs).
+    if not _PROVIDER_ID_RE.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail=error_body(
+                "invalid_identifier",
+                "Identifier must be a user UUID or a Dodo payment, subscription, "
+                "checkout session, or refund ID.",
+                None,
+            ),
+        )
+
+    pay_uid = (
+        await db.execute(
+            select(Payment.user_id).where(
+                Payment.provider == "dodo", Payment.provider_payment_id == value
+            )
+        )
+    ).scalar_one_or_none()
+    if pay_uid is not None:
+        return [pay_uid], "payment_id"
+
+    # One identifier could theoretically appear in both provider columns of two
+    # different rows; cap the lookup at one row so an odd data state cannot 500.
+    sub_uid = (
+        await db.execute(
+            select(Subscription.user_id)
+            .where(
+                Subscription.provider == "dodo",
+                or_(
+                    Subscription.provider_subscription_id == value,
+                    Subscription.provider_checkout_session_id == value,
+                ),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if sub_uid is not None:
+        return [sub_uid], "subscription_id"
+
+    prefund_payment_id = (
+        await db.execute(
+            select(PaymentRefund.payment_id).where(
+                PaymentRefund.provider == "dodo",
+                PaymentRefund.provider_refund_id == value,
+            )
+        )
+    ).scalar_one_or_none()
+    if prefund_payment_id is not None:
+        owner = await _payment_owner(prefund_payment_id, db)
+        if owner is not None:
+            return [owner], "refund_id"
+
+    return [], "provider_id"
+
+
+def _log_identifier_search(actor: AdminActor, query_type: str) -> None:
+    """Log only the query *type*; the raw identifier is never logged."""
+    logger.info(
+        "admin_user_identifier_search",
+        extra={
+            "admin_user_id": sanitize_for_log(actor.user_id),
+            "query_type": sanitize_for_log(query_type),
+        },
+    )
+
+
 @router.get("/admin/users", response_model=UserListResponse)
 async def list_users(
     q: Optional[str] = Query(None, description="Email (or name) search substring"),
+    id: Optional[str] = Query(
+        None,
+        max_length=255,
+        description="Exact identifier: user UUID, or Dodo payment/subscription/"
+        "checkout-session/refund ID",
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    _: AdminActor = Depends(require_admin_or_support),
+    actor: AdminActor = Depends(require_admin_or_support),
 ):
     """List users with optional email search + pagination.
 
     Support and admin both receive the masked projection. Neither role sees a
     full address or name here; an admin must use the audited, rate-limited,
     single-field reveal endpoint.
+
+    ``id`` (when present) resolves an exact typed identifier to its owning user;
+    it takes precedence over ``q`` and never falls back to substring search.
     """
     filters = []
-    if q:
+    identifier = (id or "").strip()
+    if identifier:
+        user_ids, query_type = await _resolve_identifier_to_user_ids(identifier, db)
+        _log_identifier_search(actor, query_type)
+        if not user_ids:
+            return UserListResponse(users=[], total=0)
+        filters.append(User.id.in_(user_ids))
+    elif q:
         pattern = f"%{q.strip()}%"
         filters.append(or_(User.email.ilike(pattern), User.name.ilike(pattern)))
 
