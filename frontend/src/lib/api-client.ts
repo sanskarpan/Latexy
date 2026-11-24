@@ -1671,6 +1671,92 @@ export interface AdminAiCostDailyRow extends AdminAiCostRollupRow {
   date: string
 }
 
+export interface AdminAiUsageMetrics {
+  runs: number
+  users: number
+  successes: number
+  errors: number
+  pending: number
+  success_rate: number
+  error_rate: number
+  tokens: number
+  latency_p50_ms: number | null
+  latency_p95_ms: number | null
+  latency_avg_ms: number | null
+  latency_samples: number
+  credential_sources: Record<string, number>
+}
+
+export interface AdminAiUsageRow extends AdminAiUsageMetrics {
+  label: string
+  feature?: string
+  provider?: string
+  model?: string
+  persona?: string
+  plan?: string
+  credential_source?: string
+}
+
+export interface AdminAiUsageResponse {
+  period_days: number
+  start_date: string
+  end_date: string
+  generated_at: string
+  filters: {
+    plan: string | null
+    feature: string | null
+    provider: string | null
+    model: string | null
+    persona: string | null
+  }
+  minimum_group_size: number
+  suppressed_groups: number
+  suppression: {
+    minimum_group_size: number
+    rule: string
+    suppressed_groups: number
+    by_dimension: Record<string, number>
+  }
+  totals: AdminAiUsageMetrics
+  by_feature: AdminAiUsageRow[]
+  by_provider: AdminAiUsageRow[]
+  by_model: AdminAiUsageRow[]
+  by_persona: AdminAiUsageRow[]
+  by_plan: AdminAiUsageRow[]
+  by_credential_source: AdminAiUsageRow[]
+  reconciliation: {
+    sources: Array<AdminAiUsageMetrics & { source: string; table: string }>
+    total_events: number
+    total_successes: number
+    total_errors: number
+    total_tokens: number
+    resume_engine_runs: {
+      source: string
+      runs: number
+      by_status: Record<string, number>
+      successes: number
+      partial: number
+      errors: number
+      pending: number
+      latency_p50_ms: number | null
+      latency_p95_ms: number | null
+      latency_avg_ms: number | null
+      latency_samples: number
+      filters_applied: Record<string, string | null>
+      note: string
+    }
+  }
+  persona_source: string
+  credential_source_note: string
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+}
+
 export type AdminTimeseriesMetric =
   | 'events'
   | 'compilations'
@@ -4767,6 +4853,24 @@ class ApiClient {
     if (params?.invoice_total_minor != null) qs.set('invoice_total_minor', String(params.invoice_total_minor))
     if (params?.invoice_reference) qs.set('invoice_reference', params.invoice_reference)
     return this.request<AdminAiCostResponse>(`/admin/analytics/ai-cost?${qs}`)
+  }
+
+  async getAdminAiUsage(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    provider?: string
+    model?: string
+    persona?: string
+  }): Promise<AdminAiUsageResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.model) qs.set('model', params.model)
+    if (params?.persona) qs.set('persona', params.persona)
+    return this.request<AdminAiUsageResponse>(`/admin/analytics/ai-usage?${qs}`)
   }
 
   async getAdminFilteredTimeseries(params: {

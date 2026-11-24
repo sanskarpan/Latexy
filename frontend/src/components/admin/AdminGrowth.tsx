@@ -6,6 +6,8 @@ import {
   type AdminActivationResponse,
   type AdminAiCostResponse,
   type AdminFeatureDepthResponse,
+  type AdminAiUsageResponse,
+  type AdminAiUsageRow,
   type AdminFilteredTimeseriesResponse,
   type AdminRetentionResponse,
   type AdminRetentionRow,
@@ -35,6 +37,42 @@ function formatDuration(seconds: number | null | undefined): string {
   if (seconds < 3_600) return `${(seconds / 60).toFixed(1)}m`
   if (seconds < 86_400) return `${(seconds / 3_600).toFixed(1)}h`
   return `${(seconds / 86_400).toFixed(1)}d`
+}
+
+function formatLatency(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—'
+  if (ms < 1_000) return `${Math.round(ms)}ms`
+  return `${(ms / 1_000).toFixed(2)}s`
+}
+
+type UsageDimension = 'feature' | 'provider' | 'model' | 'persona' | 'plan' | 'credential_source'
+
+const USAGE_DIMENSIONS: Array<{ key: UsageDimension; label: string }> = [
+  { key: 'feature', label: 'Feature' },
+  { key: 'provider', label: 'Provider' },
+  { key: 'model', label: 'Model' },
+  { key: 'persona', label: 'Persona' },
+  { key: 'plan', label: 'Plan' },
+  { key: 'credential_source', label: 'Credential source' },
+]
+
+function usageRows(data: AdminAiUsageResponse, dimension: UsageDimension): AdminAiUsageRow[] {
+  switch (dimension) {
+    case 'feature':
+      return data.by_feature
+    case 'provider':
+      return data.by_provider
+    case 'model':
+      return data.by_model
+    case 'persona':
+      return data.by_persona
+    case 'plan':
+      return data.by_plan
+    case 'credential_source':
+      return data.by_credential_source
+    default:
+      return data.by_feature
+  }
 }
 
 function retentionCell(cell: { numerator: number; denominator: number; rate: number | null }): string {
@@ -494,6 +532,203 @@ function Cost({
   )
 }
 
+function AiUsage({
+  data,
+  plan,
+  feature,
+  provider,
+  model,
+  persona,
+  onPlan,
+  onFeature,
+  onProvider,
+  onModel,
+  onPersona,
+  onApply,
+  loading,
+}: {
+  data: AdminAiUsageResponse
+  plan: string
+  feature: string
+  provider: string
+  model: string
+  persona: string
+  onPlan: (value: string) => void
+  onFeature: (value: string) => void
+  onProvider: (value: string) => void
+  onModel: (value: string) => void
+  onPersona: (value: string) => void
+  onApply: () => void
+  loading: boolean
+}) {
+  const [dimension, setDimension] = useState<UsageDimension>('feature')
+  const rows = usageRows(data, dimension)
+  const hidden = data.suppression.by_dimension[dimension] ?? 0
+  const chart = data.by_feature.slice(0, 8).map((row) => ({ name: row.label, value: row.runs }))
+  const reconciliation = useMemo(
+    () => data.reconciliation.sources.reduce((sum, row) => sum + row.runs, 0),
+    [data.reconciliation.sources],
+  )
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">AI usage breakdown</h3>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-3">
+              Aggregate runs from optimization history and resume-engine stages by feature, provider, model, persona,
+              plan, and credential source. No prompts, documents, keys, or per-user rows are read.
+            </p>
+          </div>
+          <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
+            {data.period_days} days · {data.start_date} → {data.end_date} · UTC
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="text-[11px] text-fg-2">
+            Usage plan filter
+            <select value={plan} onChange={(event) => onPlan(event.target.value)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+              {PLAN_OPTIONS.map((item) => <option key={item || 'all'} value={item}>{item || 'All plans'}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Feature
+            <input value={feature} onChange={(event) => onFeature(event.target.value)} maxLength={120} placeholder="optimization_patches" className="mt-1 block min-h-[38px] w-44 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Provider
+            <input value={provider} onChange={(event) => onProvider(event.target.value)} maxLength={80} placeholder="openai" className="mt-1 block min-h-[38px] w-32 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Model
+            <input value={model} onChange={(event) => onModel(event.target.value)} maxLength={160} placeholder="gpt-4o" className="mt-1 block min-h-[38px] w-40 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Persona
+            <input value={persona} onChange={(event) => onPersona(event.target.value)} maxLength={64} placeholder="startup" className="mt-1 block min-h-[38px] w-32 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <button type="button" onClick={onApply} disabled={loading} className="min-h-[38px] rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
+            Apply usage filters
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card label="AI runs" value={formatNumber(data.totals.runs)} detail={`${formatNumber(data.totals.users)} users · ${formatNumber(data.totals.tokens)} tokens`} />
+        <Card
+          label="Success / error"
+          value={`${formatNumber(data.totals.successes)} / ${formatNumber(data.totals.errors)}`}
+          detail={`${data.totals.success_rate}% success · ${data.totals.pending} pending`}
+          tone={data.totals.errors > 0 ? 'text-warn' : 'text-ok'}
+        />
+        <Card label="p95 latency" value={formatLatency(data.totals.latency_p95_ms)} detail={`p50 ${formatLatency(data.totals.latency_p50_ms)} · ${formatNumber(data.totals.latency_samples)} samples`} />
+        <Card label="Suppressed groups" value={formatNumber(data.suppressed_groups)} detail={`Minimum ${data.minimum_group_size} users or runs per row`} />
+      </div>
+
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+        <h3 className="text-sm font-semibold text-fg">Runs by feature</h3>
+        <p className="mt-1 text-[11px] text-fg-3">Aggregate run counts only. Groups under {data.minimum_group_size} users or runs are hidden.</p>
+        <div className="mt-3"><FeatureUsageBars data={chart} /></div>
+      </div>
+
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">Usage detail</h3>
+            <p className="mt-1 text-[11px] text-fg-3">Aggregate-only rows with success/error, p50/p95 latency, and token counts.</p>
+          </div>
+          <div className="inline-flex flex-wrap rounded-[var(--radius-md)] border border-line bg-surface p-0.5" role="group" aria-label="AI usage dimension">
+            {USAGE_DIMENSIONS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                aria-pressed={dimension === item.key}
+                onClick={() => setDimension(item.key)}
+                className={`rounded px-2.5 py-1 text-[11px] font-medium ${dimension === item.key ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'}`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] border-collapse text-xs">
+            <caption className="sr-only">AI usage by {dimension}</caption>
+            <thead>
+              <tr className="border-b border-line bg-surface-2/60 text-[10px] uppercase tracking-wider text-fg-3">
+                <th scope="col" className="px-4 py-2 text-left font-semibold">{USAGE_DIMENSIONS.find((item) => item.key === dimension)?.label}</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Users</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Runs</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Success</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Error</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Pending</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">p50</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">p95</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${dimension}-${row.label}`} className="border-t border-line">
+                  <td className="px-4 py-2 text-fg-2">{row.label}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatNumber(row.users)}</td>
+                  <td className="px-4 py-2 text-right text-fg">{formatNumber(row.runs)}</td>
+                  <td className="px-4 py-2 text-right text-ok">{formatNumber(row.successes)}</td>
+                  <td className={`px-4 py-2 text-right ${row.errors > 0 ? 'text-err' : 'text-fg-3'}`}>{formatNumber(row.errors)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatNumber(row.pending)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatLatency(row.latency_p50_ms)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatLatency(row.latency_p95_ms)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatNumber(row.tokens)}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-4 py-8 text-center text-fg-3">
+                    No {dimension.replace('_', ' ')} row has at least {data.minimum_group_size} users and runs.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 text-[10px] text-fg-3">
+          <span>{hidden > 0 ? `${hidden} small ${dimension.replace('_', ' ')} group${hidden === 1 ? '' : 's'} hidden (<${data.minimum_group_size} users or runs).` : 'No groups hidden for this dimension.'}</span>
+          <span>{formatNumber(reconciliation)} reconciled source rows · {formatDateTime(data.generated_at)}</span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Reconciliation to source tables</h3>
+          <p className="mt-1 text-[10px] text-fg-3">Aggregate counts from the same first-party rows used in the breakdown.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.reconciliation.sources.map((row) => (
+              <li key={row.source} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="text-fg-2">{row.source.replace(/_/g, ' ')}</span>
+                <span className="text-fg-3">{formatNumber(row.runs)} runs · {formatNumber(row.successes)} ok · {formatNumber(row.errors)} err · {formatNumber(row.tokens)} tokens</span>
+              </li>
+            ))}
+            <li className="flex items-center justify-between gap-2 border-t border-line pt-1.5">
+              <span className="text-fg-2">Run admissions</span>
+              <span className="text-fg-3">{formatNumber(data.reconciliation.resume_engine_runs.runs)} runs · {formatNumber(data.reconciliation.resume_engine_runs.successes)} completed · {formatNumber(data.reconciliation.resume_engine_runs.errors)} failed/cancelled</span>
+            </li>
+          </ul>
+        </div>
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Privacy and coverage</h3>
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-3">{data.persona_source}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-3">{data.credential_source_note}</p>
+          <ul className="mt-2 space-y-1 text-[10px] text-fg-3">
+            {data.notes.map((note) => <li key={note}>• {note}</li>)}
+          </ul>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function Explorer({
   data,
   metric,
@@ -829,6 +1064,7 @@ export default function AdminGrowth() {
   const [activation, setActivation] = useState<AdminActivationResponse | null>(null)
   const [retention, setRetention] = useState<AdminRetentionResponse | null>(null)
   const [cost, setCost] = useState<AdminAiCostResponse | null>(null)
+  const [usage, setUsage] = useState<AdminAiUsageResponse | null>(null)
   const [series, setSeries] = useState<AdminFilteredTimeseriesResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -837,6 +1073,18 @@ export default function AdminGrowth() {
   const [costPlan, setCostPlan] = useState('')
   const [costFeature, setCostFeature] = useState('')
   const [costApplied, setCostApplied] = useState<{ plan: string; feature: string }>({ plan: '', feature: '' })
+  const [usagePlan, setUsagePlan] = useState('')
+  const [usageFeature, setUsageFeature] = useState('')
+  const [usageProvider, setUsageProvider] = useState('')
+  const [usageModel, setUsageModel] = useState('')
+  const [usagePersona, setUsagePersona] = useState('')
+  const [usageApplied, setUsageApplied] = useState<{
+    plan: string
+    feature: string
+    provider: string
+    model: string
+    persona: string
+  }>({ plan: '', feature: '', provider: '', model: '', persona: '' })
   const [metric, setMetric] = useState<AdminTimeseriesMetric>('events')
   const [dimension, setDimension] = useState<'' | AdminTimeseriesDimension>('plan')
   const [value, setValue] = useState('pro')
@@ -861,7 +1109,7 @@ export default function AdminGrowth() {
     setLoading(true)
     setError(null)
     try {
-      const [nextActivation, nextRetention, nextCost] = await Promise.all([
+      const [nextActivation, nextRetention, nextCost, nextUsage] = await Promise.all([
         apiClient.getAdminActivation({
           days,
           plan: plan || undefined,
@@ -873,11 +1121,20 @@ export default function AdminGrowth() {
           plan: costApplied.plan || undefined,
           feature: costApplied.feature || undefined,
         }),
+        apiClient.getAdminAiUsage({
+          days,
+          plan: usageApplied.plan || undefined,
+          feature: usageApplied.feature || undefined,
+          provider: usageApplied.provider || undefined,
+          model: usageApplied.model || undefined,
+          persona: usageApplied.persona || undefined,
+        }),
       ])
       if (loadGeneration.current !== generation) return
       setActivation(nextActivation)
       setRetention(nextRetention)
       setCost(nextCost)
+      setUsage(nextUsage)
     } catch (err) {
       if (loadGeneration.current === generation) {
         setError(err instanceof Error ? err.message : 'Failed to load growth analytics')
@@ -885,7 +1142,7 @@ export default function AdminGrowth() {
     } finally {
       if (loadGeneration.current === generation) setLoading(false)
     }
-  }, [days, plan, provider, retentionWeeks, signupMonth, costApplied])
+  }, [days, plan, provider, retentionWeeks, signupMonth, costApplied, usageApplied])
 
   useEffect(() => {
     void load()
@@ -992,6 +1249,32 @@ export default function AdminGrowth() {
           onPlan={setCostPlan}
           onFeature={setCostFeature}
           onApply={() => setCostApplied({ plan: costPlan, feature: costFeature })}
+          loading={loading}
+        />
+      )}
+
+      {usage && (
+        <AiUsage
+          data={usage}
+          plan={usagePlan}
+          feature={usageFeature}
+          provider={usageProvider}
+          model={usageModel}
+          persona={usagePersona}
+          onPlan={setUsagePlan}
+          onFeature={setUsageFeature}
+          onProvider={setUsageProvider}
+          onModel={setUsageModel}
+          onPersona={setUsagePersona}
+          onApply={() =>
+            setUsageApplied({
+              plan: usagePlan,
+              feature: usageFeature,
+              provider: usageProvider,
+              model: usageModel,
+              persona: usagePersona,
+            })
+          }
           loading={loading}
         />
       )}
