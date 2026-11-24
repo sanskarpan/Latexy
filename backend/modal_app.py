@@ -961,9 +961,19 @@ def scheduled_five_minute_maintenance() -> None:
 )
 @_require_worker_dispatch
 def scheduled_minute_recovery() -> None:
-    """Fan out the two one-minute recovery runners independently."""
+    """Fan out the two one-minute recovery runners and sample queue depths.
+
+    Celery Beat is not launched in production, so the queue snapshot sampler
+    runs here to keep the admin queue view and backlog alert populated.
+    """
     _init_worker_redis()
     spawn_failures = []
+
+    # The sampler catches Redis/DB failures internally; let an import error fail
+    # the run loudly rather than hiding it as a spawn failure.
+    from app.core.celery_app import sample_queue_depths
+
+    sample_queue_depths()
 
     try:
         scheduled_comment_mention_recovery.spawn()
