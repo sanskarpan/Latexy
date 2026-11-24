@@ -86,6 +86,11 @@ describe('admin control room surfaces', () => {
     expect(growth).toContain('Rolling outliers')
     expect(growth).toContain('Sampled invoice reconciliation')
     expect(growth).toContain('pricing_version')
+    expect(growth).toContain('Feature depth')
+    expect(growth).toContain('Frequency mix')
+    expect(growth).toContain('habitual')
+    expect(growth).toContain('getAdminFeatureDepth')
+    expect(apiClient).toContain('/admin/analytics/feature-depth')
     expect(growth).not.toContain('latex_content')
   })
 

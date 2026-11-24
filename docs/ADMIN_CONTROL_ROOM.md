@@ -17,6 +17,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
+| Growth & Cost | `GET /admin/analytics/feature-depth` | Per-feature users/events, median and p95 events per user, repeat rate, frequency buckets (1, 2–4, 5–9, 10+), habitual users (≥5 events/week), and distinct-feature breadth; plan and signup-cohort filters, groups below five users suppressed |
 | Customers | `GET /admin/users/{id}/360` | Masked account, activation, usage, billing, security, and integration summary |
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
@@ -53,7 +54,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   revealed PII is overlaid live and is never cached.
 - No provider credential, card detail, or bank detail is returned to the browser.
 - Growth segments and retention cohorts suppress rates below five users to
-  avoid re-identifying a small group.
+  avoid re-identifying a small group. Feature-depth groups below five users are
+  omitted and a filtered cohort below five users returns no counts; only
+  aggregate counts are returned, never event metadata, document text, or
+  per-user event rows.
 - KPI comparisons use an equal-length previous window. A zero (or negative)
   baseline returns no percent delta instead of infinity, and the UI uses a
   neutral tone in that case. Snapshot KPIs compare against the count at the
