@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyticsDashboardLinks,
+  analyticsReplayLinkConfig,
+  analyticsReplayTriageLinks,
   isAnalyticsConfigured,
   sanitizeAnalyticsPath,
   sanitizeAnalyticsProperties,
@@ -59,5 +61,7 @@ describe('analytics configuration', () => {
   it('stays disabled when no public project key is configured', () => {
     expect(isAnalyticsConfigured()).toBe(false)
     expect(analyticsDashboardLinks()).toBeNull()
+    expect(analyticsReplayLinkConfig(30)).toBeNull()
+    expect(analyticsReplayTriageLinks(30)).toBeNull()
   })
 })
