@@ -1062,19 +1062,19 @@ class AnalyticsService:
             ),
             trend(
                 "total_revenue_inr", "Revenue", "currency", system["total_revenue_inr"],
-                previous_revenue, sparkline("revenue_inr"),
+                previous_revenue, sparkline("revenue_inr", current=system["total_revenue_inr"]),
             ),
             trend(
                 "total_compilations", "Compilations", "count", system["total_compilations"],
-                previous_compilations, sparkline("compilations"),
+                previous_compilations, sparkline("compilations", current=system["total_compilations"]),
             ),
             trend(
                 "total_optimizations", "Optimizations", "count", system["total_optimizations"],
-                previous_optimizations, sparkline("optimizations"),
+                previous_optimizations, sparkline("optimizations", current=system["total_optimizations"]),
             ),
             trend(
                 "trial_users", "Trial users", "count", system["trial_users"], previous_trials,
-                sparkline("trial_users"),
+                sparkline("trial_users", current=system["trial_users"]),
             ),
             trend(
                 "conversion_rate", "Conversion", "percent", system["conversion_rate"],

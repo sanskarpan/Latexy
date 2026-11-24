@@ -220,8 +220,9 @@ async def test_kpi_trends_are_complete_finite_and_cached(
 
     for key in ("total_compilations", "total_optimizations", "trial_users", "total_revenue_inr"):
         trend = trends[key]
-        assert sum(point["value"] for point in trend["sparkline"]) == pytest.approx(
-            trend["current"], abs=0.01
+        sparkline_sum = sum(point["value"] for point in trend["sparkline"])
+        assert sparkline_sum == pytest.approx(trend["current"], abs=0.01), (
+            f"{key}: sparkline sum {sparkline_sum} != current {trend['current']}"
         )
 
     users = _trend(body, "total_users")
