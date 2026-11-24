@@ -17,8 +17,9 @@ function harness(key = 'b03') {
   }
   visit(source)
   const apiClient = { updateKillSwitch: vi.fn(), updateMatrixCell: vi.fn(), updateRoleCell: vi.fn(), getAdminEntitlements: vi.fn() }
+  const reason = 'Synthetic admin reason'
   const scope = {
-    apiClient, pendingRef: { current: createEntitlementWriteLock() }, mounted: { current: true },
+    apiClient, pendingRef: { current: createEntitlementWriteLock() }, mounted: { current: true }, reason,
     setState: (fn: (state: AdminEntitlementsState) => AdminEntitlementsState) => { data = fn(data) },
     patchEntitlementCell, markBusy: vi.fn(), clearBusy: vi.fn(), setError: vi.fn(), toast: { error: vi.fn() }, window: { dispatchEvent: vi.fn() }, Event,
   }
@@ -33,7 +34,7 @@ describe('admin role control dispatch and conflicts', () => {
     h.apiClient.updateKillSwitch.mockResolvedValue(response); h.apiClient.updateMatrixCell.mockResolvedValue(response); h.apiClient.updateRoleCell.mockResolvedValue(response)
     await h.run(scope, 'b03', false)
     const expected = scope === 'global' ? h.apiClient.updateKillSwitch : scope === 'pro' ? h.apiClient.updateMatrixCell : h.apiClient.updateRoleCell
-    expect(expected).toHaveBeenCalledWith(...(scope === 'global' ? ['b03', false, true] : [scope === 'pro' ? 'pro' : 'admin', 'b03', false, true]))
+    expect(expected).toHaveBeenCalledWith(...(scope === 'global' ? ['b03', false, h.reason, true] : [scope === 'pro' ? 'pro' : 'admin', 'b03', false, h.reason, true]))
     expect(h.state().kill_switches.b03).toBe(scope !== 'global')
     expect(h.state().matrix.pro.b03).toBe(scope !== 'pro')
     expect(h.state().role_matrix?.admin.b03).toBe(scope !== 'role:admin')
@@ -66,7 +67,7 @@ describe('real admin child operation writes', () => {
     h.apiClient.updateKillSwitch.mockResolvedValue(response); h.apiClient.updateMatrixCell.mockResolvedValue(response); h.apiClient.updateRoleCell.mockResolvedValue(response)
     await h.run(scope, key, false)
     const method = scope === 'global' ? h.apiClient.updateKillSwitch : scope.startsWith('role:') ? h.apiClient.updateRoleCell : h.apiClient.updateMatrixCell
-    expect(method).toHaveBeenCalledWith(...(scope === 'global' ? [key, false, true] : [scope.startsWith('role:') ? 'admin' : scope, key, false, true]))
+    expect(method).toHaveBeenCalledWith(...(scope === 'global' ? [key, false, h.reason, true] : [scope.startsWith('role:') ? 'admin' : scope, key, false, h.reason, true]))
     expect(h.state().kill_switches[key]).toBe(scope !== 'global')
     expect(h.state().matrix.pro[key]).toBe(scope !== 'pro')
     expect(h.state().matrix.pro_annual[key]).toBe(scope !== 'pro_annual')

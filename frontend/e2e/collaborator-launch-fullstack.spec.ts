@@ -199,7 +199,7 @@ test('F04 role recovery, cross-account controls, live session revocation and rec
     await db.query("UPDATE users SET role='admin' WHERE id=$1", [admin.id])
     async function toggle(enabled: boolean) {
       const response = await admin.context.request.patch(`${backend}/admin/entitlements/kill-switch/f04`, {
-        headers: admin.headers, data: { enabled },
+        headers: admin.headers, data: { enabled, reason: 'Synthetic collaboration capability test' },
       })
       expect(response.status(), await response.text()).toBe(200)
     }

@@ -47,7 +47,7 @@ async function setGlobal(
   enabled: boolean,
 ) {
   const response = await context.request.patch(`${backend}/admin/entitlements/kill-switch/${key}`, {
-    headers, data: { enabled },
+    headers, data: { enabled, reason: 'Synthetic B07 export test change' },
   })
   expect(response.status(), await response.text()).toBe(200)
 }
@@ -63,8 +63,8 @@ async function setCell(
 ) {
   const path = scope === 'matrix' ? '/admin/entitlements/matrix' : '/admin/entitlements/roles'
   const data = scope === 'matrix'
-    ? { plan_family: target, feature_key: key, enabled }
-    : { role: target, feature_key: key, enabled }
+    ? { plan_family: target, feature_key: key, enabled, reason: 'Synthetic B07 export test change' }
+    : { role: target, feature_key: key, enabled, reason: 'Synthetic B07 export test change' }
   const response = await context.request.patch(`${backend}${path}`, { headers, data })
   expect(response.status(), await response.text()).toBe(200)
 }
@@ -76,6 +76,7 @@ async function toggleB07InAdmin(page: Page, enabled: boolean) {
   })
   await expect(control).toBeVisible()
   if ((await control.getAttribute('aria-checked')) !== String(enabled)) {
+    await page.getByLabel('Reason for permission changes').fill('Synthetic B07 export test change')
     const changed = page.waitForResponse((response) =>
       new URL(response.url()).pathname === '/admin/entitlements/kill-switch/b07'
         && response.request().method() === 'PATCH',

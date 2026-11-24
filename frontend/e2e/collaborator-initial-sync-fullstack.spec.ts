@@ -61,7 +61,7 @@ test('preserves recovery against empty relay, accepts clean peer state, and refr
     adminHeaders = { Authorization: `Bearer ${admin.token}` }
     await db.query("UPDATE users SET role='admin', email_verified=true WHERE id=$1", [adminId])
     priorF04 = (await db.query("SELECT enabled FROM feature_flags WHERE key='f04'")).rows[0].enabled
-    const enabled = await context.request.patch(`${backend}/admin/entitlements/kill-switch/f04`, { headers: adminHeaders, data: { enabled: true } })
+    const enabled = await context.request.patch(`${backend}/admin/entitlements/kill-switch/f04`, { headers: adminHeaders, data: { enabled: true, reason: 'Synthetic collaboration capability test' } })
     expect(enabled.status(), await enabled.text()).toBe(200)
     // Signup changed this context's cookies. Restore only the ordinary owner
     // session before any UI acceptance, never run editor as the controls admin.
@@ -203,7 +203,7 @@ test('preserves recovery against empty relay, accepts clean peer state, and refr
   } finally {
     releaseTicket?.()
     if (adminHeaders && priorF04 !== undefined && contexts[0]) {
-      await contexts[0].request.patch(`${backend}/admin/entitlements/kill-switch/f04`, { headers: adminHeaders, data: { enabled: priorF04 } })
+      await contexts[0].request.patch(`${backend}/admin/entitlements/kill-switch/f04`, { headers: adminHeaders, data: { enabled: priorF04, reason: 'Synthetic collaboration capability teardown' } })
     }
     for (const context of contexts) await context.close()
     if (userId) await db.query('DELETE FROM users WHERE id=$1', [userId])

@@ -187,7 +187,7 @@ class TestKillSwitch:
 
         resp = await client.patch(
             "/admin/entitlements/kill-switch/cover_letters",
-            json={"enabled": False},
+            json={"enabled": False, "reason": "Control-plane integration test"},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -201,7 +201,7 @@ class TestKillSwitch:
         headers = await _admin_headers(db_session)
         resp = await client.patch(
             "/admin/entitlements/kill-switch/a01",  # authentication is a security invariant
-            json={"enabled": False},
+            json={"enabled": False, "reason": "Control-plane integration test"},
             headers=headers,
         )
         assert resp.status_code == 404
@@ -210,7 +210,7 @@ class TestKillSwitch:
         headers = await _admin_headers(db_session)
         resp = await client.patch(
             "/admin/entitlements/kill-switch/no_such_key",
-            json={"enabled": False},
+            json={"enabled": False, "reason": "Control-plane integration test"},
             headers=headers,
         )
         assert resp.status_code == 404
@@ -224,7 +224,12 @@ class TestMatrix:
         headers = await _admin_headers(db_session)
         resp = await client.patch(
             "/admin/entitlements/matrix",
-            json={"plan_family": "free", "feature_key": "cover_letters", "enabled": False},
+            json={
+                "plan_family": "free",
+                "feature_key": "cover_letters",
+                "enabled": False,
+                "reason": "Control-plane integration test",
+            },
             headers=headers,
         )
         assert resp.status_code == 200
@@ -236,7 +241,12 @@ class TestMatrix:
         headers = await _admin_headers(db_session)
         resp = await client.patch(
             "/admin/entitlements/matrix",
-            json={"plan_family": "platinum", "feature_key": "cover_letters", "enabled": False},
+            json={
+                "plan_family": "platinum",
+                "feature_key": "cover_letters",
+                "enabled": False,
+                "reason": "Control-plane integration test",
+            },
             headers=headers,
         )
         assert resp.status_code == 400
@@ -245,7 +255,12 @@ class TestMatrix:
         headers = await _admin_headers(db_session)
         resp = await client.patch(
             "/admin/entitlements/matrix",
-            json={"plan_family": "free", "feature_key": "a01", "enabled": False},
+            json={
+                "plan_family": "free",
+                "feature_key": "a01",
+                "enabled": False,
+                "reason": "Control-plane integration test",
+            },
             headers=headers,
         )
         assert resp.status_code == 404

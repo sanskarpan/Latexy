@@ -16,6 +16,7 @@ import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminAudit from '@/components/admin/AdminAudit'
+import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -99,6 +100,7 @@ function FeatureFlagsTab() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
 
   useEffect(() => {
     apiClient
@@ -112,9 +114,14 @@ function FeatureFlagsTab() {
   }, [])
 
   const toggle = async (key: string, currentEnabled: boolean) => {
+    const cleanedReason = reason.trim()
+    if (cleanedReason.length < 3) {
+      toast.error('Enter a reason for this change (at least 3 characters)')
+      return
+    }
     setUpdating(key)
     try {
-      const updated = await apiClient.updateFeatureFlag(key, !currentEnabled)
+      const updated = await apiClient.updateFeatureFlag(key, !currentEnabled, cleanedReason)
       setFlags((prev) =>
         prev?.map((f) => (f.key === key ? { ...f, enabled: updated.enabled } : f)) ?? null,
       )
@@ -131,6 +138,21 @@ function FeatureFlagsTab() {
 
   return (
     <div className="space-y-3">
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+        <label className="block text-[11px] text-fg-2">
+          Reason for feature flag changes
+          <input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={1000}
+            placeholder="Ticket or incident reference (required)"
+            className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 text-xs text-fg"
+          />
+        </label>
+        <p className="mt-1 text-[10px] text-fg-3">
+          Required. Every toggle stores this reason with the before/after state in the immutable change history.
+        </p>
+      </div>
       {flags?.map((flag) => (
         <div
           key={flag.key}
@@ -174,6 +196,7 @@ function MatrixTab() {
   const [state, setState] = useState<AdminEntitlementsState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [reason, setReason] = useState('')
   // Cells with an in-flight request. key = `${scope}:${featureKey}` where scope
   // is 'global' or a plan family. A Set lets multiple cells be in flight at once
   // without one toggle clobbering another's busy state.
@@ -237,6 +260,11 @@ function MatrixTab() {
   // Scope-prefixed keys distinguish role cells from similarly named plan cells.
   // Only merge the written cell: independent in-flight writes can finish in any order.
   const toggle = useCallback(async (scope: string, featureKey: string, next: boolean) => {
+    const cleanedReason = reason.trim()
+    if (cleanedReason.length < 3) {
+      toast.error('Enter a reason for this change (at least 3 characters)')
+      return
+    }
     const cellId = `${scope}:${featureKey}`
     if (!pendingRef.current.acquire(cellId)) return
     const readCell = (fresh: AdminEntitlementsState) => scope === 'global'
@@ -252,10 +280,10 @@ function MatrixTab() {
     markBusy(cellId)
     try {
       const fresh = scope === 'global'
-        ? await apiClient.updateKillSwitch(featureKey, next, !next)
+        ? await apiClient.updateKillSwitch(featureKey, next, cleanedReason, !next)
         : scope.startsWith('role:')
-          ? await apiClient.updateRoleCell(scope.slice(5) as EntitlementRole, featureKey, next, !next)
-          : await apiClient.updateMatrixCell(scope, featureKey, next, !next)
+          ? await apiClient.updateRoleCell(scope.slice(5) as EntitlementRole, featureKey, next, cleanedReason, !next)
+          : await apiClient.updateMatrixCell(scope, featureKey, next, cleanedReason, !next)
       confirmed = true
       if (mounted.current) setState((cur) => patchEntitlementCell(cur, scope, featureKey, readCell(fresh) === true))
     } catch (err) {
@@ -285,7 +313,7 @@ function MatrixTab() {
       if (mounted.current) clearBusy(cellId)
       if (confirmed) window.dispatchEvent(new Event('latexy:entitlements-updated'))
     }
-  }, [markBusy, clearBusy])
+  }, [markBusy, clearBusy, reason])
 
   if (loading) return <RowsSkeleton rows={8} />
   if (error) {
@@ -319,6 +347,22 @@ function MatrixTab() {
   return (
     <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="space-y-4 border-b border-line p-4">
+        <div className="rounded-[var(--radius-md)] border border-line bg-bg/40 p-3">
+          <label className="block text-[11px] text-fg-2">
+            Reason for permission changes
+            <input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              maxLength={1000}
+              placeholder="Ticket or incident reference (required)"
+              className="mt-1 w-full rounded border border-line bg-bg px-3 py-2 text-xs text-fg"
+            />
+          </label>
+          <p className="mt-1 text-[10px] text-fg-3">
+            Required for every global, plan and account-role switch. Each change records this reason with its old and new
+            values in the immutable change history.
+          </p>
+        </div>
         <div>
           <h2 className="font-semibold text-fg">Capability inventory</h2>
           <p className="mt-1 text-xs text-fg-3">Control product capabilities, child operations and parent feature groups. Switches show stored permissions; effective use also requires every ancestor. Global, plan and account-role restrictions all apply. Parent restrictions always apply to their children.</p>
@@ -899,7 +943,12 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'billing' && <AdminBilling />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
-        {tab === 'audit' && <AdminAudit />}
+        {tab === 'audit' && (
+          <div className="space-y-10">
+            <AdminAudit />
+            <AdminChangeHistory />
+          </div>
+        )}
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}

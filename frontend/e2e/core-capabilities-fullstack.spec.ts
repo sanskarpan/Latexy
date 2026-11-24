@@ -42,7 +42,7 @@ async function setGlobal(
 ) {
   const response = await context.request.patch(`${backend}/admin/entitlements/kill-switch/${key}`, {
     headers,
-    data: { enabled },
+    data: { enabled, reason: 'Synthetic capability test change' },
   })
   expect(response.status(), await response.text()).toBe(200)
 }
@@ -57,8 +57,8 @@ async function setCell(
 ) {
   const path = scope === 'matrix' ? '/admin/entitlements/matrix' : '/admin/entitlements/roles'
   const data = scope === 'matrix'
-    ? { plan_family: 'free', feature_key: key, enabled }
-    : { role: 'user', feature_key: key, enabled }
+    ? { plan_family: 'free', feature_key: key, enabled, reason: 'Synthetic capability test change' }
+    : { role: 'user', feature_key: key, enabled, reason: 'Synthetic capability test change' }
   const response = await context.request.patch(`${backend}${path}`, { headers, data })
   expect(response.status(), await response.text()).toBe(200)
 }

@@ -2,16 +2,16 @@
 
 GET  /config/feature-flags       — public, no auth — {key: bool, ...}
 GET  /admin/feature-flags        — admin only — full objects
-PATCH /admin/feature-flags/{key} — admin only — {enabled: bool}
+PATCH /admin/feature-flags/{key} — admin only — {enabled: bool, reason: str}
 """
 
 import re
 import uuid as uuid_module
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +43,10 @@ logger = get_logger(__name__)
 # RBAC roles assignable via the admin API.
 _ASSIGNABLE_ROLES = frozenset({"user", "support", "admin"})
 
+# Every flag/entitlement mutation records why it happened. Keep the bound in
+# one place so flag, kill-switch, plan-cell and role-cell writes agree.
+Reason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)]
+
 # Flags that are safe to expose to unauthenticated clients. Everything else is
 # admin-only, so unreleased/internal flag names are not disclosed publicly.
 PUBLIC_FLAG_KEYS = frozenset({
@@ -65,6 +69,7 @@ class FlagDetail(BaseModel):
 
 class FlagUpdateRequest(BaseModel):
     enabled: bool
+    reason: Reason
 
 
 # ------------------------------------------------------------------ #
@@ -137,6 +142,7 @@ async def update_feature_flag(
             action="feature_flag.update",
             target_type="feature_flag",
             target_id=key,
+            reason=body.reason,
             before={"enabled": before_enabled},
             after={"enabled": body.enabled},
             request=request,
@@ -165,6 +171,7 @@ async def update_feature_flag(
 class KillSwitchUpdateRequest(BaseModel):
     enabled: bool
     expected_enabled: bool | None = None
+    reason: Reason
 
 
 class MatrixUpdateRequest(BaseModel):
@@ -172,6 +179,7 @@ class MatrixUpdateRequest(BaseModel):
     feature_key: str
     enabled: bool
     expected_enabled: bool | None = None
+    reason: Reason
 
 
 class RoleMatrixUpdateRequest(BaseModel):
@@ -179,6 +187,7 @@ class RoleMatrixUpdateRequest(BaseModel):
     feature_key: str
     enabled: bool
     expected_enabled: bool | None = None
+    reason: Reason
 
 
 @router.get("/admin/entitlements")
@@ -220,6 +229,7 @@ async def update_kill_switch(
             action="entitlement.kill_switch.update",
             target_type="feature_key",
             target_id=key,
+            reason=body.reason,
             before={"enabled": before_state["kill_switches"].get(key)},
             after={"enabled": body.enabled},
             request=request,
@@ -280,6 +290,7 @@ async def update_matrix_cell(
             action="entitlement.matrix.update",
             target_type="plan_feature",
             target_id=f"{body.plan_family}:{body.feature_key}",
+            reason=body.reason,
             before={"enabled": before_state["matrix"].get(body.plan_family, {}).get(body.feature_key)},
             after={"enabled": body.enabled},
             request=request,
@@ -356,6 +367,7 @@ async def update_role_matrix_cell(
             action="entitlement.role.update",
             target_type="role_feature",
             target_id=f"{role}:{feature.key}",
+            reason=body.reason,
             before={"enabled": (before_state.get("role_matrix") or {}).get(role, {}).get(feature.key)},
             after={"enabled": body.enabled},
             request=request,

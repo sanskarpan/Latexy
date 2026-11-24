@@ -1315,6 +1315,26 @@ export interface AdminAuditList {
   filters: AdminAuditFilters
 }
 
+export interface AdminChangeHistoryFilters {
+  key: string | null
+  target_id: string | null
+  actor_user_id: string | null
+  action: string | null
+  created_after: string | null
+  created_before: string | null
+}
+
+export interface AdminChangeHistoryList {
+  items: AdminAuditEntry[]
+  total: number
+  limit: number
+  next_cursor: string | null
+  has_more: boolean
+  read_only: true
+  target_types: string[]
+  filters: AdminChangeHistoryFilters
+}
+
 export interface AdminActivationStep {
   key: string
   label: string
@@ -4572,7 +4592,7 @@ class ApiClient {
     return this.request('/admin/feature-flags')
   }
 
-  async updateFeatureFlag(key: string, enabled: boolean): Promise<{
+  async updateFeatureFlag(key: string, enabled: boolean, reason: string): Promise<{
     key: string
     enabled: boolean
     label: string
@@ -4581,7 +4601,7 @@ class ApiClient {
   }> {
     return this.request(`/admin/feature-flags/${encodeURIComponent(key)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, reason }),
     })
   }
 
@@ -4600,10 +4620,18 @@ class ApiClient {
   }
 
   /** Toggle a feature's global kill-switch. Returns fresh state. */
-  async updateKillSwitch(key: string, enabled: boolean, expectedEnabled?: boolean): Promise<AdminEntitlementsState> {
+  async updateKillSwitch(
+    key: string,
+    enabled: boolean,
+    reason: string,
+    expectedEnabled?: boolean,
+  ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>(
       `/admin/entitlements/kill-switch/${encodeURIComponent(key)}`,
-      { method: 'PATCH', body: JSON.stringify({ enabled, expected_enabled: expectedEnabled }) },
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled, reason, expected_enabled: expectedEnabled }),
+      },
     )
   }
 
@@ -4612,6 +4640,7 @@ class ApiClient {
     planFamily: string,
     featureKey: string,
     enabled: boolean,
+    reason: string,
     expectedEnabled?: boolean,
   ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>('/admin/entitlements/matrix', {
@@ -4620,16 +4649,29 @@ class ApiClient {
         plan_family: planFamily,
         feature_key: featureKey,
         enabled,
+        reason,
         expected_enabled: expectedEnabled,
       }),
     })
   }
 
   /** Account roles restrict access independently of plans and document permissions. */
-  async updateRoleCell(role: EntitlementRole, featureKey: string, enabled: boolean, expectedEnabled?: boolean): Promise<AdminEntitlementsState> {
+  async updateRoleCell(
+    role: EntitlementRole,
+    featureKey: string,
+    enabled: boolean,
+    reason: string,
+    expectedEnabled?: boolean,
+  ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>('/admin/entitlements/roles', {
       method: 'PATCH',
-      body: JSON.stringify({ role, feature_key: featureKey, enabled, expected_enabled: expectedEnabled }),
+      body: JSON.stringify({
+        role,
+        feature_key: featureKey,
+        enabled,
+        reason,
+        expected_enabled: expectedEnabled,
+      }),
     })
   }
 
@@ -5093,6 +5135,28 @@ class ApiClient {
     if (params?.cursor) qs.set('cursor', params.cursor)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminAuditList>(`/admin/audit${suffix}`)
+  }
+
+  /** Read-only history for feature flags, kill-switches and entitlement cells. */
+  async getAdminChangeHistory(params?: {
+    key?: string
+    target_id?: string
+    actor_user_id?: string
+    action?: string
+    created_after?: string
+    created_before?: string
+    limit?: number
+    cursor?: string
+  }): Promise<AdminChangeHistoryList> {
+    const qs = new URLSearchParams()
+    for (const key of ['key', 'target_id', 'actor_user_id', 'action', 'created_after', 'created_before'] as const) {
+      const value = params?.[key]
+      if (value) qs.set(key, value)
+    }
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.cursor) qs.set('cursor', params.cursor)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminChangeHistoryList>(`/admin/change-history${suffix}`)
   }
 
   // ---------------------------------------------------------------- //
