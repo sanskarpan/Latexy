@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
 from ..middleware.auth_middleware import require_admin_actor
-from ..services import admin_operations_service
+from ..services import admin_operations_service, queue_snapshot_service
 from ..services.admin_audit_service import AdminActor
 
 router = APIRouter()
@@ -29,3 +29,11 @@ async def get_admin_operations_health(
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
     return await admin_operations_service.get_health(db)
+
+
+@router.get("/admin/operations/queues")
+async def get_admin_queue_metrics(
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    return await queue_snapshot_service.get_queue_metrics(db)

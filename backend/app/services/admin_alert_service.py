@@ -231,6 +231,34 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
             },
         )
 
+    async def queue_backlog() -> list[dict[str, Any]]:
+        # Aggregate-only: latest sampled depth/age per queue. No payloads and
+        # no broker/Redis credentials cross this boundary.
+        from .queue_snapshot_service import latest_snapshot_map, queue_status
+
+        latest = await latest_snapshot_map(db)
+        signals: list[dict[str, Any]] = []
+        for queue, row in latest.items():
+            status = queue_status(row.depth, row.oldest_age_seconds)
+            if status == "healthy":
+                continue
+            signals.append(
+                _signal(
+                    kind="queue.backlog",
+                    severity="high",
+                    owner="Platform",
+                    title=f"Queue {queue} is {status}",
+                    dedupe_key=f"queue.backlog.{queue}",
+                    payload={
+                        "queue": queue,
+                        "depth": row.depth,
+                        "oldest_age_seconds": row.oldest_age_seconds,
+                        "status": status,
+                    },
+                )
+            )
+        return signals
+
     async def redis_capacity() -> dict[str, Any] | None:
         # The public health snapshot is already cached (5 minutes) and returns
         # aggregate provider data only. Surface warning/critical/blind states in
@@ -266,6 +294,7 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
         ("billing.failed_payments", failed_payments),
         ("billing.past_due", past_due),
         ("jobs.stuck", stuck_jobs),
+        ("queue.backlog", queue_backlog),
         ("spend.caps", spend_signals),
         ("domains.unverified", unverified_domains),
         ("capacity.redis", redis_capacity),

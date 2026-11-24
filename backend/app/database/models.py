@@ -982,6 +982,35 @@ class AdminAlert(Base):
     )
 
 
+class CeleryQueueSnapshot(Base):
+    """A single periodic sample of a Celery queue for admin operations.
+
+    Operational metadata only: pending depth, the age of the oldest pending
+    message, and cumulative enqueue/completion totals used to derive throughput.
+    Rows carry no job payloads and no Redis credentials.
+    """
+
+    __tablename__ = "celery_queue_snapshots"
+    __table_args__ = (
+        CheckConstraint("depth >= 0", name="ck_queue_snapshots_depth"),
+        CheckConstraint(
+            "oldest_age_seconds IS NULL OR oldest_age_seconds >= 0",
+            name="ck_queue_snapshots_age",
+        ),
+        Index("idx_queue_snapshots_queue_sampled", "queue", "sampled_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    queue: Mapped[str] = mapped_column(String(64), nullable=False)
+    depth: Mapped[int] = mapped_column(Integer, nullable=False)
+    oldest_age_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    enqueued_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    completed_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PaymentRefund(Base):
     """Append-only refund records, including partial refunds and failed attempts."""
 
