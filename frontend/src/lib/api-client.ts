@@ -828,6 +828,32 @@ export interface AdminOperationsHealthResponse {
   sections: Record<string, AdminOperationsHealthSection>
 }
 
+export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
+
+export interface AdminQueueThroughputPoint {
+  sampled_at: string
+  depth: number
+  oldest_age_seconds: number | null
+  enqueue_rate_per_minute: number | null
+  completion_rate_per_minute: number | null
+}
+
+export interface AdminQueueMetricsEntry {
+  queue: string
+  depth: number
+  oldest_age_seconds: number | null
+  enqueue_rate_per_minute: number | null
+  completion_rate_per_minute: number | null
+  sampled_at: string
+  status: AdminQueueStatus
+}
+
+export interface AdminQueueMetricsResponse {
+  generated_at: string
+  queues: AdminQueueMetricsEntry[]
+  throughput: Record<string, AdminQueueThroughputPoint[]>
+}
+
 export interface AdminAlert {
   id: string
   kind: string
@@ -4720,6 +4746,10 @@ class ApiClient {
 
   async getAdminOperationsHealth(): Promise<AdminOperationsHealthResponse> {
     return this.request<AdminOperationsHealthResponse>('/admin/operations/health')
+  }
+
+  async getAdminOperationsQueues(): Promise<AdminQueueMetricsResponse> {
+    return this.request<AdminQueueMetricsResponse>('/admin/operations/queues')
   }
 
   async getAdminBillingSummary(

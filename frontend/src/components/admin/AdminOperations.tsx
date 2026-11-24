@@ -9,6 +9,10 @@ import {
   type AdminAttentionResponse,
   type AdminOperationsHealthResponse,
   type AdminOperationsStatus,
+  type AdminQueueMetricsEntry,
+  type AdminQueueMetricsResponse,
+  type AdminQueueStatus,
+  type AdminQueueThroughputPoint,
 } from '@/lib/api-client'
 
 const STATUS_TONE: Record<AdminOperationsStatus, string> = {
@@ -41,6 +45,12 @@ const METADATA_STATUS_LABEL: Record<string, string> = {
   complete: 'metadata complete',
   partial: 'metadata partial',
   unknown: 'metadata unknown',
+}
+
+const QUEUE_STATUS_TONE: Record<AdminQueueStatus, string> = {
+  healthy: 'border-ok/30 bg-ok/10 text-ok',
+  backlogged: 'border-warn/30 bg-warn/10 text-warn',
+  stale: 'border-err/30 bg-err/10 text-err',
 }
 
 const ALERT_SEVERITY_TONE: Record<AdminAlert['severity'], string> = {
@@ -105,6 +115,22 @@ function formatExpiry(iso: string | null | undefined, days: number | null | unde
   if (days < 0) return `${when} · overdue`
   if (days === 0) return `${when} · today`
   return `${when} · in ${days}d`
+}
+
+function formatSeconds(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return '—'
+  const value = Math.max(0, Math.round(seconds))
+  if (value < 60) return `${value}s`
+  const minutes = Math.floor(value / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
+function formatRate(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${value.toFixed(1)}/min`
 }
 
 function metricText(section: Record<string, unknown>): string[] {
@@ -517,6 +543,213 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
   )
 }
 
+function QueueThroughputChart({
+  queue,
+  points,
+}: {
+  queue: string
+  points: AdminQueueThroughputPoint[]
+}) {
+  const enqueue = points
+    .map((point) => point.enqueue_rate_per_minute)
+    .filter((value): value is number => value != null && Number.isFinite(value))
+  const completion = points
+    .map((point) => point.completion_rate_per_minute)
+    .filter((value): value is number => value != null && Number.isFinite(value))
+
+  if (points.length === 0) {
+    return <p className="mt-2 text-[10px] text-fg-3">No throughput samples yet.</p>
+  }
+
+  const width = 120
+  const height = 32
+  const max = Math.max(1, ...enqueue, ...completion)
+  const pathFor = (values: number[]): string =>
+    values
+      .map((value, index) => {
+        const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width
+        const y = height - (value / max) * height
+        return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+      })
+      .join(' ')
+
+  const latest = points[points.length - 1]
+  const summary = `${queue} throughput over ${points.length} samples. Enqueue rate ${formatRate(
+    latest.enqueue_rate_per_minute,
+  )}, completion rate ${formatRate(latest.completion_rate_per_minute)}.`
+
+  return (
+    <div className="mt-2">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-8 w-full"
+        role="img"
+        aria-label={summary}
+        preserveAspectRatio="none"
+      >
+        <path
+          d={pathFor(enqueue)}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d={pathFor(completion)}
+          fill="none"
+          stroke="var(--ok)"
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div className="flex items-center justify-between text-[10px] text-fg-3">
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" /> Enqueue
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden="true" /> Complete
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function QueueMetricCard({
+  entry,
+  points,
+}: {
+  entry: AdminQueueMetricsEntry
+  points: AdminQueueThroughputPoint[]
+}) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-line bg-surface-2/40 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-sm font-semibold text-fg">{entry.queue}</span>
+        <span
+          className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+            QUEUE_STATUS_TONE[entry.status] ?? QUEUE_STATUS_TONE.healthy
+          }`}
+        >
+          {entry.status}
+        </span>
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <div>
+          <dt className="text-fg-3">Depth</dt>
+          <dd className="font-semibold tabular-nums text-fg">{entry.depth}</dd>
+        </div>
+        <div>
+          <dt className="text-fg-3">Oldest age</dt>
+          <dd className="font-semibold tabular-nums text-fg">
+            {formatSeconds(entry.oldest_age_seconds)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-fg-3">Enqueue</dt>
+          <dd className="font-semibold tabular-nums text-fg">
+            {formatRate(entry.enqueue_rate_per_minute)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-fg-3">Complete</dt>
+          <dd className="font-semibold tabular-nums text-fg">
+            {formatRate(entry.completion_rate_per_minute)}
+          </dd>
+        </div>
+      </dl>
+      <QueueThroughputChart queue={entry.queue} points={points} />
+      <div className="mt-2 flex items-center justify-between text-[10px] text-fg-3">
+        <span>Sampled {formatAge(entry.sampled_at)}</span>
+        <a href="#admin-job-queue" className="font-medium text-accent-strong hover:underline">
+          View stuck jobs →
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function QueueStrip({ refreshKey }: { refreshKey: number }) {
+  const [data, setData] = useState<AdminQueueMetricsResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [unavailable, setUnavailable] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    setUnavailable(false)
+    try {
+      setData(await apiClient.getAdminOperationsQueues())
+    } catch (err) {
+      if (isMissingEndpoint(err)) {
+        setUnavailable(true)
+      } else {
+        setError(err instanceof Error ? err.message : 'Queue metrics could not be loaded')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load, refreshKey])
+
+  if (unavailable) return null
+
+  const attention = (data?.queues ?? []).filter((queue) => queue.status !== 'healthy').length
+
+  return (
+    <section aria-labelledby="admin-queues-heading" className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id="admin-queues-heading" className="text-sm font-semibold text-fg">
+            Queue depth &amp; throughput
+          </h3>
+          <p className="mt-1 text-xs text-fg-3">
+            Per-queue depth, oldest pending age and processing rates from the Celery sampler. Aggregate values only.
+          </p>
+        </div>
+        {data && (
+          <span
+            className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+              attention > 0
+                ? 'border-warn/30 bg-warn/10 text-warn'
+                : 'border-ok/30 bg-ok/10 text-ok'
+            }`}
+          >
+            {attention > 0 ? `${attention} need attention` : 'Queues healthy'}
+          </span>
+        )}
+      </div>
+
+      {loading && !data && <p role="status" className="mt-4 text-xs text-fg-3">Loading queue metrics…</p>}
+      {error && (
+        <div role="alert" className="mt-4 rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+          {error}
+          {data ? ' Showing the last successful data.' : ''}
+        </div>
+      )}
+      {data && data.queues.length === 0 && !error && (
+        <p className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface-2/60 px-3 py-3 text-xs text-fg-3">
+          No queue samples yet. The periodic Celery sampler has not recorded a snapshot.
+        </p>
+      )}
+      {data && data.queues.length > 0 && (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {data.queues.map((queue) => (
+            <QueueMetricCard
+              key={queue.queue}
+              entry={queue}
+              points={data.throughput[queue.queue] ?? []}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function HealthPanel({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<AdminOperationsHealthResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -618,6 +851,7 @@ export default function AdminOperations() {
       </div>
       <AlertStrip refreshKey={refreshKey} onUpdated={() => setRefreshKey((value) => value + 1)} />
       <AttentionStrip refreshKey={refreshKey} />
+      <QueueStrip refreshKey={refreshKey} />
       <HealthPanel refreshKey={refreshKey} />
     </div>
   )

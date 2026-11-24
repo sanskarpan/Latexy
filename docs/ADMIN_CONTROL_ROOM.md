@@ -26,6 +26,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Overview | `GET /analytics/admin/overview` | Six executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
 | Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
+| Overview | `GET /admin/operations/queues` | Per-queue sampled depth, oldest pending message age, and enqueue/completion rates with a bounded throughput series |
 | Overview | `GET /admin/alerts` | Durable, deduplicated alerts with severity, owner, state, occurrence count and runbook |
 | Overview | `PATCH /admin/alerts/{id}` | Acknowledge or snooze an alert with a mandatory reason; every action is audited |
 
@@ -61,6 +62,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   only. Probe failures return fixed details; raw provider errors, connection
   strings, credentials, document content and customer identifiers are never
   returned.
+- Queue snapshots are aggregate operational metadata only: depth, oldest-message
+  age, and cumulative enqueue/completion totals. They never store job payloads,
+  task arguments, document content or broker credentials. Samples are pruned
+  after 24 hours, and the admin queue endpoint requires an admin actor.
 - Attention rows are read-only. Nothing in the queue auto-retries, refunds,
   cancels or acknowledges a provider event. Custom-domain and certificate
   expiry inside 30 days is actionable; null metadata is reported as `unknown`

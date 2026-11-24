@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 import sys
+import time
 from functools import wraps
 from time import perf_counter
 
@@ -450,6 +451,14 @@ def debug_task(self):
 # messages. These are the queues this deployment actually uses.
 _SAMPLED_QUEUES = ("latex", "llm", "combined", "ats", "cleanup", "email")
 
+# Matches ``broker_transport_options["priority_steps"]``. With priority
+# routing the Redis transport splits each queue into ``queue`` (priority 0) and
+# ``queue:1``…``queue:9``, so depth must be summed across those sub-lists.
+_QUEUE_PRIORITY_STEPS = tuple(range(10))
+
+_COMPLETED_COUNTER_PREFIX = "latexy:queue:completed:"
+_OLDEST_MARKER_PREFIX = "latexy:queue:oldest_seen:"
+
 _broker_redis_client = None
 
 
@@ -479,13 +488,111 @@ def _close_broker_redis() -> None:
         client.close()
 
 
+def _priority_keys(queue: str) -> list[str]:
+    """Redis list keys for a queue across its priority sub-lists."""
+    return [queue] + [f"{queue}:{pri}" for pri in _QUEUE_PRIORITY_STEPS[1:]]
+
+
+def _queue_depth(r, queue: str) -> int:
+    """Sum pending depth across a queue's priority sub-lists (best effort)."""
+    total = 0
+    for key in _priority_keys(queue):
+        try:
+            total += int(r.llen(key) or 0)
+        except Exception:  # noqa: BLE001 — per-key best effort
+            continue
+    return total
+
+
+def _peek_oldest_message_id(r, queue: str) -> str | None:
+    """Return the id of the oldest pending message, or ``None`` when unknown.
+
+    The broker list is FIFO (LPUSH + RPOP), so the tail (index -1) is oldest.
+    The message envelope is JSON with ``headers.id`` set by Celery. Parsing is
+    best effort: an unreadable envelope yields ``None`` (age is then unknown).
+    """
+    import json
+
+    for key in _priority_keys(queue):
+        try:
+            raw = r.lindex(key, -1)
+        except Exception:  # noqa: BLE001
+            continue
+        if not raw:
+            continue
+        try:
+            msg_id = (json.loads(raw) or {}).get("headers", {}).get("id")
+        except Exception:  # noqa: BLE001
+            continue
+        if msg_id:
+            return str(msg_id)
+    return None
+
+
+def _read_completed_total(r, queue: str) -> int:
+    try:
+        return int(r.get(f"{_COMPLETED_COUNTER_PREFIX}{queue}") or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _read_oldest_marker(r, queue: str) -> dict | None:
+    import json
+
+    try:
+        raw = r.get(f"{_OLDEST_MARKER_PREFIX}{queue}")
+        marker = json.loads(raw) if raw else None
+        return marker if isinstance(marker, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _write_oldest_marker(r, queue: str, marker: dict | None) -> None:
+    import json
+
+    key = f"{_OLDEST_MARKER_PREFIX}{queue}"
+    if marker is None:
+        r.delete(key)
+    else:
+        r.set(key, json.dumps(marker))
+
+
+def _persist_snapshots_sync(rows: list[dict]) -> None:
+    """Persist sampled snapshots and prune old ones on a fresh event loop.
+
+    Runs inside the (synchronous) beat/worker process via ``asyncio.run``, the
+    same pattern the scheduled admin-alert evaluation uses. A database failure
+    is logged by the caller and never crashes the beat/worker.
+    """
+    if not rows:
+        return
+    import asyncio
+
+    from ..database.connection import close_db, get_async_db_session
+    from ..services.queue_snapshot_service import persist_snapshots, purge_snapshots
+
+    async def run() -> None:
+        try:
+            async with get_async_db_session() as db:
+                await persist_snapshots(db, rows)
+                await purge_snapshots(db)
+        finally:
+            await close_db()
+
+    asyncio.run(run())
+
+
 @celery_app.task(name="app.core.celery_app.sample_queue_depths")
 def sample_queue_depths():
-    """Sample pending depth of each Celery queue and export it as a gauge.
+    """Sample each Celery queue and persist a bounded snapshot for admins.
 
-    Runs periodically via the beat schedule. Defensive: a Redis hiccup on any
-    single queue is logged and skipped rather than crashing the beat/worker.
+    Runs periodically via the beat schedule. Per-queue sampling, Redis
+    counter/marker reads and the Postgres write are all best effort: a hiccup
+    on any single queue or a database outage is logged and skipped rather than
+    crashing the beat/worker.
     """
+    from ..services.queue_snapshot_service import compute_oldest_age
+
     sampled: dict[str, int] = {}
     try:
         r = _get_broker_redis()
@@ -493,13 +600,44 @@ def sample_queue_depths():
         logger.warning("queue-depth sampler: broker Redis unavailable", extra={"error_type": type(exc).__name__})
         return sampled
 
+    now = time.time()
+    rows: list[dict] = []
     for queue in _SAMPLED_QUEUES:
         try:
-            depth = int(r.llen(queue))
+            depth = _queue_depth(r, queue)
             set_queue_depth(queue, depth)
             sampled[queue] = depth
+
+            completed_total = _read_completed_total(r, queue)
+            enqueued_total = completed_total + depth
+
+            current_id = _peek_oldest_message_id(r, queue) if depth > 0 else None
+            marker = _read_oldest_marker(r, queue)
+            new_marker, oldest_age = compute_oldest_age(marker, current_id, now)
+            try:
+                _write_oldest_marker(r, queue, new_marker)
+            except Exception:  # noqa: BLE001 — marker is advisory only
+                pass
+
+            rows.append(
+                {
+                    "queue": queue,
+                    "depth": depth,
+                    "oldest_age_seconds": oldest_age,
+                    "enqueued_total": enqueued_total,
+                    "completed_total": completed_total,
+                }
+            )
         except Exception as exc:  # noqa: BLE001 — per-queue best effort
-            logger.warning("queue-depth sampler: LLEN failed", extra={"error_type": type(exc).__name__})
+            logger.warning(
+                "queue-depth sampler: sampling failed",
+                extra={"error_type": type(exc).__name__, "queue": queue},
+            )
+
+    try:
+        _persist_snapshots_sync(rows)
+    except Exception as exc:  # noqa: BLE001 — DB write is best effort
+        logger.warning("queue-depth sampler: snapshot persist failed", extra={"error_type": type(exc).__name__})
     return sampled
 
 
@@ -739,6 +877,12 @@ def _record_task_postrun(task_id=None, task=None, args=None, kwargs=None, state=
     duration = perf_counter() - _task_start_times.pop(str(task_id), perf_counter())
     status = (state or "unknown").lower()
     record_celery_task(task_name=task.name, queue_name=queue_name, status=status, duration_seconds=duration)
+    # Advance the per-queue completion counter the queue-depth sampler reads to
+    # derive throughput. Best effort: a broker hiccup must not fail the signal.
+    try:
+        _get_broker_redis().incr(f"{_COMPLETED_COUNTER_PREFIX}{queue_name}")
+    except Exception:  # noqa: BLE001
+        pass
     logger.info(
         "celery_task_finished",
         extra={
