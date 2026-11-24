@@ -731,6 +731,30 @@ async def get_admin_ai_cost(
     )
 
 
+@router.get("/admin/analytics/feature-depth")
+async def get_admin_feature_depth(
+    days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    cohort: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    signup_month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Per-feature frequency, depth, and breadth over first-party usage events.
+
+    Aggregates ``usage_analytics`` by user and feature. Returns counts only; no
+    event metadata, document text, or per-user event rows. Features and filtered
+    cohorts below five users are suppressed. ``signup_month`` is an alias for
+    ``cohort`` for parity with the retention surface.
+    """
+    try:
+        return await admin_growth_service.feature_depth(
+            db, days=days, plan=plan, cohort=cohort or signup_month
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/admin/analytics/timeseries")
 async def get_admin_analytics_timeseries(
     days: int = Query(30, ge=1, le=365),

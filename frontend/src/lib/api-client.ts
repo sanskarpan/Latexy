@@ -1706,6 +1706,75 @@ export interface AdminFilteredTimeseriesResponse {
   generated_at: string
 }
 
+export interface AdminFeatureFrequencyBucket {
+  key: string
+  label: string
+  users: number
+  share: number
+}
+
+export interface AdminFeatureDepthRow {
+  feature: string
+  users: number
+  events: number
+  events_per_user: number
+  median_events_per_user: number | null
+  p95_events_per_user: number | null
+  repeat_users: number
+  repeat_rate: number
+  habitual_users: number
+  habitual_rate: number
+  buckets: AdminFeatureFrequencyBucket[]
+  breadth: {
+    average_features_per_user: number
+    median_features_per_user: number | null
+    sole_feature_users: number
+    multi_feature_users: number
+  }
+}
+
+export interface AdminFeatureDepthBreadthSummary {
+  average_features_per_user: number
+  median_features_per_user: number | null
+  distribution: Array<{ key: string; label: string; users: number }>
+}
+
+export interface AdminFeatureDepthResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  filters: {
+    days: number
+    plan: string | null
+    cohort: string | null
+    start_date: string
+    end_date: string
+    timezone: string
+  }
+  minimum_group_size: number
+  habitual_weekly_threshold: number
+  habitual_minimum_events: number
+  habitual_definition: string
+  suppressed: boolean
+  suppressed_features: number
+  truncated_features: number
+  totals: {
+    users: number
+    events: number
+    features: number
+    median_events_per_user: number | null
+    p95_events_per_user: number | null
+    repeat_users: number
+    repeat_rate: number
+    habitual_users: number
+    habitual_rate: number
+    breadth: AdminFeatureDepthBreadthSummary
+  }
+  features: AdminFeatureDepthRow[]
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
@@ -4711,6 +4780,19 @@ class ApiClient {
     if (params.dimension) qs.set('dimension', params.dimension)
     if (params.value) qs.set('value', params.value)
     return this.request<AdminFilteredTimeseriesResponse>(`/admin/analytics/timeseries?${qs}`)
+  }
+
+  async getAdminFeatureDepth(params?: {
+    days?: number
+    plan?: string
+    cohort?: string
+  }): Promise<AdminFeatureDepthResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminFeatureDepthResponse>(`/admin/analytics/feature-depth${suffix}`)
   }
 
   async getAdminAttention(): Promise<AdminAttentionResponse> {

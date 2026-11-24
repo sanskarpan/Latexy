@@ -5,6 +5,7 @@ import {
   apiClient,
   type AdminActivationResponse,
   type AdminAiCostResponse,
+  type AdminFeatureDepthResponse,
   type AdminFilteredTimeseriesResponse,
   type AdminRetentionResponse,
   type AdminRetentionRow,
@@ -597,6 +598,230 @@ function Explorer({
   )
 }
 
+function FeatureDepth({
+  data,
+  loading,
+  error,
+  plan,
+  cohort,
+  planOptions,
+  cohortOptions,
+  onPlan,
+  onCohort,
+  onApply,
+}: {
+  data: AdminFeatureDepthResponse | null
+  loading: boolean
+  error: string | null
+  plan: string
+  cohort: string
+  planOptions: readonly string[]
+  cohortOptions: Array<{ month: string; users: number }>
+  onPlan: (value: string) => void
+  onCohort: (value: string) => void
+  onApply: () => void
+}) {
+  const minimum = data?.minimum_group_size ?? 5
+  const totals = data?.totals
+  const breadth = totals?.breadth
+
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
+      <div className="border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">Feature depth &amp; frequency</h3>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-3">
+              Per-user frequency from first-party usage events. Buckets count users by events per feature; habitual users
+              average at least {data?.habitual_weekly_threshold ?? 5} events per week in the selected window. Counts only —
+              no event metadata, document text, or per-user logs.
+            </p>
+          </div>
+          <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
+            {data ? (data.suppressed ? 'cohort hidden' : `${formatNumber(totals?.users ?? 0)} users`) : '—'}
+          </span>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            Plan
+            <select
+              aria-label="Feature depth plan filter"
+              value={plan}
+              onChange={(event) => onPlan(event.target.value)}
+              className="mt-1 block min-h-[36px] rounded border border-line bg-bg px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-fg"
+            >
+              {planOptions.map((item) => (
+                <option key={item || 'all'} value={item}>{item || 'All plans'}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            Signup cohort
+            <select
+              aria-label="Feature depth signup cohort filter"
+              value={cohort}
+              onChange={(event) => onCohort(event.target.value)}
+              className="mt-1 block min-h-[36px] rounded border border-line bg-bg px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-fg"
+            >
+              <option value="">All cohorts</option>
+              {cohortOptions.map((month) => (
+                <option key={month.month} value={month.month}>
+                  {month.month} · {formatNumber(month.users)} users
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={onApply}
+            disabled={loading}
+            className="min-h-[36px] rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+          >
+            {loading ? 'Loading…' : 'Apply filters'}
+          </button>
+          {data && (
+            <span className="text-[10px] text-fg-3">
+              {data.filters.plan ? `plan=${data.filters.plan}` : 'all plans'}
+              {data.filters.cohort ? ` · cohort=${data.filters.cohort}` : ''} · {data.start_date} → {data.end_date} · UTC
+            </span>
+          )}
+        </div>
+        {error && (
+          <p role="alert" className="mt-3 rounded border border-err/20 bg-err/[0.06] px-3 py-2 text-xs text-err">
+            {error}
+          </p>
+        )}
+      </div>
+
+      {data?.suppressed ? (
+        <div className="px-5 py-8 text-center text-sm text-fg-3">
+          This cohort has fewer than {minimum} users in the selected window, so its counts are hidden.
+        </div>
+      ) : data && totals ? (
+        <>
+          <div className="grid gap-px border-b border-line bg-line sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {[
+              { label: 'Users', value: formatNumber(totals.users) },
+              { label: 'Events', value: formatNumber(totals.events) },
+              { label: 'Median / user', value: totals.median_events_per_user == null ? '—' : totals.median_events_per_user.toFixed(1) },
+              { label: 'p95 / user', value: totals.p95_events_per_user == null ? '—' : totals.p95_events_per_user.toFixed(1) },
+              { label: 'Repeat rate', value: `${totals.repeat_rate.toFixed(1)}%` },
+              { label: 'Habitual users', value: `${formatNumber(totals.habitual_users)} · ${totals.habitual_rate.toFixed(1)}%` },
+            ].map((item) => (
+              <div key={item.label} className="bg-surface px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-3">{item.label}</p>
+                <p className="mt-1 text-lg font-semibold text-fg">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {breadth && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-5 py-3 text-[11px] text-fg-3">
+              <span className="font-semibold text-fg-2">
+                Breadth: {breadth.average_features_per_user.toFixed(1)} distinct features/user
+                {breadth.median_features_per_user != null ? ` · median ${breadth.median_features_per_user.toFixed(1)}` : ''}
+              </span>
+              {breadth.distribution.map((bin) => (
+                <span key={bin.key}>{bin.label} feature{bin.key === '1' ? '' : 's'}: {formatNumber(bin.users)} users</span>
+              ))}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <caption className="sr-only">Feature depth, frequency buckets, and habitual usage</caption>
+              <thead>
+                <tr className="border-b border-line text-[10px] uppercase tracking-wider text-fg-3">
+                  <th scope="col" className="px-5 py-3 text-left font-semibold">Feature</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Users</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Events</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Median</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">p95</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Repeat</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Habitual</th>
+                  <th scope="col" className="px-3 py-3 text-left font-semibold">Frequency mix</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Breadth</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.features.map((row) => (
+                  <tr key={row.feature} className="border-t border-line align-top">
+                    <td className="px-5 py-3 font-mono text-xs text-fg">{row.feature}</td>
+                    <td className="px-3 py-3 text-right text-xs text-fg">{formatNumber(row.users)}</td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">{formatNumber(row.events)}</td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.median_events_per_user == null ? '—' : row.median_events_per_user.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.p95_events_per_user == null ? '—' : row.p95_events_per_user.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.repeat_rate.toFixed(1)}%
+                      <span className="block text-[10px] text-fg-3">{formatNumber(row.repeat_users)} users</span>
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.habitual_rate.toFixed(1)}%
+                      <span className="block text-[10px] text-fg-3">{formatNumber(row.habitual_users)} users</span>
+                    </td>
+                    <td className="min-w-[260px] px-3 py-3">
+                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
+                        {row.buckets.map((bucket, index) => (
+                          <span
+                            key={bucket.key}
+                            className={['bg-fg-3/40', 'bg-accent/70', 'bg-ok/70', 'bg-warn/70'][index] ?? 'bg-fg-3/40'}
+                            style={{ width: `${bucket.share}%` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-fg-3">
+                        {row.buckets.map((bucket) => (
+                          <span key={bucket.key}>{bucket.label}: {formatNumber(bucket.users)}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.breadth.average_features_per_user.toFixed(1)}/user
+                      <span className="block text-[10px] text-fg-3">
+                        {formatNumber(row.breadth.sole_feature_users)} sole-feature
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {data.features.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-5 py-8 text-center text-sm text-fg-3">
+                      No feature group in this selection has at least {minimum} users.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 text-[10px] text-fg-3">
+            <span>
+              Habitual threshold: {data.habitual_minimum_events} events in {data.days} days (≥
+              {data.habitual_weekly_threshold}/week). {data.habitual_definition}
+            </span>
+            <span>
+              {data.suppressed_features > 0
+                ? `${data.suppressed_features} small feature group${data.suppressed_features === 1 ? '' : 's'} hidden (<${minimum} users).`
+                : `All visible groups have at least ${minimum} users.`}
+              {data.truncated_features > 0 ? ` ${data.truncated_features} lower-volume groups truncated.` : ''}
+            </span>
+          </div>
+        </>
+      ) : !data && error ? (
+        <div className="px-5 py-8 text-center text-sm text-fg-3">
+          Feature depth is unavailable. Adjust the filters or retry.
+        </div>
+      ) : (
+        <div role="status" className="px-5 py-8 text-center text-sm text-fg-3">Loading feature depth…</div>
+      )}
+    </section>
+  )
+}
+
 export default function AdminGrowth() {
   const [days, setDays] = useState<number>(30)
   const [retentionWeeks, setRetentionWeeks] = useState<number>(8)
@@ -621,8 +846,15 @@ export default function AdminGrowth() {
     value: string
   }>({ metric: 'events', dimension: 'plan', value: 'pro' })
   const [explorerLoading, setExplorerLoading] = useState(false)
+  const [depth, setDepth] = useState<AdminFeatureDepthResponse | null>(null)
+  const [depthPlan, setDepthPlan] = useState('')
+  const [depthCohort, setDepthCohort] = useState('')
+  const [depthApplied, setDepthApplied] = useState<{ plan: string; cohort: string }>({ plan: '', cohort: '' })
+  const [depthLoading, setDepthLoading] = useState(false)
+  const [depthError, setDepthError] = useState<string | null>(null)
   const loadGeneration = useRef(0)
   const seriesGeneration = useRef(0)
+  const depthGeneration = useRef(0)
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current
@@ -682,6 +914,30 @@ export default function AdminGrowth() {
   useEffect(() => {
     void loadSeries()
   }, [loadSeries])
+
+  const loadDepth = useCallback(async () => {
+    const generation = ++depthGeneration.current
+    setDepthLoading(true)
+    setDepthError(null)
+    try {
+      const next = await apiClient.getAdminFeatureDepth({
+        days,
+        plan: depthApplied.plan || undefined,
+        cohort: depthApplied.cohort || undefined,
+      })
+      if (depthGeneration.current === generation) setDepth(next)
+    } catch (err) {
+      if (depthGeneration.current === generation) {
+        setDepthError(err instanceof Error ? err.message : 'Failed to load feature depth')
+      }
+    } finally {
+      if (depthGeneration.current === generation) setDepthLoading(false)
+    }
+  }, [days, depthApplied])
+
+  useEffect(() => {
+    void loadDepth()
+  }, [loadDepth])
 
   const signupMonths = retention?.available_signup_months ?? []
 
@@ -768,6 +1024,19 @@ export default function AdminGrowth() {
         onValue={setValue}
         onApply={() => setApplied({ metric, dimension, value })}
         loading={explorerLoading}
+      />
+
+      <FeatureDepth
+        data={depth}
+        loading={depthLoading}
+        error={depthError}
+        plan={depthPlan}
+        cohort={depthCohort}
+        planOptions={PLAN_OPTIONS}
+        cohortOptions={signupMonths}
+        onPlan={setDepthPlan}
+        onCohort={setDepthCohort}
+        onApply={() => setDepthApplied({ plan: depthPlan, cohort: depthCohort })}
       />
 
       <p className="text-[10px] text-fg-3">
