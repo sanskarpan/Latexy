@@ -450,6 +450,9 @@ class Compilation(Base):
     __table_args__ = (
         # DB-013: composite index supports queries filtering by resume filtered by status
         Index("idx_compilations_resume_status", "resume_id", "status"),
+        # Compile-latency analytics scan completed rows by status in a bounded
+        # created_at window before grouping by the persisted dimensions.
+        Index("idx_compilations_latency_created", "status", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
@@ -467,6 +470,12 @@ class Compilation(Base):
     artifact_branch: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft", default="draft")
     artifact_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
     compilation_time: Mapped[Optional[float]] = mapped_column(Float)
+    # Aggregate attribution captured at admission from server-side state.
+    # Nullable because rows created before 0081 (and jobs without a résumé or
+    # template) have no dimension value; analytics reports those as missing.
+    plan_family: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    compiler: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    template_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), index=True)
     pdf_size: Mapped[Optional[int]] = mapped_column(Integer)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

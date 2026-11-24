@@ -296,6 +296,39 @@ async def _resolve_user_plan(db: AsyncSession, user_id: Optional[str]) -> str:
         return "free"
 
 
+async def _resolve_compile_template_id(
+    db: AsyncSession,
+    user_id: Optional[str],
+    resume_id: Any,
+    *loaded_resumes: Optional[Resume],
+) -> Optional[str]:
+    """Resolve the server-side template attribution for a compile row.
+
+    Prefer a résumé already loaded for admission. Only fall back to a narrow
+    ownership-checked lookup, and never fail admission because analytics
+    attribution is unavailable.
+    """
+    for resume in loaded_resumes:
+        if isinstance(resume, Resume) and resume.selected_template_id:
+            return str(resume.selected_template_id)
+    candidate = _uuid_or_none(resume_id)
+    if not candidate or not user_id:
+        return None
+    try:
+        value = (
+            await db.execute(
+                select(Resume.selected_template_id).where(
+                    Resume.id == candidate,
+                    Resume.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+    except Exception:
+        logger.debug("Could not resolve compile template attribution", exc_info=True)
+        return None
+    return str(value) if value else None
+
+
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 _JOB_TTL = 86400  # 24 hours
@@ -597,6 +630,7 @@ async def submit_job(
         }
         semantic_requested = (request.metadata or {}).get("optimization_engine") == "semantic_v1"
         owned_resume = None
+        auto_fit_resume = None
         if semantic_requested:
             from ..services.resume_engine.budgets import BudgetExceeded, initial_budget
             from ..services.resume_engine.document import digest
@@ -687,6 +721,7 @@ async def submit_job(
         # Resolve compiler and compile settings: explicit request field > resume metadata > default
         compiler = settings.DEFAULT_LATEX_COMPILER
         compile_settings: Optional[Dict] = None
+        settings_resume: Optional[Resume] = None
         if request.compiler:
             if request.compiler not in settings.ALLOWED_LATEX_COMPILERS:
                 raise HTTPException(
@@ -815,12 +850,23 @@ async def submit_job(
         # fast worker cannot reconcile an absent row and then leave a newly
         # inserted row stuck at ``processing`` forever.
         if user_id and request.job_type in ("latex_compilation", "auto_fit", "combined"):
+            template_id = await _resolve_compile_template_id(
+                db,
+                user_id,
+                safe_meta.get("resume_id"),
+                owned_resume,
+                auto_fit_resume,
+                settings_resume,
+            )
             compilation_record = Compilation(
                 user_id=user_id,
                 job_id=job_id,
                 status="processing",
                 resume_id=safe_meta.get("resume_id") or None,
                 device_fingerprint=request.device_fingerprint,
+                plan_family=resolve_plan_family(resolved_plan),
+                compiler=compiler,
+                template_id=template_id,
             )
             db.add(compilation_record)
             await db.flush()

@@ -17,7 +17,8 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
-| Growth & Cost | `GET /admin/analytics/feature-depth` | Per-feature users/events, median and p95 events per user, repeat rate, frequency buckets (1, 2–4, 5–9, 10+), habitual users (≥5 events/week), and distinct-feature breadth; plan and signup-cohort filters, groups below five users suppressed |
+| Growth & Cost | `GET /admin/analytics/feature-depth` | Per-feature users/events, median and p95 events per user, repeat rate, frequency buckets (1, 2-4, 5-9, 10+), habitual users (>=5 events/week), and distinct-feature breadth; plan and signup-cohort filters, groups below five users suppressed |
+| Growth & Cost | `GET /admin/analytics/compile-latency` | p50/p95/p99 compile latency by plan family, compiler, and template with sample counts, explicit sparse buckets, missing-attribution counts and ranked slowest buckets |
 | Customers | `GET /admin/users/{id}/360` | Masked account, activation, usage, billing, security, and integration summary |
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
@@ -42,6 +43,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - Audit payloads are bounded and redacted. Secrets, credentials, document
   content, prompts, job descriptions, and direct identifiers are dropped rather
   than stored, and before/after contain only fields whose values changed.
+- Compile-latency analytics reads only persisted aggregate dimensions
+  (`plan_family`, `compiler`, `template_id`) and duration on completed
+  compilations. It never reads résumé source, document content, or compile
+  error text.
 - Support can open only the Customers surface. Support sees masked email/name,
   no admin actions, and cannot reveal PII or perform mutations.
 - Refunds use separation of duties: one admin requests, a different admin

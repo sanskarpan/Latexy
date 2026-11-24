@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0080_queue_snapshots"
+EXPECTED_HEAD = "0081_compile_latency_dimensions"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -29,7 +29,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0070_plan_catalog", "0071_plan_quotas", "0072_capability_roles",
     "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
     "0076_spare_authority_handover", "0077_admin_control_room", "0078_admin_alerts",
-    "0079_tenant_domain_expiry", "0080_queue_snapshots",
+    "0079_tenant_domain_expiry", "0080_queue_snapshots", "0081_compile_latency_dimensions",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -189,6 +189,9 @@ CAPABILITY_SCHEMA_COLUMNS = {
     "0079_tenant_domain_expiry": {},
     # Adds the operational queue-snapshot table only.
     "0080_queue_snapshots": {},
+    # Adds aggregate compile-latency attribution columns only; the ordered
+    # entry still requires every preceding billing/capability fingerprint.
+    "0081_compile_latency_dimensions": {},
 }
 
 

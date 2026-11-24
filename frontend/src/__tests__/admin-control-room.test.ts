@@ -7,6 +7,7 @@ describe('admin control room surfaces', () => {
   const page = read('../app/admin/page.tsx')
   const billing = read('../components/admin/AdminBilling.tsx')
   const analytics = read('../components/admin/AdminAnalytics.tsx')
+  const compileLatency = read('../components/admin/AdminCompileLatency.tsx')
   const growth = read('../components/admin/AdminGrowth.tsx')
   const userDetail = read('../components/admin/AdminUserDetail.tsx')
   const audit = read('../components/admin/AdminAudit.tsx')
@@ -92,6 +93,22 @@ describe('admin control room surfaces', () => {
     expect(growth).toContain('getAdminFeatureDepth')
     expect(apiClient).toContain('/admin/analytics/feature-depth')
     expect(growth).not.toContain('latex_content')
+  })
+
+  it('shows compile latency percentiles by dimension with sparse and slowest markers', () => {
+    expect(analytics).toContain("import AdminCompileLatency from '@/components/admin/AdminCompileLatency'")
+    expect(analytics).toContain('<AdminCompileLatency days={days} />')
+    expect(apiClient).toContain('/admin/analytics/compile-latency')
+    expect(apiClient).toContain('AdminCompileLatencyResponse')
+    expect(apiClient).toContain('p50_seconds')
+    expect(apiClient).toContain('p95_seconds')
+    expect(apiClient).toContain('p99_seconds')
+    expect(compileLatency).toContain('Compile latency percentiles')
+    expect(compileLatency).toContain('Slowest buckets')
+    expect(compileLatency).toContain('Sparse')
+    expect(compileLatency).toContain('missing_dimension_fields')
+    expect(compileLatency).not.toContain('latex_content')
+    expect(compileLatency).not.toContain('error_message')
   })
 
   it('keeps refund execution behind approval and webhook review explicit', () => {

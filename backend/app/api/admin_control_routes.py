@@ -21,6 +21,7 @@ from ..services.admin_audit_service import (
     list_admin_audit,
 )
 from ..services.admin_billing_service import admin_billing_service
+from ..services.admin_compile_latency_service import compile_latency_snapshot
 from ..services.admin_growth_service import admin_growth_service
 
 router = APIRouter()
@@ -740,17 +741,31 @@ async def get_admin_feature_depth(
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
-    """Per-feature frequency, depth, and breadth over first-party usage events.
-
-    Aggregates ``usage_analytics`` by user and feature. Returns counts only; no
-    event metadata, document text, or per-user event rows. Features and filtered
-    cohorts below five users are suppressed. ``signup_month`` is an alias for
-    ``cohort`` for parity with the retention surface.
-    """
+    """Aggregate per-feature frequency, depth, and breadth."""
     try:
         return await admin_growth_service.feature_depth(
             db, days=days, plan=plan, cohort=cohort or signup_month
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/admin/analytics/compile-latency")
+async def get_admin_compile_latency(
+    days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    compiler: Optional[str] = Query(None, max_length=32),
+    template: Optional[str] = Query(None, max_length=64),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await compile_latency_snapshot(
+            db,
+            days=days,
+            plan=plan,
+            compiler=compiler,
+            template=template,        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -774,7 +789,6 @@ async def get_admin_ai_usage(
         model=model,
         persona=persona,
     )
-
 
 @router.get("/admin/analytics/timeseries")
 async def get_admin_analytics_timeseries(
