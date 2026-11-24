@@ -8,6 +8,7 @@ import {
   type AdminFilteredTimeseriesResponse,
   type AdminRetentionResponse,
   type AdminRetentionRow,
+  type AdminSignupFunnel,
   type AdminTimeseriesDimension,
   type AdminTimeseriesMetric,
 } from '@/lib/api-client'
@@ -176,6 +177,108 @@ function Funnel({ data }: { data: AdminActivationResponse }) {
             )}
           </div>
         ))}
+      </div>
+    </section>
+  )
+}
+
+function SignupFunnel({ data }: { data: AdminSignupFunnel }) {
+  const minimum = data.minimum_segment_size ?? 5
+  const hidden = data.suppressed_segments?.provider ?? 0
+  const failures = data.oauth_failures ?? { total: 0, by_provider: [], by_code: [] }
+  const steps = data.steps ?? []
+
+  return (
+    <section className="mt-4 rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-fg">Signup funnel by auth provider</h3>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
+            Start → complete → verified for accounts created in the selected period.
+            Providers are derived server-side from Better Auth account rows; a
+            client-supplied provider is never attributed to an account. Verification
+            rate is verified accounts over completed accounts, and median time is
+            measured from the first stored verification event.
+          </p>
+        </div>
+        <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
+          {formatNumber(data.completed)} accounts
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {steps.map((step) => (
+          <div key={step.key} className="rounded-[var(--radius-md)] border border-line bg-surface-2/40 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-3">{step.label}</p>
+            <p className="mt-1 text-xl font-semibold text-fg">{formatNumber(step.count)}</p>
+            <p className="mt-0.5 text-[10px] text-fg-3">
+              {step.key === 'signup_started'
+                ? '100% of starts'
+                : `${step.from_previous ?? 0}% of previous step · ${step.from_start}% of starts`}
+            </p>
+            {step.key === 'email_verified' && (
+              <p className="mt-1 text-[10px] text-fg-3">
+                Median time to verify: {formatDuration(step.median_seconds)}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-md border border-line">
+        <table className="w-full min-w-[620px] border-collapse text-xs">
+          <caption className="sr-only">Signup conversion and median verification time by auth provider</caption>
+          <thead>
+            <tr className="border-b border-line bg-surface-2/60 text-[10px] uppercase tracking-wider text-fg-3">
+              <th scope="col" className="px-3 py-2 text-left font-semibold">Provider</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Starts</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Accounts</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Verified</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Start → account</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Verify rate</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Median to verify</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.by_provider.map((row) => (
+              <tr key={row.provider} className="border-t border-line">
+                <td className="px-3 py-1.5 text-fg-2">{row.provider_label || row.label}</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{formatNumber(row.started)}</td>
+                <td className="px-3 py-1.5 text-right text-fg">{formatNumber(row.completed)}</td>
+                <td className="px-3 py-1.5 text-right text-fg">{formatNumber(row.verified)}</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{row.conversion_start_to_complete.toFixed(1)}%</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{row.verification_rate.toFixed(1)}%</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{formatDuration(row.median_seconds_to_verify)}</td>
+              </tr>
+            ))}
+            {data.by_provider.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-5 text-center text-fg-3">
+                  No provider has at least {minimum} accounts in this period.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {hidden > 0 && (
+          <p className="border-t border-line px-3 py-1.5 text-[10px] text-fg-3">
+            {hidden} small provider {hidden === 1 ? 'segment' : 'segments'} hidden ({'<'}
+            {minimum} accounts).
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-fg-3">
+        <span className="font-semibold uppercase tracking-[0.16em]">OAuth failures</span>
+        <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 font-semibold text-fg">
+          {formatNumber(failures.total)} total
+        </span>
+        {failures.by_provider.map((row) => (
+          <span key={row.provider} className="rounded-full border border-line px-2 py-0.5">
+            {row.provider_label || row.label}: {formatNumber(row.count)}
+          </span>
+        ))}
+        {failures.by_provider.length === 0 && <span>No provider failures recorded.</span>}
       </div>
     </section>
   )
@@ -727,6 +830,7 @@ export default function AdminGrowth() {
       {loading && !activation && <div role="status" className="py-12 text-center text-sm text-fg-3">Loading growth analytics…</div>}
 
       {activation && <Funnel data={activation} />}
+      {activation?.signup_funnel && <SignupFunnel data={activation.signup_funnel} />}
       {retention && <Retention data={retention} />}
       {cost && (
         <Cost

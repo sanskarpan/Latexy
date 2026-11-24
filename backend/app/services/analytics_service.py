@@ -27,6 +27,7 @@ from ..database.models import (
     User,
 )
 from .posthog_service import posthog_service
+from .signup_funnel_service import signup_funnel_service
 
 logger = get_logger(__name__)
 
@@ -687,6 +688,11 @@ class AnalyticsService:
             subscriptions_result = await db.execute(subscriptions_query)
             subscriptions = subscriptions_result.scalar() or 0
 
+            # Provider-segmented signup start -> complete -> verified funnel.
+            # Always server-derived; anonymous attempt counters never assign an
+            # account's provider.
+            signup_funnel = await signup_funnel_service.signup_funnel(db, days=days)
+
             # Calculate conversion rates
             # These are bounded period-count ratios, not cohort conversions.
             # Distinct subscription owners plus a visible cap avoid impossible
@@ -710,6 +716,8 @@ class AnalyticsService:
                     "registration_to_subscription": round(subscription_conversion, 2),
                     "overall_conversion": round(overall_conversion, 2),
                 },
+                "signup": signup_funnel,
+                "by_provider": signup_funnel["by_provider"],
             }
 
             # PERF-003: store in cache for 5 minutes

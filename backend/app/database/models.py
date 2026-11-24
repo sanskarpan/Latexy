@@ -138,6 +138,11 @@ class User(Base):
         Boolean, default=False, nullable=False, server_default="false"
     )
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Server-derived signup provider. Values: email | google | github | oidc |
+    # passkey | unknown. Never written from a client claim (migration 0081).
+    auth_provider: Mapped[str] = mapped_column(
+        String(20), default="unknown", server_default="unknown", nullable=False
+    )
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
     email_notifications: Mapped[Optional[Dict]] = mapped_column(
         JSONB,
@@ -767,6 +772,63 @@ class UsageAnalytics(Base):
 
     # Relationships
     user: Mapped[Optional["User"]] = relationship("User", back_populates="usage_analytics")
+
+
+class SignupFunnelEvent(Base):
+    """Aggregate-only signup funnel event (migration 0081).
+
+    Rows intentionally contain no email, name, IP, user-agent, OAuth token or
+    other credential. ``provider`` is always an allowlisted bucket derived from
+    server-owned auth state; anonymous attempt rows are never joined back to an
+    account to assign it a provider.
+    """
+
+    __tablename__ = "signup_funnel_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event IN ('signup_started', 'signup_completed', 'email_verified', 'oauth_failure')",
+            name="ck_signup_funnel_events_event",
+        ),
+        CheckConstraint(
+            "provider IN ('email', 'google', 'github', 'oidc', 'passkey', 'unknown')",
+            name="ck_signup_funnel_events_provider",
+        ),
+        CheckConstraint(
+            "failure_code IS NULL OR failure_code IN "
+            "('access_denied', 'account_not_linked', 'callback_failed', "
+            "'provider_error', 'state_mismatch', 'unknown')",
+            name="ck_signup_funnel_events_failure_code",
+        ),
+        Index(
+            "idx_signup_funnel_events_event_provider_time",
+            "event",
+            "provider",
+            "created_at",
+        ),
+        Index("idx_signup_funnel_events_user_event", "user_id", "event"),
+        Index(
+            "uq_signup_funnel_events_user_milestone",
+            "user_id",
+            "event",
+            unique=True,
+            postgresql_where=text(
+                "user_id IS NOT NULL AND event IN ('signup_completed', 'email_verified')"
+            ),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    event: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider: Mapped[str] = mapped_column(
+        String(20), default="unknown", server_default="unknown", nullable=False
+    )
+    failure_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class Subscription(Base):

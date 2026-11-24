@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Eye, EyeOff } from 'lucide-react'
 import { signIn, authClient } from '@/lib/auth-client'
+import { trackOAuthFailure } from '@/lib/signup-funnel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supportsPasskeys } from '@/lib/passkey-security'
@@ -177,6 +178,7 @@ export default function SignInForm({ redirect, oauthError }: { redirect?: string
       // button disabled with no way back short of a page reload.
       if (result?.error || !result?.data?.url) {
         clearSocialTimeout()
+        void trackOAuthFailure(provider, 'callback_failed')
         setError(
           friendlyAuthError(result?.error?.message, `${provider} sign-in is unavailable right now`)
         )
@@ -184,6 +186,7 @@ export default function SignInForm({ redirect, oauthError }: { redirect?: string
       }
     } catch {
       clearSocialTimeout()
+      void trackOAuthFailure(provider, 'callback_failed')
       setError(`${provider} sign-in failed`)
       setSocialLoading(null)
     }
@@ -206,11 +209,13 @@ export default function SignInForm({ redirect, oauthError }: { redirect?: string
       })
       if (result?.error || !result?.data?.url) {
         clearSocialTimeout()
+        void trackOAuthFailure('oidc', 'callback_failed')
         setError(friendlyAuthError(result?.error?.message, 'Organization SSO is unavailable right now'))
         setSocialLoading(null)
       }
     } catch {
       clearSocialTimeout()
+      void trackOAuthFailure('oidc', 'callback_failed')
       setError('Organization SSO sign-in failed')
       setSocialLoading(null)
     }

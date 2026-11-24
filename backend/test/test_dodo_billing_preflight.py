@@ -105,7 +105,8 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
     ("0077_admin_control_room", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0078_admin_alerts", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0079_tenant_domain_expiry", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0080_queue_snapshots", current_columns(), "current_dodo_head"),
+    ("0080_queue_snapshots", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0081_signup_funnel_providers", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -172,7 +173,7 @@ def test_stamped_capability_revision_rejects_partial_columns(revision, table, co
 
 
 def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
-    assert preflight.EXPECTED_HEAD == "0080_queue_snapshots"
+    assert preflight.EXPECTED_HEAD == "0081_signup_funnel_providers"
     assert preflight.CAPABILITY_SCHEMA_COLUMNS["0073_d14_subfeatures"] == {}
     previous_columns = {
         **{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
@@ -718,7 +719,8 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0077_admin_control_room", "known_mainline_dodo_upgrade_required"),
     ("0078_admin_alerts", "known_mainline_dodo_upgrade_required"),
     ("0079_tenant_domain_expiry", "known_mainline_dodo_upgrade_required"),
-    ("0080_queue_snapshots", "current_dodo_head"),
+    ("0080_queue_snapshots", "known_mainline_dodo_upgrade_required"),
+    ("0081_signup_funnel_providers", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
@@ -726,7 +728,7 @@ def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, s
 
 @pytest.mark.parametrize("revision,schema", [
     ("0072_capability_roles", "current_dodo_head"),
-    ("0080_queue_snapshots", "known_mainline_dodo_upgrade_required"),
+    ("0081_signup_funnel_providers", "known_mainline_dodo_upgrade_required"),
     ("0073_d14_subfeatures", "current_dodo_head"),
 ])
 def test_rollout_rejects_head_revision_classification_mismatch(revision, schema):

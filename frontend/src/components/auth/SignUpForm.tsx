@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { signUp, authClient } from '@/lib/auth-client'
+import { trackOAuthFailure, trackSignupStarted } from '@/lib/signup-funnel'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/components/I18nProvider'
@@ -110,6 +111,9 @@ export default function SignUpForm({ redirect, oauthError }: { redirect?: string
     }
 
     setIsLoading(true)
+    // Anonymous attempt counter only. Provider attribution for the eventual
+    // account is derived server-side; this label is never attached to a user.
+    void trackSignupStarted('email')
     try {
       const result = await signUp.email({ email, password, name })
       if (result.error) {
@@ -136,6 +140,7 @@ export default function SignUpForm({ redirect, oauthError }: { redirect?: string
     setSocialLoading(provider)
     setError('')
     clearSocialTimeout()
+    void trackSignupStarted(provider)
     // Guard against a stalled OAuth handshake: if the browser hasn't been
     // navigated away within SOCIAL_TIMEOUT_MS, release the form instead of
     // leaving a disabled "Redirecting..." button as a dead end.
@@ -155,6 +160,7 @@ export default function SignUpForm({ redirect, oauthError }: { redirect?: string
       // button disabled with no way back short of a page reload.
       if (result?.error || !result?.data?.url) {
         clearSocialTimeout()
+        void trackOAuthFailure(provider, 'callback_failed')
         setError(
           friendlyAuthError(result?.error?.message, `${provider} sign-in is unavailable right now`)
         )
@@ -162,6 +168,7 @@ export default function SignUpForm({ redirect, oauthError }: { redirect?: string
       }
     } catch {
       clearSocialTimeout()
+      void trackOAuthFailure(provider, 'callback_failed')
       setError(`${provider} sign-in failed`)
       setSocialLoading(null)
     }
