@@ -18,6 +18,7 @@ import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 export function AuthSync() {
   const { data: session, isPending, isRefetching = false, error } = useSession()
   const referralClaimedFor = useRef<string | null>(null)
+  const signupMilestonesFor = useRef<string | null>(null)
   const unauthorized = isConfirmedSessionUnauthorized(error)
 
   useEffect(() => {
@@ -40,6 +41,16 @@ export function AuthSync() {
     // ticket. The reusable Better Auth token must never enter a WebSocket URL.
     wsClient.setAuthenticated(Boolean(token))
     if (!token) referralClaimedFor.current = null
+    if (!token) signupMilestonesFor.current = null
+
+    // Server-derived signup funnel milestones: completion and (when the account
+    // already has email_verified) verification. The backend ignores any client
+    // provider and derives it from Better Auth's account rows; the call is
+    // idempotent and must never block authentication or navigation.
+    if (token && signupMilestonesFor.current !== token) {
+      signupMilestonesFor.current = token
+      void apiClient.recordSignupMilestones?.()
+    }
 
     // Sign-up and OAuth both preserve the first-party referral cookie. Claim it
     // after Better Auth has issued a session so the backend, not the browser,

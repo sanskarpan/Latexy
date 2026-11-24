@@ -1407,6 +1407,7 @@ export interface AdminActivationResponse {
   by_plan: AdminActivationSegment[]
   by_provider: AdminActivationSegment[]
   by_signup_cohort?: AdminActivationSegment[]
+  signup_funnel?: AdminSignupFunnel
   suppressed_segments?: Record<string, number>
   minimum_segment_size?: number
   milestone_definitions?: Array<{
@@ -1417,6 +1418,78 @@ export interface AdminActivationResponse {
   }>
   reconciliation?: Record<string, { source: string; users: number }>
   generated_at: string
+}
+
+export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
+export type SignupOAuthFailureCode =
+  | 'access_denied'
+  | 'account_not_linked'
+  | 'callback_failed'
+  | 'provider_error'
+  | 'state_mismatch'
+  | 'unknown'
+
+export interface AdminSignupFunnelStep {
+  key: 'signup_started' | 'signup_completed' | 'email_verified'
+  label: string
+  count: number
+  from_previous: number | null
+  from_start: number
+  median_seconds: number | null
+  median_days: number | null
+}
+
+export interface AdminSignupFunnelProvider {
+  label: string
+  provider: string
+  provider_label: string
+  users: number
+  started: number
+  completed: number
+  verified: number
+  verification_rate: number
+  conversion_start_to_complete: number
+  conversion_complete_to_verified: number
+  median_seconds_to_verify: number | null
+  median_days_to_verify: number | null
+}
+
+export interface AdminSignupFunnelFailure {
+  label: string
+  provider: string
+  provider_label: string
+  count: number
+}
+
+export interface AdminSignupFunnel {
+  period_days: number
+  cohort_size: number
+  started: number
+  completed: number
+  verified: number
+  verification_rate: number
+  conversion_start_to_complete: number
+  conversion_complete_to_verified: number
+  median_seconds_to_verify: number | null
+  median_days_to_verify: number | null
+  steps: AdminSignupFunnelStep[]
+  by_provider: AdminSignupFunnelProvider[]
+  oauth_failures: {
+    total: number
+    by_provider: AdminSignupFunnelFailure[]
+    by_code: Array<{ code: string; count: number }>
+  }
+  suppressed_segments?: Record<string, number>
+  minimum_segment_size?: number
+  provider_labels?: Record<string, string>
+  started_by_provider?: Array<{ label: string; provider: string; count: number }>
+  generated_at: string
+}
+
+export interface SignupMilestonesResponse {
+  provider: SignupAuthProvider
+  email_verified: boolean
+  recorded: string[]
 }
 
 export interface AdminRetentionCell {
@@ -4368,6 +4441,50 @@ class ApiClient {
       })
     } catch {
       // Non-critical — don't disrupt user flow
+    }
+  }
+
+  /**
+   * Anonymous signup-attempt counter. Only the allowlisted provider label is
+   * sent; the backend never uses it to attribute an account. Account provider,
+   * completion and verification always come from server-owned auth state.
+   */
+  async trackSignupStarted(provider?: SignupAuthProvider): Promise<void> {
+    try {
+      await this.request<{ recorded: string; provider: string }>('/analytics/signup/started', {
+        method: 'POST',
+        body: JSON.stringify(provider ? { provider } : {}),
+      })
+    } catch {
+      // Analytics must never block sign-up.
+    }
+  }
+
+  async trackOAuthFailure(
+    provider: SignupAuthProvider,
+    failureCode: SignupOAuthFailureCode = 'callback_failed',
+  ): Promise<void> {
+    try {
+      await this.request<{ recorded: string; provider: string }>('/analytics/signup/oauth-failure', {
+        method: 'POST',
+        body: JSON.stringify({ provider, failure_code: failureCode }),
+      })
+    } catch {
+      // Non-critical.
+    }
+  }
+
+  /**
+   * Idempotent server-side milestone sync. Returns null when analytics is
+   * unavailable so callers can ignore failures without branching.
+   */
+  async recordSignupMilestones(): Promise<SignupMilestonesResponse | null> {
+    try {
+      return await this.request<SignupMilestonesResponse>('/analytics/signup/milestones', {
+        method: 'POST',
+      })
+    } catch {
+      return null
     }
   }
 

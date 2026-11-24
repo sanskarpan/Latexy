@@ -84,6 +84,10 @@ from .analytics_routes import router as analytics_router
 
 router.include_router(analytics_router)
 
+from .signup_funnel_routes import router as signup_funnel_router
+
+router.include_router(signup_funnel_router)
+
 # Include Resume routes
 from .pdf_import_routes import router as pdf_import_router
 

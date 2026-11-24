@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import cache_manager
 from ..database import models
+from .signup_funnel_service import provider_from_auth_id, signup_funnel_service
 
 User = models.User
 Resume = models.Resume
@@ -244,16 +245,34 @@ class AdminGrowthService:
         activation_window_days = max(1, min(activation_window_days, 365))
         now = datetime.now(timezone.utc)
         start = now - timedelta(days=days)
-        stmt = select(User.id, User.subscription_plan, User.created_at).where(User.created_at >= start)
+        stmt = select(
+            User.id, User.subscription_plan, User.created_at, User.auth_provider
+        ).where(User.created_at >= start)
         if plan:
             stmt = stmt.where(User.subscription_plan == plan)
         users = (await db.execute(stmt)).all()
         providers = await _provider_map(db, [row[0] for row in users])
+
+        def _effective_provider(user_id: str, stored: str | None) -> str:
+            normalized = provider_from_auth_id(stored) if stored else "unknown"
+            if normalized != "unknown":
+                return normalized
+            return provider_from_auth_id(providers.get(user_id))
+
         if provider:
-            users = [row for row in users if providers.get(str(row[0])) == provider]
+            provider_filter = provider_from_auth_id(provider)
+            users = [
+                row
+                for row in users
+                if _effective_provider(str(row[0]), row.auth_provider) == provider_filter
+            ]
         user_ids = [str(row[0]) for row in users]
         first = await _first_events(db, user_ids)
-        signup_times = {str(user_id): created_at for user_id, _plan_id, created_at in users if created_at}
+        signup_times = {
+            str(user_id): created_at
+            for user_id, _plan_id, created_at, _auth_provider in users
+            if created_at
+        }
         cohort_ids = set(signup_times)
 
         def _reached_for_window(window_days: int) -> dict[str, set[str]]:
@@ -359,16 +378,24 @@ class AdminGrowthService:
         by_plan: dict[str, list[str]] = defaultdict(list)
         by_provider: dict[str, list[str]] = defaultdict(list)
         by_signup_cohort: dict[str, list[str]] = defaultdict(list)
-        for user_id, plan_id, created_at in users:
+        for user_id, plan_id, created_at, auth_provider in users:
             uid = str(user_id)
             by_plan[plan_id or "free"].append(uid)
-            by_provider[providers.get(uid, "unknown")].append(uid)
+            by_provider[_effective_provider(uid, auth_provider)].append(uid)
             if created_at is not None:
                 by_signup_cohort[_month_label(created_at)].append(uid)
 
         plan_rows, hidden_plan = _segment_rows(by_plan)
         provider_rows, hidden_provider = _segment_rows(by_provider)
         cohort_rows, hidden_cohort = _segment_rows(by_signup_cohort)
+
+        # Signup start -> complete -> verified, with provider segments,
+        # OAuth-failure counters and median time-to-verify. This is separate
+        # from the activation milestones above: it only uses aggregate funnel
+        # events plus server-derived accounts, never document content.
+        signup_metrics = await signup_funnel_service.signup_funnel(
+            db, days=days, plan=plan, provider=provider
+        )
 
         reconciliation = {
             "signup": {"source": ACTIVATION_SOURCES["signup"][0], "users": cohort_size},
@@ -395,6 +422,7 @@ class AdminGrowthService:
             "by_plan": plan_rows,
             "by_provider": provider_rows,
             "by_signup_cohort": cohort_rows,
+            "signup_funnel": signup_metrics,
             "suppressed_segments": {
                 "plan": hidden_plan,
                 "provider": hidden_provider,

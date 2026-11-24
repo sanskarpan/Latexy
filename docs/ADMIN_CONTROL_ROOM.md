@@ -13,7 +13,8 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Revenue | `POST /admin/billing/refunds` | Create a refund request (full, or partial with a provider line-item ID) |
 | Revenue | `POST /admin/billing/refunds/{id}/approve\|reject` | Second-admin decision; the requester cannot decide their own request |
 | Revenue | `POST /admin/billing/refunds/{id}/execute` | Submit an approved/retryable refund to Dodo |
-| Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments |
+| Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments plus the provider-segmented signup start → complete → verified funnel, median time-to-verify and OAuth-failure counters |
+| Growth & Cost | `GET /analytics/conversion-funnel` | Admin-only landing → trial → registration → subscription funnel; now includes the same server-derived signup/provider report |
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
@@ -171,6 +172,12 @@ serve normal traffic; there is no application delete path or scheduled purge.
 - `backend/test/test_admin_alerts_api.py` covers evaluator deduplication,
   occurrence counts, auto-resolution, admin-only acknowledgement/snooze and
   audit coverage.
+- `backend/test/test_signup_funnel.py` covers server-derived provider
+  assignment/unknown fallback, start → complete → verified conversion, median
+  time-to-verify, OAuth failure counts, cohort suppression below 5, PII/token
+  exclusion and admin-only access.
+- `frontend/src/__tests__/signup-funnel.test.ts` covers the server-derived OAuth
+  callback failure counter and its wiring into the Better Auth route.
 - `frontend/src/__tests__/admin-control-room.test.ts` pins the tab wiring,
   support-only navigation, refund controls, operations-panel loading and
   PostHog privacy hardening.
@@ -181,5 +188,8 @@ serve normal traffic; there is no application delete path or scheduled purge.
 2. Deploy backend with the migration in the held release path.
 3. Deploy the frontend after the backend health check.
 4. Verify `/health`, `/readyz`, `/admin/billing/summary`, and the Revenue tab.
-5. The five known quarantined Dodo test dead letters may be acknowledged with a
+5. Apply Alembic `0081_signup_funnel_providers` before the backend rollout;
+   it backfills `users.auth_provider` from Better Auth account rows and creates
+   the aggregate `signup_funnel_events` table used by the Growth tab.
+6. The five known quarantined Dodo test dead letters may be acknowledged with a
    reason after review; acknowledgement does not grant access or move money.

@@ -103,6 +103,8 @@ class ConversionFunnelResponse(BaseModel):
     period_days: int
     funnel_steps: Dict[str, int]
     conversion_rates: Dict[str, float]
+    signup: Optional[Dict[str, Any]] = None
+    by_provider: List[Dict[str, Any]] = Field(default_factory=list)
 
 class UserAnalyticsTimeseriesPoint(BaseModel):
     date: str

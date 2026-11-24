@@ -3,6 +3,7 @@ import { enforceAuthRateLimit } from "@/lib/auth-rate-limit"
 import { validatePasskeyName } from "@/lib/passkey-security"
 import { oidcConfiguration } from "@/lib/oidc-config"
 import { normalizeInstitutionalOidcCallback } from "@/lib/oidc-provider"
+import { recordOAuthCallbackFailure } from "@/lib/signup-funnel-server"
 
 /**
  * Every auth request passes the shared, atomic per-IP gate before Better
@@ -146,7 +147,12 @@ async function handle(request: Request): Promise<Response> {
     const passkey = await pool.query<{ user_id: string }>('SELECT "userId" AS user_id FROM "passkey" WHERE id = $1', [body.id])
     if (passkey.rowCount !== 1 || passkey.rows[0]?.user_id !== session.user.id) return Response.json({ message: 'Passkey not found.', code: 'PASSKEY_NOT_FOUND' }, { status: 401 })
   }
-  return auth.handler(request)
+  const response = await auth.handler(request)
+  // Server-derived OAuth failure counter. The provider comes from the callback
+  // path, not from the browser, and only allowlisted provider/failure labels
+  // are written (no tokens, error descriptions, emails or names).
+  await recordOAuthCallbackFailure(pool, path, response)
+  return response
 }
 
 export const GET = handle
