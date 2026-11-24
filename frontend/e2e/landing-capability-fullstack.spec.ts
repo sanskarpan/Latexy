@@ -66,7 +66,7 @@ async function setRoleFeature(
 ) {
     const response = await context.request.patch(`${backend}/admin/entitlements/roles`, {
         headers,
-        data: { role: 'anonymous', feature_key: key, enabled },
+        data: { role: 'anonymous', feature_key: key, enabled, reason: 'Synthetic landing capability test' },
     })
     expect(response.status(), await response.text()).toBe(200)
 }
@@ -80,7 +80,7 @@ async function setPlanFeature(
 ) {
     const response = await context.request.patch(`${backend}/admin/entitlements/matrix`, {
         headers,
-        data: { plan_family: 'free', feature_key: key, enabled },
+        data: { plan_family: 'free', feature_key: key, enabled, reason: 'Synthetic landing capability test' },
     })
     expect(response.status(), await response.text()).toBe(200)
 }
@@ -96,7 +96,7 @@ async function setGlobalFeature(
         `${backend}/admin/entitlements/kill-switch/${key}`,
         {
             headers,
-            data: { enabled },
+            data: { enabled, reason: 'Synthetic landing capability test' },
         }
     )
     expect(response.status(), await response.text()).toBe(200)

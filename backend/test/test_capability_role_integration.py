@@ -69,7 +69,16 @@ async def test_non_admin_cannot_read_or_write_role_controls(client, db_session, 
     token = await _create_session(db_session, owner)
     auth = {"Authorization": f"Bearer {token}"}
     assert (await client.get("/admin/entitlements", headers=auth)).status_code == 403
-    response = await client.patch("/admin/entitlements/roles", headers=auth, json={"role": "admin", "feature_key": "b03", "enabled": False})
+    response = await client.patch(
+        "/admin/entitlements/roles",
+        headers=auth,
+        json={
+            "role": "admin",
+            "feature_key": "b03",
+            "enabled": False,
+            "reason": "Capability role integration test",
+        },
+    )
     assert response.status_code == 403
 
 
@@ -78,7 +87,17 @@ async def test_admin_recovery_survives_all_product_role_grants_off(client, db_se
     await db_session.execute(update(RoleFeature).where(RoleFeature.role == "admin").values(enabled=False))
     await db_session.commit()
     assert (await client.get("/admin/entitlements", headers=auth)).status_code == 200
-    response = await client.patch("/admin/entitlements/roles", headers=auth, json={"role": "admin", "feature_key": "b03", "enabled": True, "expected_enabled": False})
+    response = await client.patch(
+        "/admin/entitlements/roles",
+        headers=auth,
+        json={
+            "role": "admin",
+            "feature_key": "b03",
+            "enabled": True,
+            "expected_enabled": False,
+            "reason": "Capability role integration test",
+        },
+    )
     assert response.status_code == 200
     assert response.json()["role_matrix"]["admin"]["b03"]
     assert (await client.get("/me", headers=auth)).status_code == 200
@@ -87,9 +106,10 @@ async def test_admin_recovery_survives_all_product_role_grants_off(client, db_se
 async def test_role_admin_validation_and_compare_swap(client, db_session):
     auth = await _admin_headers(db_session)
     url = "/admin/entitlements/roles"
-    assert (await client.patch(url, headers=auth, json={"role": "reader", "feature_key": "b03", "enabled": False})).status_code == 400
-    assert (await client.patch(url, headers=auth, json={"role": "user", "feature_key": "compile", "enabled": False})).status_code == 200
-    body = {"role": "user", "feature_key": "b03", "enabled": False, "expected_enabled": True}
+    reason = "Capability role integration test"
+    assert (await client.patch(url, headers=auth, json={"role": "reader", "feature_key": "b03", "enabled": False, "reason": reason})).status_code == 400
+    assert (await client.patch(url, headers=auth, json={"role": "user", "feature_key": "compile", "enabled": False, "reason": reason})).status_code == 200
+    body = {"role": "user", "feature_key": "b03", "enabled": False, "expected_enabled": True, "reason": reason}
     assert (await client.patch(url, headers=auth, json=body)).status_code == 200
     conflict = await client.patch(url, headers=auth, json={**body, "enabled": True})
     assert conflict.status_code == 409 and "capability_conflict" in conflict.text

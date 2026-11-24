@@ -16,7 +16,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from fastapi import Request
 from sqlalchemy import Select, and_, func, or_, select
@@ -34,6 +34,15 @@ _MAX_DEPTH = 3
 
 DEFAULT_AUDIT_PAGE_SIZE = 50
 MAX_AUDIT_PAGE_SIZE = 200
+
+# Only these target types hold feature-flag and entitlement state. The change
+# history read surface never exposes user, billing or other operator records.
+CHANGE_HISTORY_TARGET_TYPES: tuple[str, ...] = (
+    "feature_flag",
+    "feature_key",
+    "plan_feature",
+    "role_feature",
+)
 
 _REDACT_KEY_PARTS = (
     "password",
@@ -266,7 +275,8 @@ async def record_admin_audit(
 
 def _audit_select(
     *, actor_user_id: str | None, action: str | None, target_type: str | None,
-    target_id: str | None, created_after: datetime | None, created_before: datetime | None,
+    target_types: Sequence[str] | None, target_id: str | None, key: str | None,
+    created_after: datetime | None, created_before: datetime | None,
 ) -> Select:
     stmt = select(AdminAuditLog)
     if actor_user_id:
@@ -275,8 +285,21 @@ def _audit_select(
         stmt = stmt.where(AdminAuditLog.action == action)
     if target_type:
         stmt = stmt.where(AdminAuditLog.target_type == target_type)
+    if target_types:
+        stmt = stmt.where(AdminAuditLog.target_type.in_(list(target_types)))
     if target_id:
         stmt = stmt.where(AdminAuditLog.target_id == target_id)
+    if key:
+        # Kill-switch rows use the bare feature key; plan/role cells use
+        # ``family:feature`` or ``role:feature``. Match either form without
+        # letting ``%``/``_`` in the query act as wildcards.
+        bounded_key = str(key)[:255]
+        stmt = stmt.where(
+            or_(
+                AdminAuditLog.target_id == bounded_key,
+                AdminAuditLog.target_id.endswith(f":{bounded_key}", autoescape=True),
+            )
+        )
     if created_after:
         stmt = stmt.where(AdminAuditLog.created_at >= created_after)
     if created_before:
@@ -313,7 +336,9 @@ async def list_admin_audit(
     actor_user_id: str | None = None,
     action: str | None = None,
     target_type: str | None = None,
+    target_types: Sequence[str] | None = None,
     target_id: str | None = None,
+    key: str | None = None,
     created_after: datetime | None = None,
     created_before: datetime | None = None,
     limit: int = DEFAULT_AUDIT_PAGE_SIZE,
@@ -330,7 +355,9 @@ async def list_admin_audit(
         actor_user_id=actor_user_id,
         action=action,
         target_type=target_type,
+        target_types=target_types,
         target_id=target_id,
+        key=key,
         created_after=created_after,
         created_before=created_before,
     )
@@ -361,6 +388,37 @@ async def list_admin_audit(
         else None
     )
     return page, total, has_more, next_cursor
+
+
+async def list_admin_change_history(
+    db: AsyncSession,
+    *,
+    key: str | None = None,
+    target_id: str | None = None,
+    actor_user_id: str | None = None,
+    action: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    limit: int = DEFAULT_AUDIT_PAGE_SIZE,
+    cursor: str | None = None,
+) -> tuple[list[AdminAuditLog], int, bool, str | None]:
+    """Read-only flag/entitlement history from the immutable audit log.
+
+    The target-type allowlist is applied server-side so this surface can never
+    become a second view of user, billing or support audit records.
+    """
+    return await list_admin_audit(
+        db,
+        actor_user_id=actor_user_id,
+        action=action,
+        target_types=CHANGE_HISTORY_TARGET_TYPES,
+        target_id=target_id,
+        key=key,
+        created_after=created_after,
+        created_before=created_before,
+        limit=limit,
+        cursor=cursor,
+    )
 
 
 def audit_row_summary(row: AdminAuditLog) -> dict[str, Any]:

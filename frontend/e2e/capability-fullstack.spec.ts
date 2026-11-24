@@ -51,6 +51,7 @@ async function setAdminCapability(
     : `${label} for ${scope === 'role' ? 'role ' : ''}${scope === 'family' ? 'pro' : scope === 'sku' ? 'pro_annual' : 'user'}`
   const control = page.getByRole('switch', { name, exact: true })
   await expect(control).toHaveAttribute('aria-checked', String(!enabled))
+  await page.getByLabel('Reason for permission changes').fill('Synthetic capability test change')
   const changed = page.waitForResponse((response) =>
     new URL(response.url()).pathname.startsWith('/admin/entitlements/')
       && response.request().method() === 'PATCH',
