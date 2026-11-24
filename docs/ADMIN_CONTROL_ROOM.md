@@ -23,7 +23,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Customers | `POST /admin/users/{id}/features/grant\|revoke` | Row-locked, idempotent per-user feature override stored in `users.user_metadata`; confirmation and reason required |
 | Customers | `POST /admin/users/{id}/trial/extend` · `POST /trial/eligibility` | Support trial extension or explicit eligibility, confirmation and reason required |
 | Audit | `GET /admin/audit` | Append-only operator audit trail with cursor pagination |
-| Overview | `GET /analytics/admin/overview` | Six executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds |
+| Overview | `GET /analytics/admin/overview` | Seven executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds in-process and in Redis |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
 | Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
 | Overview | `GET /admin/alerts` | Durable, deduplicated alerts with severity, owner, state, occurrence count and runbook |
@@ -150,8 +150,10 @@ serve normal traffic; there is no application delete path or scheduled purge.
   attention aggregate, partial-source visibility, health-cache behavior and
   fixed failure details.
 - `backend/test/test_admin_kpi_trends.py` covers current/previous/absolute/
-  percent deltas, sparkline completeness, zero-baseline handling, finite JSON
-  output and the 60-second overview cache.
+  percent deltas (including the clamped conversion rate over the prior UTC
+  window), sparkline completeness and bounds, zero-baseline handling, finite
+  JSON output and the 60-second overview cache (in-process, Redis hit/miss and
+  Redis outage fallback).
 - `backend/test/test_admin_alerts_api.py` covers evaluator deduplication,
   occurrence counts, auto-resolution, admin-only acknowledgement/snooze and
   audit coverage.
