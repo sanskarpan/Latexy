@@ -668,6 +668,29 @@ class AdminGrowthService:
             invoice_reference=invoice_reference,
         )
 
+    async def ai_usage(
+        self,
+        db: AsyncSession,
+        *,
+        days: int = 30,
+        plan: str | None = None,
+        feature: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        persona: str | None = None,
+    ) -> dict[str, Any]:
+        from .admin_ai_usage_service import ai_usage_snapshot
+
+        return await ai_usage_snapshot(
+            db,
+            days=days,
+            plan=plan,
+            feature=feature,
+            provider=provider,
+            model=model,
+            persona=persona,
+        )
+
     async def timeseries(
         self,
         db: AsyncSession,

@@ -731,6 +731,28 @@ async def get_admin_ai_cost(
     )
 
 
+@router.get("/admin/analytics/ai-usage")
+async def get_admin_ai_usage(
+    days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    feature: Optional[str] = Query(None, max_length=120),
+    provider: Optional[str] = Query(None, max_length=80),
+    model: Optional[str] = Query(None, max_length=160),
+    persona: Optional[str] = Query(None, max_length=64),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    return await admin_growth_service.ai_usage(
+        db,
+        days=days,
+        plan=plan,
+        feature=feature,
+        provider=provider,
+        model=model,
+        persona=persona,
+    )
+
+
 @router.get("/admin/analytics/timeseries")
 async def get_admin_analytics_timeseries(
     days: int = Query(30, ge=1, le=365),
