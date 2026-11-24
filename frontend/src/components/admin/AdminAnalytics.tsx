@@ -85,7 +85,9 @@ function TrendNote({ trend }: { trend: AdminKpiTrend }) {
   const tone = neutral ? 'text-fg-3' : percent >= 0 ? 'text-ok' : 'text-err'
   const absolute = trend.unit === 'currency'
     ? formatCurrency(trend.absolute_delta)
-    : formatNumber(trend.absolute_delta)
+    : trend.unit === 'percent'
+      ? `${trend.absolute_delta >= 0 ? '+' : ''}${trend.absolute_delta.toFixed(1)}pp`
+      : formatNumber(trend.absolute_delta)
   return (
     <div className="mt-1">
       <p className={`text-[11px] ${tone}`}>
@@ -367,6 +369,7 @@ export default function AdminAnalytics() {
         <KpiCard label="Compilations" value={formatNumber(system.total_compilations)} detail={`${formatPercent(system.success_rate)} success`} trend={trendMap.get('total_compilations')} />
         <KpiCard label="Optimizations" value={formatNumber(system.total_optimizations)} detail="AI rewrite runs" trend={trendMap.get('total_optimizations')} />
         <KpiCard label="Trial users" value={formatNumber(system.trial_users)} detail="Anonymous trial starts" trend={trendMap.get('trial_users')} />
+        <KpiCard label="Conversion" value={formatPercent(system.conversion_rate)} detail="Trial → registration" trend={trendMap.get('conversion_rate')} />
       </div>
 
       <OperationsStrip data={operations} />

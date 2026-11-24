@@ -868,7 +868,7 @@ export interface AdminKpiTrendPoint {
 export interface AdminKpiTrend {
   key: string
   label: string
-  unit: 'count' | 'currency'
+  unit: 'count' | 'currency' | 'percent'
   current: number
   previous: number
   absolute_delta: number

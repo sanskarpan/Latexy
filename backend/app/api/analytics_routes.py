@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
+from ..core.redis import cache_manager
 from ..core.telemetry_metadata import (
     MAX_METADATA_BYTES,
     MAX_METADATA_DEPTH,
@@ -576,6 +577,20 @@ async def get_admin_analytics_overview(
     cached = _admin_overview_cache.get(days)
     if cached is not None and time.monotonic() < cached[0]:
         return AdminAnalyticsOverviewResponse(**cached[1])
+
+    # PERF-003: Redis cache-aside — a 60s cross-instance cache keyed only by the
+    # bounded `days` parameter. A miss or a Redis outage falls through to the DB.
+    cache_key = f"analytics:admin_overview:{days}"
+    try:
+        cached = await cache_manager.get(cache_key)
+        if cached is not None:
+            # Return the Redis value without extending its freshness locally:
+            # it may already be almost 60s old, and a fresh in-process TTL would
+            # serve it for another full minute.
+            return AdminAnalyticsOverviewResponse(**cached)
+    except Exception:
+        pass  # Redis unavailable or malformed entry — fall through to the database
+
     try:
         system = await analytics_service.get_system_analytics(db=db, days=days)
         funnel = await analytics_service.get_conversion_funnel(db=db, days=days)
@@ -600,10 +615,15 @@ async def get_admin_analytics_overview(
             kpi_trends=[AdminKpiTrend(**trend) for trend in kpi_trends],
             generated_at=datetime.now().isoformat(),
         )
+        payload = response.model_dump()
         _admin_overview_cache[days] = (
             time.monotonic() + _ADMIN_OVERVIEW_CACHE_SECONDS,
-            response.model_dump(),
+            payload,
         )
+        try:
+            await cache_manager.set(cache_key, payload, ttl=_ADMIN_OVERVIEW_CACHE_SECONDS)
+        except Exception:
+            pass  # Redis unavailable — best effort
         return response
     except HTTPException:
         raise
