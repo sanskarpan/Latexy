@@ -12,6 +12,7 @@ Key changes from previous version:
 - combined job type wired to orchestrator
 """
 
+import asyncio
 import json
 import re
 import time
@@ -1976,14 +1977,42 @@ async def list_jobs(
 # ------------------------------------------------------------------ #
 
 
+async def _count_workers() -> int | None:
+    """Best-effort live Celery worker count, or ``None`` when unknown.
+
+    ``inspect().ping()`` broadcasts to workers and waits up to one second; it
+    returns the number of responding workers. Any failure (no broker, no
+    workers, timeout) yields ``None`` so the health probe never degrades.
+    """
+    from ..core.celery_app import celery_app
+
+    def _ping() -> dict:
+        try:
+            return celery_app.control.inspect(timeout=1).ping() or {}
+        except Exception:
+            return {}
+
+    try:
+        pong = await asyncio.to_thread(_ping)
+    except Exception:
+        return None
+    return len(pong) if pong else None
+
+
 @router.get("/health")
-async def jobs_health():
-    """Get job system health: queue depths and basic Redis status."""
+async def jobs_health(db: AsyncSession = Depends(get_db)):
+    """Get job system health: Redis status plus real queue depths and workers.
+
+    The ``status`` field is driven solely by Redis so deployment probes stay
+    stable. ``queue_depths`` and ``worker_count`` are aggregate best-effort
+    enrichments; a snapshot-table outage or an empty broker never flips the
+    probe unhealthy, and no job payloads or Redis credentials are ever exposed.
+    """
     try:
         if not redis_manager.redis_client:
             await redis_manager.init_redis()
         redis_health = await redis_manager.health_check()
-        return {
+        payload = {
             "status": "healthy" if all(redis_health.values()) else "degraded",
             "redis": redis_health,
             "timestamp": time.time(),
@@ -1995,6 +2024,20 @@ async def jobs_health():
             "error": "Job infrastructure is unavailable",
             "timestamp": time.time(),
         }
+
+    try:
+        from ..services.queue_snapshot_service import latest_depths
+
+        payload["queue_depths"] = await latest_depths(db)
+    except Exception as exc:  # noqa: BLE001 — enrichment only
+        logger.warning("Job health queue-depths read failed (%s)", type(exc).__name__)
+        payload["queue_depths"] = {}
+
+    worker_count = await _count_workers()
+    if worker_count is not None:
+        payload["worker_count"] = worker_count
+
+    return payload
 
 
 @router.post("/system/cleanup")

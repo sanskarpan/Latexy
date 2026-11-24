@@ -29,6 +29,9 @@ describe('admin control room surfaces', () => {
     expect(analytics).toContain('vs prior period')
     expect(analytics).toContain('Sparkline')
     expect(analytics).toContain('baseline_zero')
+    expect(analytics).toContain("trendMap.get('conversion_rate')")
+    expect(analytics).toContain('toFixed(1)}pp')
+    expect(apiClient).toContain("'count' | 'currency' | 'percent'")
     expect(page).toContain("new URLSearchParams(window.location.search).get('tab')")
     expect(page).toContain('id="admin-job-queue"')
   })
@@ -50,7 +53,25 @@ describe('admin control room surfaces', () => {
     expect(operations).not.toContain('customer_email')
     expect(apiClient).toContain("'/admin/operations/attention'")
     expect(apiClient).toContain("'/admin/operations/health'")
+    expect(apiClient).toContain("'/admin/operations/queues'")
     expect(billing).toContain('id="admin-billing-webhooks"')
+  })
+
+  it('shows per-queue depth, age and throughput with a stuck-job link', () => {
+    expect(operations).toContain('Queue depth &amp; throughput')
+    expect(operations).toContain('getAdminOperationsQueues')
+    expect(operations).toContain('oldest_age_seconds')
+    expect(operations).toContain('enqueue_rate_per_minute')
+    expect(operations).toContain('completion_rate_per_minute')
+    expect(operations).toContain('QueueThroughputChart')
+    expect(operations).toContain('backlogged')
+    expect(operations).toContain('stale')
+    expect(operations).toContain('href="#admin-job-queue"')
+    expect(operations).toContain('View stuck jobs')
+    expect(apiClient).toContain('AdminQueueMetricsResponse')
+    expect(apiClient).toContain('AdminQueueThroughputPoint')
+    expect(operations).not.toContain('REDIS_PASSWORD')
+    expect(operations).not.toContain('CELERY_BROKER_URL')
   })
 
   it('shows activation, retention, cost, and filtered series without document content', () => {
@@ -106,6 +127,14 @@ describe('admin control room surfaces', () => {
     expect(audit).toContain('created_after')
     expect(apiClient).toContain("qs.set('cursor'")
     expect(apiClient).toContain('has_more')
+  })
+
+  it('lets operators search by exact user and billing identifiers', () => {
+    expect(page).toContain('PROVIDER_ID_LIKE_RE')
+    expect(page).toContain('isIdentifier')
+    expect(page).toContain('Paste a user UUID')
+    expect(page).toContain('id: asId')
+    expect(apiClient).toContain("qs.set('id', params.id)")
   })
 })
 

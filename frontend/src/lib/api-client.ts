@@ -828,6 +828,32 @@ export interface AdminOperationsHealthResponse {
   sections: Record<string, AdminOperationsHealthSection>
 }
 
+export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
+
+export interface AdminQueueThroughputPoint {
+  sampled_at: string
+  depth: number
+  oldest_age_seconds: number | null
+  enqueue_rate_per_minute: number | null
+  completion_rate_per_minute: number | null
+}
+
+export interface AdminQueueMetricsEntry {
+  queue: string
+  depth: number
+  oldest_age_seconds: number | null
+  enqueue_rate_per_minute: number | null
+  completion_rate_per_minute: number | null
+  sampled_at: string
+  status: AdminQueueStatus
+}
+
+export interface AdminQueueMetricsResponse {
+  generated_at: string
+  queues: AdminQueueMetricsEntry[]
+  throughput: Record<string, AdminQueueThroughputPoint[]>
+}
+
 export interface AdminAlert {
   id: string
   kind: string
@@ -868,7 +894,7 @@ export interface AdminKpiTrendPoint {
 export interface AdminKpiTrend {
   key: string
   label: string
-  unit: 'count' | 'currency'
+  unit: 'count' | 'currency' | 'percent'
   current: number
   previous: number
   absolute_delta: number
@@ -4609,11 +4635,13 @@ class ApiClient {
 
   async getAdminUsers(params?: {
     q?: string
+    id?: string
     limit?: number
     offset?: number
   }): Promise<AdminUsersResponse> {
     const qs = new URLSearchParams()
     if (params?.q) qs.set('q', params.q)
+    if (params?.id) qs.set('id', params.id)
     if (params?.limit != null) qs.set('limit', String(params.limit))
     if (params?.offset != null) qs.set('offset', String(params.offset))
     const suffix = qs.toString() ? `?${qs}` : ''
@@ -4720,6 +4748,10 @@ class ApiClient {
 
   async getAdminOperationsHealth(): Promise<AdminOperationsHealthResponse> {
     return this.request<AdminOperationsHealthResponse>('/admin/operations/health')
+  }
+
+  async getAdminOperationsQueues(): Promise<AdminQueueMetricsResponse> {
+    return this.request<AdminQueueMetricsResponse>('/admin/operations/queues')
   }
 
   async getAdminBillingSummary(

@@ -131,7 +131,8 @@ linked to card data. No endpoint sends a customer email or name to PostHog.
   failures, active users).
 
 The admin **Analytics** tab renders this payload and links to PostHog replays,
-dashboards, people, and replay privacy settings.
+dashboards, people, replay privacy settings, and a set of **pre-filtered replay
+triage** links (see below).
 
 ## Dashboards to create in PostHog
 
@@ -162,6 +163,47 @@ Create these once in the project; the admin deep links assume the project.
    bug needs reproduction, use a synthetic test account and the local test
    fixture, not a production replay.
 5. File product issues with the replay URL, event name, and approximate UTC time.
+
+## Pre-filtered replay triage links
+
+The admin **Analytics** tab exposes direct, pre-filtered replay lists so common
+triage cases are one click away. Links are built by
+`frontend/src/lib/analytics/replay-links.ts` (a pure, browser-free module with
+unit tests in `frontend/src/__tests__/replay-links.test.ts`) and resolved
+against the configured project by `analyticsReplayTriageLinks` in
+`frontend/src/lib/analytics/posthog.ts`.
+
+Every link targets `{UI_HOST}/project/{POSTHOG_PROJECT_ID}/replay/home` with the
+filter JSON URL-encoded into the `filters` search param, using PostHog's
+universal recording-filters shape (`RecordingUniversalFilters`). The selected
+admin date range (7/30/90 days) is preserved as a relative `date_from`
+(`-7d` / `-30d` / `-90d`); PostHog fills the remaining defaults on load.
+
+| Link | PostHog filter |
+| --- | --- |
+| Checkout failures | `filter_group` event `checkout_failed` |
+| JS errors | `filter_group` property `{ key: "level", operator: "exact", type: "log_entry", value: ["error"] }` |
+| Long sessions | `duration: [{ key: "active_seconds", operator: "gt", type: "recording", value: 120 }]` |
+| By route (editor, dashboard, billing, pricing) | `filter_group` property `{ key: "$current_url", operator: "icontains", type: "event", value: "<templated path>" }` |
+| By plan (free, basic, pro, byok, team) | `filter_group` property `{ key: "plan", operator: "exact", type: "person", value: ["<plan>"] }` |
+
+Route paths use the already-templated values from `sanitizeAnalyticsPath`
+(`/workspace/:resumeId/edit`, `/dashboard`, `/billing`, `/pricing`), and plan
+values are the low-cardinality `plan` person-property enums. A link therefore
+never contains a token, an email, a résumé or workspace id, or document
+content.
+
+Guardrails hold for these links exactly as for the rest of the analytics
+boundary:
+
+- **Admin-only.** The links render inside the admin Analytics tab, which is
+  behind the admin role; there is no new public surface.
+- **Consent-based and masked.** They only *open* the existing replay list; they
+  do not change capture. Replays remain opt-in and fully text/input masked.
+- **No document surfaces.** The links do not reference `/r/:token`, `/u/:username`,
+  or `/share/:token`; résumé, share, and portfolio pages stay blocked.
+- **No tokens or PII in URLs.** Filter values are enum strings and templated
+  paths only.
 
 ## Retention and deletion
 

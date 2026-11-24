@@ -12,6 +12,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import analytics_routes
 from app.api.analytics_routes import reset_admin_overview_cache
 from app.services.analytics_service import analytics_service
 
@@ -22,6 +23,7 @@ KPI_KEYS = {
     "total_compilations",
     "total_optimizations",
     "trial_users",
+    "conversion_rate",
 }
 
 
@@ -49,6 +51,22 @@ async def _create_user(
     )
     await db.commit()
     return user_id, email
+
+
+async def _create_trial(db: AsyncSession, *, created_at: datetime) -> None:
+    await db.execute(
+        text(
+            "INSERT INTO device_trials "
+            "(id, device_fingerprint, usage_count, blocked, last_used, created_at) "
+            "VALUES (:id, :fingerprint, 0, false, :created, :created)"
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "fingerprint": f"trend_{uuid.uuid4().hex}",
+            "created": created_at,
+        },
+    )
+    await db.commit()
 
 
 async def _session_headers(db: AsyncSession, user_id: str) -> dict[str, str]:
@@ -202,8 +220,9 @@ async def test_kpi_trends_are_complete_finite_and_cached(
 
     for key in ("total_compilations", "total_optimizations", "trial_users", "total_revenue_inr"):
         trend = trends[key]
-        assert sum(point["value"] for point in trend["sparkline"]) == pytest.approx(
-            trend["current"], abs=0.01
+        sparkline_sum = sum(point["value"] for point in trend["sparkline"])
+        assert sparkline_sum == pytest.approx(trend["current"], abs=0.01), (
+            f"{key}: sparkline sum {sparkline_sum} != current {trend['current']}"
         )
 
     users = _trend(body, "total_users")
@@ -242,3 +261,194 @@ async def test_kpi_trends_are_complete_finite_and_cached(
     assert cached_response.status_code == 200
     assert cached_response.json()["generated_at"] == body["generated_at"]
     assert calls == 0
+
+
+async def test_conversion_rate_kpi_is_percent_and_consistent(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The new conversion KPI is a percent and its deltas are internally consistent."""
+    headers = await _headers(db_session)
+    reset_admin_overview_cache()
+    response = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+
+    trend = _trend(body, "conversion_rate")
+    assert trend["unit"] == "percent"
+    # The KPI value mirrors system.conversion_rate exactly.
+    assert trend["current"] == pytest.approx(body["system"]["conversion_rate"], abs=0.01)
+    assert 0 <= trend["current"] <= 100
+    assert trend["previous"] >= 0
+    assert trend["absolute_delta"] == pytest.approx(
+        trend["current"] - trend["previous"], abs=0.01
+    )
+    assert trend["baseline_zero"] is (trend["previous"] == 0)
+    # An empty prior window never divides by zero.
+    assert (trend["percent_delta"] is None) is (trend["previous"] == 0)
+    assert all("date" in point and "value" in point for point in trend["sparkline"])
+    assert all(0 <= point["value"] <= 100 for point in trend["sparkline"])
+    serialized = json.dumps(trend)
+    assert "NaN" not in serialized and "Infinity" not in serialized
+
+
+async def test_conversion_rate_prior_window_matches_utc_counts(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The prior conversion rate is new users / trials over the prior UTC window."""
+    headers = await _headers(db_session)
+    now = datetime.now(timezone.utc)
+    previous_point = now - timedelta(days=9)
+    current_point = now - timedelta(hours=1)
+
+    # Prior window: two users over four trials. Current window: three users
+    # over two trials, which clamps to 100%.
+    for _ in range(2):
+        await _create_user(db_session, created_at=previous_point)
+    for _ in range(4):
+        await _create_trial(db_session, created_at=previous_point)
+    for _ in range(3):
+        await _create_user(db_session, created_at=current_point)
+    for _ in range(2):
+        await _create_trial(db_session, created_at=current_point)
+
+    reset_admin_overview_cache()
+    response = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    trend = _trend(body, "conversion_rate")
+
+    start = datetime.now(timezone.utc) - timedelta(days=7)
+    previous_start = start - timedelta(days=7)
+    previous_users = (
+        await db_session.execute(
+            text("SELECT count(*) FROM users WHERE created_at >= :start AND created_at < :end"),
+            {"start": previous_start, "end": start},
+        )
+    ).scalar_one()
+    previous_trials = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM device_trials "
+                "WHERE created_at >= :start AND created_at < :end"
+            ),
+            {"start": previous_start, "end": start},
+        )
+    ).scalar_one()
+    expected_previous = (
+        min(previous_users / previous_trials * 100, 100.0) if previous_trials else 0.0
+    )
+
+    assert expected_previous > 0
+    assert trend["previous"] == pytest.approx(expected_previous, abs=0.01)
+    assert trend["current"] == pytest.approx(body["system"]["conversion_rate"], abs=0.01)
+    assert trend["absolute_delta"] == pytest.approx(
+        trend["current"] - trend["previous"], abs=0.01
+    )
+    assert all(0 <= point["value"] <= 100 for point in trend["sparkline"])
+
+
+async def test_prior_window_boundary_is_utc_exclusive(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Records on either side of the UTC window boundary land in the right window."""
+    headers = await _headers(db_session)
+    now = datetime.now(timezone.utc)
+    days = 7
+    start = now - timedelta(days=days)
+
+    reset_admin_overview_cache()
+    baseline = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    base_trend = _trend(baseline.json(), "total_compilations")
+
+    # One compile an hour before the window start (prior window) and one an hour
+    # after it (current window). Prior is [start-days, start), current is
+    # [start, now).
+    for created_at in (start - timedelta(hours=1), start + timedelta(hours=1)):
+        await db_session.execute(
+            text(
+                "INSERT INTO compilations (id, job_id, status, created_at) "
+                "VALUES (:id, :job_id, 'completed', :created)"
+            ),
+            {"id": str(uuid.uuid4()), "job_id": f"job_{uuid.uuid4().hex}", "created": created_at},
+        )
+    await db_session.commit()
+
+    reset_admin_overview_cache()
+    response = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert response.status_code == 200
+    trend = _trend(response.json(), "total_compilations")
+    assert trend["previous"] == base_trend["previous"] + 1
+    assert trend["current"] == base_trend["current"] + 1
+
+
+async def test_overview_served_from_redis_cache(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A warm Redis entry short-circuits the database on the second request."""
+    headers = await _headers(db_session)
+    reset_admin_overview_cache()
+
+    first = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert first.status_code == 200
+    payload = first.json()
+
+    async def fake_get(key: str):
+        if key == "analytics:admin_overview:7":
+            return payload
+        return None
+
+    monkeypatch.setattr(analytics_routes.cache_manager, "get", fake_get)
+
+    async def _boom(*args, **kwargs):
+        raise AssertionError("service must not run on a Redis cache hit")
+
+    monkeypatch.setattr(analytics_service, "get_system_analytics", _boom)
+
+    reset_admin_overview_cache()
+    second = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert second.status_code == 200
+    assert second.json()["generated_at"] == payload["generated_at"]
+
+
+async def test_overview_redis_miss_stores_payload(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A Redis miss computes from the DB and stores the composed response for 60s."""
+    headers = await _headers(db_session)
+    reset_admin_overview_cache()
+    stored: list[tuple[str, int | None]] = []
+
+    async def fake_get(key: str):
+        return None
+
+    async def fake_set(key: str, value: Any, ttl: int | None = None):
+        stored.append((key, ttl))
+
+    monkeypatch.setattr(analytics_routes.cache_manager, "get", fake_get)
+    monkeypatch.setattr(analytics_routes.cache_manager, "set", fake_set)
+
+    response = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert response.status_code == 200
+    assert ("analytics:admin_overview:7", 60) in stored
+
+
+async def test_overview_redis_outage_falls_through(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A Redis outage must not fail the overview — it falls through to the DB."""
+    headers = await _headers(db_session)
+    reset_admin_overview_cache()
+
+    async def failing_get(key: str):
+        raise RuntimeError("redis unavailable")
+
+    async def failing_set(key: str, value: Any, ttl: int | None = None):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(analytics_routes.cache_manager, "get", failing_get)
+    monkeypatch.setattr(analytics_routes.cache_manager, "set", failing_set)
+
+    response = await client.get("/analytics/admin/overview?days=7", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert set(item["key"] for item in body["kpi_trends"]) == KPI_KEYS

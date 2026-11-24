@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient, type AdminAnalyticsOverviewResponse, type AdminKpiTrend } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import AdminOperations from '@/components/admin/AdminOperations'
-import { analyticsDashboardLinks } from '@/lib/analytics/posthog'
+import { analyticsDashboardLinks, analyticsReplayTriageLinks } from '@/lib/analytics/posthog'
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -85,7 +85,9 @@ function TrendNote({ trend }: { trend: AdminKpiTrend }) {
   const tone = neutral ? 'text-fg-3' : percent >= 0 ? 'text-ok' : 'text-err'
   const absolute = trend.unit === 'currency'
     ? formatCurrency(trend.absolute_delta)
-    : formatNumber(trend.absolute_delta)
+    : trend.unit === 'percent'
+      ? `${trend.absolute_delta >= 0 ? '+' : ''}${trend.absolute_delta.toFixed(1)}pp`
+      : formatNumber(trend.absolute_delta)
   return (
     <div className="mt-1">
       <p className={`text-[11px] ${tone}`}>
@@ -246,6 +248,7 @@ export default function AdminAnalytics() {
   const [error, setError] = useState<string | null>(null)
   const requestGeneration = useRef(0)
   const posthogLinks = analyticsDashboardLinks()
+  const replayTriageLinks = useMemo(() => analyticsReplayTriageLinks(days), [days])
 
   const load = useCallback(async (range: number) => {
     const generation = ++requestGeneration.current
@@ -366,6 +369,7 @@ export default function AdminAnalytics() {
         <KpiCard label="Compilations" value={formatNumber(system.total_compilations)} detail={`${formatPercent(system.success_rate)} success`} trend={trendMap.get('total_compilations')} />
         <KpiCard label="Optimizations" value={formatNumber(system.total_optimizations)} detail="AI rewrite runs" trend={trendMap.get('total_optimizations')} />
         <KpiCard label="Trial users" value={formatNumber(system.trial_users)} detail="Anonymous trial starts" trend={trendMap.get('trial_users')} />
+        <KpiCard label="Conversion" value={formatPercent(system.conversion_rate)} detail="Trial → registration" trend={trendMap.get('conversion_rate')} />
       </div>
 
       <OperationsStrip data={operations} />
@@ -414,20 +418,54 @@ export default function AdminAnalytics() {
             US Cloud
           </span>
         </div>
-        {posthogLinks ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a href={posthogLinks.replays} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
-              Open session replays
-            </a>
-            <a href={posthogLinks.dashboards} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
-              Dashboards
-            </a>
-            <a href={posthogLinks.people} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
-              People
-            </a>
-            <a href={posthogLinks.settings} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
-              Replay privacy settings
-            </a>
+        {posthogLinks && replayTriageLinks ? (
+          <div className="mt-4 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <a href={posthogLinks.replays} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
+                Open session replays
+              </a>
+              <a href={posthogLinks.dashboards} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                Dashboards
+              </a>
+              <a href={posthogLinks.people} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                People
+              </a>
+              <a href={posthogLinks.settings} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                Replay privacy settings
+              </a>
+            </div>
+            <div className="border-t border-line pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-fg-3">
+                Pre-filtered replay triage · {days} days
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <a href={replayTriageLinks.checkoutFailures} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                  Checkout failures
+                </a>
+                <a href={replayTriageLinks.jsErrors} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                  JS errors
+                </a>
+                <a href={replayTriageLinks.longSessions} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                  Long sessions
+                </a>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">By route</span>
+                {replayTriageLinks.routes.map((link) => (
+                  <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">By plan</span>
+                {replayTriageLinks.plans.map((link) => (
+                  <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <p className="mt-4 rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">

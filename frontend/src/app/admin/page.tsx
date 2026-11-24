@@ -518,6 +518,19 @@ function AlwaysOnDot({ reason }: { reason?: string | null }) {
 const ROLES: UserRole[] = ['user', 'support', 'admin']
 const PAGE_SIZE = 20
 
+// A pasted user UUID or Dodo provider ID (pay_/sub_/chk_/sess_/ref_) is resolved
+// as an exact identifier lookup; everything else stays a free-text email/name
+// search. Restricting the provider prefixes keeps names containing an
+// underscore (e.g. "John_Doe") on the name-search path. The backend's `id`
+// parameter is deliberately more permissive so new provider prefixes can be
+// looked up without a frontend deploy.
+const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const PROVIDER_ID_LIKE_RE = /^(?:pay|sub|chk|sess|ref)_[A-Za-z0-9_-]{1,200}$/i
+
+function isIdentifier(value: string): boolean {
+  return UUID_LIKE_RE.test(value) || PROVIDER_ID_LIKE_RE.test(value)
+}
+
 function UsersTab({ canAdmin }: { canAdmin: boolean }) {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -555,8 +568,15 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
     let stale = false
     setLoading(true)
     setError(null)
+    const trimmed = debounced.trim()
+    const asId = trimmed && isIdentifier(trimmed) ? trimmed : undefined
     apiClient
-      .getAdminUsers({ q: debounced || undefined, limit: PAGE_SIZE, offset })
+      .getAdminUsers({
+        q: asId ? undefined : trimmed || undefined,
+        id: asId,
+        limit: PAGE_SIZE,
+        offset,
+      })
       .then((data) => {
         if (stale) return
         setUsers(data.users)
@@ -615,10 +635,14 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by email or name…"
+          placeholder="Search by email, name, or user/payment/subscription/refund ID…"
           aria-label="Search users"
           className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-4 py-2.5 text-sm text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg sm:max-w-sm"
         />
+        <p className="mt-1.5 text-xs text-fg-3">
+          Paste a user UUID or a Dodo payment, subscription, checkout, or refund ID for an exact
+          lookup. Email and name searches stay substring-based.
+        </p>
       </div>
 
       {loading ? (

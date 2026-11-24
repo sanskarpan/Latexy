@@ -850,7 +850,7 @@ class AnalyticsService:
         system: Mapping[str, Any],
         timeseries: Sequence[Mapping[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """Return prior-period deltas and daily sparklines for the six KPI cards.
+        """Return prior-period deltas and daily sparklines for the KPI cards.
 
         Snapshot KPIs (total users, active subscriptions) compare the current
         total with the count that existed at the start of the period. Period
@@ -873,6 +873,11 @@ class AnalyticsService:
             )
 
         previous_total_users = await _count(User, User.created_at < start)
+        previous_new_users = await _count(
+            User,
+            User.created_at >= previous_start,
+            User.created_at < start,
+        )
         previous_compilations = await _count(
             Compilation,
             Compilation.created_at >= previous_start,
@@ -887,6 +892,14 @@ class AnalyticsService:
             DeviceTrial,
             DeviceTrial.created_at >= previous_start,
             DeviceTrial.created_at < start,
+        )
+        # Conversion mirrors get_system_analytics(): new_users / trial_users,
+        # clamped to 100 and zeroed when the prior window has no trials. A zero
+        # baseline never divides — it yields a null percent delta downstream.
+        previous_conversion = (
+            min((previous_new_users / previous_trials * 100), 100.0)
+            if previous_trials > 0
+            else 0.0
         )
         previous_active_subscriptions = int(
             (
@@ -977,16 +990,26 @@ class AnalyticsService:
                     )
                 elif metric == "trial_users":
                     value = trial_map.get(day, 0)
+                elif metric == "conversion_rate":
+                    day_trials = int(trial_map.get(day, 0))
+                    day_new_users = int(point.get("new_users") or 0)
+                    value = (
+                        min((day_new_users / day_trials * 100), 100.0)
+                        if day_trials > 0
+                        else 0.0
+                    )
                 else:
                     value = point.get(metric, 0)
                 points.append({
                     "date": day,
-                    "value": round(float(value), 2) if metric == "revenue_inr" else int(value),
+                    "value": round(float(value), 2) if metric in ("revenue_inr", "conversion_rate") else int(value),
                 })
             # The KPI window starts at now - days, while the daily series starts
             # at midnight of the first day. A record in that partial-day gap is
             # in the KPI but would otherwise be missing from the sparkline. Add
             # the residual to the last point so the series and the card agree.
+            # Only additive metrics are reconciled: a rate such as conversion is
+            # a daily ratio, not a sum, so it is never residual-adjusted.
             if points and current is not None:
                 residual = float(current) - sum(float(point["value"]) for point in points)
                 if metric == "revenue_inr":
@@ -1007,11 +1030,12 @@ class AnalyticsService:
             previous: float | int,
             points: List[Dict[str, Any]],
         ) -> Dict[str, Any]:
-            current_value = float(current) if unit == "currency" else int(current)
-            previous_value = float(previous) if unit == "currency" else int(previous)
+            float_units = ("currency", "percent")
+            current_value = float(current) if unit in float_units else int(current)
+            previous_value = float(previous) if unit in float_units else int(previous)
             absolute = (
                 round(current_value - previous_value, 2)
-                if unit == "currency"
+                if unit in float_units
                 else int(current_value - previous_value)
             )
             percent = round((absolute / previous_value) * 100, 1) if previous_value > 0 else None
@@ -1038,19 +1062,23 @@ class AnalyticsService:
             ),
             trend(
                 "total_revenue_inr", "Revenue", "currency", system["total_revenue_inr"],
-                previous_revenue, sparkline("revenue_inr"),
+                previous_revenue, sparkline("revenue_inr", current=system["total_revenue_inr"]),
             ),
             trend(
                 "total_compilations", "Compilations", "count", system["total_compilations"],
-                previous_compilations, sparkline("compilations"),
+                previous_compilations, sparkline("compilations", current=system["total_compilations"]),
             ),
             trend(
                 "total_optimizations", "Optimizations", "count", system["total_optimizations"],
-                previous_optimizations, sparkline("optimizations"),
+                previous_optimizations, sparkline("optimizations", current=system["total_optimizations"]),
             ),
             trend(
                 "trial_users", "Trial users", "count", system["trial_users"], previous_trials,
-                sparkline("trial_users"),
+                sparkline("trial_users", current=system["trial_users"]),
+            ),
+            trend(
+                "conversion_rate", "Conversion", "percent", system["conversion_rate"],
+                previous_conversion, sparkline("conversion_rate"),
             ),
         ]
 
