@@ -77,13 +77,17 @@ export interface ReplayTriageLinks {
 /**
  * Routes surfaced for route-specific triage. Paths are the sanitized values the
  * analytics boundary already sends to PostHog (`sanitizeAnalyticsPath`), so a
- * link never exposes a résumé, share, or workspace id.
+ * link never exposes a résumé, share, or workspace id. Document, share,
+ * portfolio, and guest-editor surfaces are deliberately absent: replay is
+ * blocked there, so a triage link would only return an empty list.
  */
 export const REPLAY_TRIAGE_ROUTES: ReadonlyArray<{ label: string; path: string }> = [
-  { label: 'Resume editor', path: '/workspace/:resumeId/edit' },
   { label: 'Dashboard', path: '/dashboard' },
+  { label: 'Templates', path: '/templates' },
+  { label: 'Tracker', path: '/tracker' },
   { label: 'Billing', path: '/billing' },
   { label: 'Pricing', path: '/pricing' },
+  { label: 'Settings', path: '/settings' },
 ]
 
 /** Plan families surfaced for plan-specific triage, matching the `plan` person property. */

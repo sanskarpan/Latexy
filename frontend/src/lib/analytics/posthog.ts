@@ -15,7 +15,11 @@
  *    sent as an event property. IDs and low-cardinality enums only.
  */
 
-import { replayTriageLinks, type ReplayTriageLinks } from './replay-links'
+import {
+  replayTriageLinks,
+  type ReplayLinkConfig,
+  type ReplayTriageLinks,
+} from './replay-links'
 
 export const ANALYTICS_CONSENT_KEY = 'latexy-analytics-consent'
 export const ANALYTICS_CONSENT_EVENT = 'latexy:analytics-consent'
@@ -282,16 +286,27 @@ export function analyticsDashboardLinks(): {
 }
 
 /**
- * Pre-filtered replay triage links for the admin Analytics tab. The filter
- * values are low-cardinality enums and templated route paths, so no token or
- * personal data can leak into a URL. Returns null when PostHog is not
- * configured for deep links, matching `analyticsDashboardLinks`.
+ * Project/date-range configuration for admin replay deep links. The project id
+ * is public (it is not the write token) and no per-user value is included.
+ * Returns null when PostHog is not configured, matching
+ * `analyticsDashboardLinks`.
  */
-export function analyticsReplayTriageLinks(days: number): ReplayTriageLinks | null {
+export function analyticsReplayLinkConfig(days: number): ReplayLinkConfig | null {
   if (!POSTHOG_PROJECT_ID) return null
-  return replayTriageLinks({
+  return {
     projectId: POSTHOG_PROJECT_ID,
     uiHost: POSTHOG_UI_HOST,
     days,
-  })
+  }
+}
+
+/**
+ * Pre-filtered replay triage links for the admin Analytics tab. The filter
+ * values are low-cardinality enums and templated route paths, so no token or
+ * personal data can leak into a URL. Returns null when PostHog is not
+ * configured for deep links.
+ */
+export function analyticsReplayTriageLinks(days: number): ReplayTriageLinks | null {
+  const config = analyticsReplayLinkConfig(days)
+  return config ? replayTriageLinks(config) : null
 }
