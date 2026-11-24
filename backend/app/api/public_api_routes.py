@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
+from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..core.modal_dispatch import submit_async
 from ..core.redis import get_redis_client
@@ -244,6 +244,11 @@ async def compile_v1(
 
     try:
         dispatch_attempted = False
+        # Attribution is derived server-side after authorisation; a failure to
+        # persist it must follow the ordinary refund/cleanup path below.
+        compilation_record.plan_family = resolve_plan_family(plan_id)
+        compilation_record.compiler = compiler
+        await _commit_db_changes(db)
         estimated_seconds = 20 if plan_id in {"pro", "byok", "team", "student", "pro_annual", "byok_annual"} else 30
         await _write_initial_redis_state(job_id, "latex_compilation", api_key.user_id, estimated_seconds)
         await _mark_dispatch_started(job_id)

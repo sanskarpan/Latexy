@@ -932,6 +932,44 @@ export interface AdminAnalyticsOverviewResponse {
   generated_at: string
 }
 
+export interface AdminCompileLatencyBucket {
+  value: string
+  label: string
+  samples: number
+  p50_seconds: number | null
+  p95_seconds: number | null
+  p99_seconds: number | null
+  mean_seconds: number | null
+  max_seconds: number | null
+  sparse: boolean
+  sample_status: 'ok' | 'insufficient_samples'
+}
+
+export interface AdminCompileLatencySlowestBucket extends AdminCompileLatencyBucket {
+  dimension: 'plan' | 'compiler' | 'template'
+}
+
+export interface AdminCompileLatencyResponse {
+  days: number
+  window: { start: string; end: string }
+  filters: { plan: string | null; compiler: string | null; template: string | null }
+  duration_unit: 'seconds'
+  sparse_threshold: number
+  slowest_limit: number
+  overall: Omit<AdminCompileLatencyBucket, 'value' | 'label'>
+  by_plan: AdminCompileLatencyBucket[]
+  by_compiler: AdminCompileLatencyBucket[]
+  by_template: AdminCompileLatencyBucket[]
+  slowest: AdminCompileLatencySlowestBucket[]
+  missing_dimensions: { plan: number; compiler: number; template: number }
+  totals: {
+    completed_compilations: number
+    timed_compilations: number
+    missing_dimension_fields: number
+  }
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  Entitlements / Admin Control Plane                                 //
 // ------------------------------------------------------------------ //
@@ -4698,6 +4736,21 @@ class ApiClient {
     if (params?.invoice_total_minor != null) qs.set('invoice_total_minor', String(params.invoice_total_minor))
     if (params?.invoice_reference) qs.set('invoice_reference', params.invoice_reference)
     return this.request<AdminAiCostResponse>(`/admin/analytics/ai-cost?${qs}`)
+  }
+
+  async getAdminCompileLatency(params?: {
+    days?: number
+    plan?: string
+    compiler?: string
+    template?: string
+  }): Promise<AdminCompileLatencyResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.compiler) qs.set('compiler', params.compiler)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCompileLatencyResponse>(`/admin/analytics/compile-latency${suffix}`)
   }
 
   async getAdminFilteredTimeseries(params: {
