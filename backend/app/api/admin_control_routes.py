@@ -25,6 +25,7 @@ from ..services.admin_audit_service import (
 from ..services.admin_billing_service import admin_billing_service
 from ..services.admin_compile_latency_service import compile_latency_snapshot
 from ..services.admin_growth_service import admin_growth_service
+from ..services.admin_user_timeline_service import DEFAULT_TIMELINE_LIMIT, MAX_TIMELINE_LIMIT
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -338,12 +339,18 @@ async def reconcile_admin_refund_request(
 @router.get("/admin/users/{user_id}/360")
 async def get_admin_user_360(
     user_id: str,
+    timeline_limit: int = Query(DEFAULT_TIMELINE_LIMIT, ge=1, le=MAX_TIMELINE_LIMIT),
+    timeline_offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     actor: AdminActor = Depends(require_admin_or_support),
 ) -> dict[str, Any]:
     try:
         return await admin_user_service.build_user_360(
-            db, user_id=user_id, actor_role=actor.role
+            db,
+            user_id=user_id,
+            actor_role=actor.role,
+            timeline_limit=timeline_limit,
+            timeline_offset=timeline_offset,
         )
     except Exception as exc:
         raise _http_error(exc) from exc
