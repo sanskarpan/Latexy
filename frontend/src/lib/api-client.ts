@@ -1992,6 +1992,71 @@ export interface AdminFeatureDepthResponse {
   generated_at: string
 }
 
+export type AdminFeatureAdoptionDimension = 'plan' | 'role' | 'cohort'
+
+export interface AdminFeatureAdoptionRow {
+  feature: string
+  key: string
+  label: string
+  category: string
+  description: string | null
+  used_at_least_once: number
+  weekly_active: number
+  penetration: number
+  weekly_active_penetration: number
+  events: number
+  last_used_at: string | null
+}
+
+export interface AdminFeatureAdoptionSegment {
+  dimension: AdminFeatureAdoptionDimension
+  key: string
+  label: string
+  denominator: number
+  suppressed: boolean
+  features: AdminFeatureAdoptionRow[]
+}
+
+export interface AdminFeatureAdoptionResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  date_range: {
+    start: string
+    end: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    role: string[] | null
+    cohort: string[] | null
+    feature: string | null
+    timezone: string
+  }
+  minimum_segment_size: number
+  feature_count: number
+  visible_feature_count: number
+  suppressed: boolean
+  suppressed_segments: Record<AdminFeatureAdoptionDimension, number>
+  segments: AdminFeatureAdoptionSegment[]
+  reconciliation: {
+    source: string
+    audience_users: number
+    usage_events: number
+    matrix_events: number
+    unmatched_events: number
+    features_with_usage: number
+    matched_rate: number
+  }
+  definitions: Record<string, string>
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
@@ -5115,6 +5180,27 @@ class ApiClient {
     if (params?.cohort) qs.set('cohort', params.cohort)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminFeatureDepthResponse>(`/admin/analytics/feature-depth${suffix}`)
+  }
+
+  async getAdminFeatureAdoption(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    role?: string
+    cohort?: string
+    feature?: string
+  }): Promise<AdminFeatureAdoptionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.role) qs.set('role', params.role)
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    if (params?.feature) qs.set('feature', params.feature)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminFeatureAdoptionResponse>(`/admin/analytics/feature-adoption${suffix}`)
   }
 
   async getAdminAttention(): Promise<AdminAttentionResponse> {

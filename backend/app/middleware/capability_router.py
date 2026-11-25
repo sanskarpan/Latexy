@@ -258,6 +258,9 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
         "get_entitlements", "update_kill_switch", "update_matrix_cell",
         "update_role_matrix_cell", "list_users", "update_user_role",
     }),
+    "admin_feature_adoption_routes": frozenset({
+        "get_admin_feature_adoption",
+    }),
     "ai_routes": frozenset({
         "list_bullet_variants", "delete_bullet_variant_set", "list_personas",
     }),
