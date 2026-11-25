@@ -28,6 +28,7 @@ from ..core.celery_app import celery_app
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import get_sync_redis_cache_client, redis_manager
+from ..services.compile_error_taxonomy import classify_compile_error
 from ..workers.event_publisher import get_worker_redis, publish_event, publish_job_result
 from ..workers.finalization_arbiter import (
     FinalizationOutcome,
@@ -1154,6 +1155,9 @@ async def _reconcile_orphaned_compilations(
                         await session.refresh(compilation)
                         compilation.status = "failed"
                         compilation.error_message = "Job dispatch did not start; please retry."
+                        compilation.error_class = classify_compile_error(
+                            compilation.error_message, failure_code="dispatch_timeout"
+                        )
                         await session.commit()
                         repaired += 1
                     continue
@@ -1188,6 +1192,9 @@ async def _reconcile_orphaned_compilations(
                 await session.refresh(compilation)
                 compilation.status = "failed"
                 compilation.error_message = "Job dispatch did not complete; please retry."
+                compilation.error_class = classify_compile_error(
+                    compilation.error_message, failure_code="dispatch_timeout"
+                )
                 await session.commit()
                 repaired += 1
         return repaired

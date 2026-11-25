@@ -970,6 +970,76 @@ export interface AdminCompileLatencyResponse {
   generated_at: string
 }
 
+export type AdminCompileErrorClassKey =
+  | 'syntax'
+  | 'missing_package'
+  | 'timeout'
+  | 'engine'
+  | 'storage'
+  | 'pdf_limit'
+  | 'unknown'
+
+export interface AdminCompileErrorTemplate {
+  template_id: string
+  template_name: string | null
+  count: number
+  latest_at: string | null
+  href: string
+  sparse: boolean
+}
+
+export interface AdminCompileErrorBucket {
+  error_class: AdminCompileErrorClassKey
+  label: string
+  count: number
+  share: number
+  latest_at: string | null
+  affected_templates: AdminCompileErrorTemplate[]
+  unattributed_templates: number
+  sparse: boolean
+}
+
+export interface AdminCompileErrorTrendPoint {
+  date: string
+  failed_compilations: number
+  by_class: Partial<Record<AdminCompileErrorClassKey, number>>
+}
+
+export interface AdminCompileErrorsResponse {
+  days: number
+  window: { start: string; end: string }
+  filters: {
+    plan: string | null
+    compiler: string | null
+    template: string | null
+    error_class: AdminCompileErrorClassKey | null
+  }
+  classes: Array<{
+    error_class: AdminCompileErrorClassKey
+    label: string
+    count: number
+    share: number
+    sparse: boolean
+  }>
+  top_errors: AdminCompileErrorBucket[]
+  trend: AdminCompileErrorTrendPoint[]
+  totals: {
+    failed_compilations: number
+    classified_compilations: number
+    unknown_compilations: number
+    class_total: number
+    reconciled: boolean
+    classes_with_errors: number
+    templates_with_errors: number
+  }
+  suppression: {
+    minimum_sample_size: number
+    user_dimension_included: false
+    detail: string
+  }
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  Entitlements / Admin Control Plane                                 //
 // ------------------------------------------------------------------ //
@@ -5089,6 +5159,23 @@ class ApiClient {
     if (params?.template) qs.set('template', params.template)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminCompileLatencyResponse>(`/admin/analytics/compile-latency${suffix}`)
+  }
+
+  async getAdminCompileErrors(params?: {
+    days?: number
+    plan?: string
+    compiler?: string
+    template?: string
+    error_class?: AdminCompileErrorClassKey
+  }): Promise<AdminCompileErrorsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.compiler) qs.set('compiler', params.compiler)
+    if (params?.template) qs.set('template', params.template)
+    if (params?.error_class) qs.set('error_class', params.error_class)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCompileErrorsResponse>(`/admin/analytics/compile-errors${suffix}`)
   }
 
   async getAdminFilteredTimeseries(params: {

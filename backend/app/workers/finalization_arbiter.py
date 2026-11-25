@@ -834,8 +834,13 @@ async def commit_success(
             # reached.  A rejected typed success (for example a Resume CAS
             # conflict) is itself a terminal compile outcome; leave no
             # processing Compilation row behind for cleanup to misclassify.
+            from ..services.compile_error_taxonomy import classify_compile_error
+
             compilation.status = "failed"
             compilation.error_message = code
+            compilation.error_class = classify_compile_error(
+                code, failure_code=code
+            )
 
     row = await session.scalar(
         select(JobFinalization).where(JobFinalization.job_id == job_id).with_for_update()
