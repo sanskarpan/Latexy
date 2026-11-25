@@ -61,6 +61,7 @@ class _FakeDB:
 
 class _Request:
     client = SimpleNamespace(host="198.51.100.20")
+    cookies: dict[str, str] = {}
 
 
 class _RecursionErrorString:
