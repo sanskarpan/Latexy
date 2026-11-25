@@ -1,26 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import AdminOperationsHealth from '@/components/admin/AdminOperationsHealth'
 import {
   apiClient,
   type AdminAlert,
   type AdminAlertList,
   type AdminAttentionItem,
   type AdminAttentionResponse,
-  type AdminOperationsHealthResponse,
-  type AdminOperationsStatus,
   type AdminQueueMetricsEntry,
   type AdminQueueMetricsResponse,
   type AdminQueueStatus,
   type AdminQueueThroughputPoint,
 } from '@/lib/api-client'
 import AdminStuckJobs from '@/components/admin/AdminStuckJobs'
-
-const STATUS_TONE: Record<AdminOperationsStatus, string> = {
-  healthy: 'border-ok/30 bg-ok/10 text-ok',
-  degraded: 'border-warn/30 bg-warn/10 text-warn',
-  unhealthy: 'border-err/30 bg-err/10 text-err',
-}
 
 const SEVERITY_TONE: Record<AdminAttentionItem['severity'], string> = {
   critical: 'text-err',
@@ -63,28 +56,6 @@ const ALERT_SEVERITY_TONE: Record<AdminAlert['severity'], string> = {
 
 const DEFAULT_ALERT_OWNERS = ['Billing', 'Growth', 'Platform']
 
-const SECTION_LABEL: Record<string, string> = {
-  database: 'Database',
-  redis: 'Redis',
-  redis_cache: 'Redis cache',
-  storage: 'Object storage',
-  capacity: 'Redis capacity',
-  job_queue: 'Job queue',
-  billing: 'Billing',
-  compilations: 'Compilations',
-}
-
-const SECTION_ORDER = [
-  'database',
-  'redis',
-  'redis_cache',
-  'storage',
-  'capacity',
-  'job_queue',
-  'billing',
-  'compilations',
-]
-
 function isMissingEndpoint(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /^HTTP 404\b/.test(message)
@@ -101,10 +72,6 @@ function formatAge(iso: string | null): string {
   const hours = Math.round(minutes / 60)
   if (hours < 48) return `${hours}h ago`
   return `${Math.round(hours / 24)}d ago`
-}
-
-function statusClass(status: AdminOperationsStatus): string {
-  return STATUS_TONE[status] ?? STATUS_TONE.degraded
 }
 
 function formatExpiry(iso: string | null | undefined, days: number | null | undefined): string {
@@ -132,40 +99,6 @@ function formatSeconds(seconds: number | null | undefined): string {
 function formatRate(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
   return `${value.toFixed(1)}/min`
-}
-
-function metricText(section: Record<string, unknown>): string[] {
-  const parts: string[] = []
-  const number = (value: unknown): number | null =>
-    typeof value === 'number' && Number.isFinite(value) ? value : null
-
-  const queued = number(section.queued)
-  const processing = number(section.processing)
-  const stuck = number(section.stuck)
-  if (queued !== null) parts.push(`${queued} queued`)
-  if (processing !== null) parts.push(`${processing} processing`)
-  if (stuck !== null) parts.push(`${stuck} stuck`)
-
-  const failedWebhooks = number(section.failed_webhooks)
-  const failedPayments = number(section.failed_payments)
-  const pastDue = number(section.past_due_subscriptions)
-  if (failedWebhooks !== null) parts.push(`${failedWebhooks} webhook failures`)
-  if (failedPayments !== null) parts.push(`${failedPayments} failed payments`)
-  if (pastDue !== null) parts.push(`${pastDue} past due`)
-
-  const completed = number(section.completed_24h)
-  const failed = number(section.failed_24h)
-  const failureRate = number(section.failure_rate)
-  const p95 = number(section.p95_seconds)
-  if (completed !== null) parts.push(`${completed} completed / 24h`)
-  if (failed !== null) parts.push(`${failed} failed`)
-  if (failureRate !== null) parts.push(`${failureRate.toFixed(1)}% failure rate`)
-  if (p95 !== null) parts.push(`p95 ${p95.toFixed(1)}s`)
-
-  const utilization = number(section.utilization_ratio)
-  if (utilization !== null) parts.push(`${(utilization * 100).toFixed(1)}% capacity`)
-
-  return parts
 }
 
 function AlertRow({ alert, onUpdated }: { alert: AdminAlert; onUpdated: () => void }) {
@@ -751,92 +684,6 @@ function QueueStrip({ refreshKey }: { refreshKey: number }) {
   )
 }
 
-function HealthPanel({ refreshKey }: { refreshKey: number }) {
-  const [data, setData] = useState<AdminOperationsHealthResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [unavailable, setUnavailable] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    setUnavailable(false)
-    try {
-      setData(await apiClient.getAdminOperationsHealth())
-    } catch (err) {
-      if (isMissingEndpoint(err)) {
-        setUnavailable(true)
-      } else {
-        setError(err instanceof Error ? err.message : 'Operations health could not be loaded')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load, refreshKey])
-
-  if (unavailable) return null
-
-  const sections = data?.sections ?? {}
-  const ordered = SECTION_ORDER.filter((key) => key in sections)
-    .concat(Object.keys(sections).filter((key) => !SECTION_ORDER.includes(key)))
-
-  return (
-    <details
-      className="rounded-[var(--radius-lg)] border border-line bg-surface"
-      open={data ? data.status !== 'healthy' : false}
-    >
-      <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div>
-          <span className="text-sm font-semibold text-fg">System health</span>
-          <span className="ml-2 text-xs text-fg-3">Dependencies, queue age, billing and compile health</span>
-        </div>
-        {data && (
-          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${statusClass(data.status)}`}>
-            {data.status}
-          </span>
-        )}
-      </summary>
-      <div className="border-t border-line p-4">
-        {loading && !data && <p role="status" className="text-xs text-fg-3">Checking dependencies…</p>}
-        {error && (
-          <div role="alert" className="mb-3 rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-            {error}
-            {data ? ' Showing the last successful data.' : ''}
-          </div>
-        )}
-        {data && (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {ordered.map((key) => {
-              const section = sections[key]
-              const metrics = metricText(section)
-              return (
-                <div key={key} className="rounded-[var(--radius-md)] border border-line bg-surface-2/50 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
-                      {SECTION_LABEL[key] ?? key}
-                    </p>
-                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${statusClass(section.status)}`}>
-                      {section.status}
-                    </span>
-                  </div>
-                  {metrics.length > 0 && (
-                    <p className="mt-1 text-[11px] leading-relaxed text-fg-3">{metrics.join(' · ')}</p>
-                  )}
-                  {section.detail && <p className="mt-1 text-[11px] text-fg-3">{section.detail}</p>}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </details>
-  )
-}
-
 export default function AdminOperations() {
   const [refreshKey, setRefreshKey] = useState(0)
   return (
@@ -854,7 +701,7 @@ export default function AdminOperations() {
       <AttentionStrip refreshKey={refreshKey} />
       <AdminStuckJobs refreshKey={refreshKey} />
       <QueueStrip refreshKey={refreshKey} />
-      <HealthPanel refreshKey={refreshKey} />
+      <AdminOperationsHealth refreshKey={refreshKey} />
     </div>
   )
 }

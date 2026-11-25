@@ -421,6 +421,17 @@ def _init_worker_redis() -> None:
     # scoped clients and durable owner/epoch checks remain per invocation.
     prepare_worker_runtime(settings.RESUME_SEMANTIC_ENGINE_ENABLED is True)
     initialize_worker_redis(settings.REDIS_URL, password=settings.REDIS_PASSWORD or None)
+    try:
+        # Every Modal worker invocation and scheduled maintenance run publishes
+        # an aggregate heartbeat for the admin operations view. It never raises.
+        from app.services.worker_health_service import record_worker_heartbeat
+
+        # One logical Modal component: job containers and scheduled runners
+        # update the same heartbeat so scaled-down ephemeral containers do not
+        # accumulate as false stale workers.
+        record_worker_heartbeat(kind="modal", worker_id="modal-runtime")
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

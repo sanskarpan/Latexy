@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.logging import get_logger
 from ..core.redis import redis_manager
 from ..database import models
+from . import worker_health_service
 
 logger = get_logger(__name__)
 
@@ -732,10 +733,19 @@ async def get_health(db: AsyncSession, *, use_cache: bool = True) -> dict[str, A
         await _safe_rollback(db)
         sections["compilations"] = _section("unhealthy", observed, "Compile metrics could not be checked")
 
+    try:
+        workers = await worker_health_service.get_worker_health(now=now)
+    except Exception:
+        # The worker reader already returns a fixed outage payload; keep this
+        # boundary so an unexpected bug cannot blank the rest of the aggregate.
+        workers = worker_health_service.unavailable_worker_health(now=now)
+    sections["workers"] = worker_health_service.worker_health_section(workers)
+
     payload = {
         "generated_at": observed,
         "status": _worst([section["status"] for section in sections.values()]),
         "sections": sections,
+        "workers": workers,
     }
     _health_cache = (now_mono + HEALTH_CACHE_SECONDS, payload)
     return payload

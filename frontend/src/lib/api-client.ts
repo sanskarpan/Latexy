@@ -822,10 +822,47 @@ export interface AdminOperationsHealthSection {
   [metric: string]: string | number | boolean | null | undefined
 }
 
+export interface AdminWorkerHealthComponent {
+  worker_id: string
+  kind: 'celery' | 'modal'
+  status: AdminOperationsStatus
+  last_seen: string
+  age_seconds: number
+  cpu_percent: number | null
+  memory_percent: number | null
+  memory_mb: number | null
+  queues: string[]
+  missing_metrics: boolean
+  missing_queue_ownership: boolean
+}
+
+export interface AdminWorkerProviderLink {
+  name: string
+  console_url: string
+}
+
+export interface AdminWorkerHealth {
+  status: AdminOperationsStatus
+  observed_at: string
+  last_check_at: string
+  read_ok: boolean
+  detail?: string | null
+  stale_after_seconds: number
+  ttl_seconds: number
+  active_workers: number
+  stale_workers: number
+  missing_metrics: number
+  components: AdminWorkerHealthComponent[]
+  queue_ownership: Record<string, number>
+  unowned_queues: string[]
+  providers: AdminWorkerProviderLink[]
+}
+
 export interface AdminOperationsHealthResponse {
   generated_at: string
   status: AdminOperationsStatus
   sections: Record<string, AdminOperationsHealthSection>
+  workers?: AdminWorkerHealth
 }
 
 export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
