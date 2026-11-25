@@ -4479,6 +4479,12 @@ class ApiClient {
    * unavailable so callers can ignore failures without branching.
    */
   async recordSignupMilestones(): Promise<SignupMilestonesResponse | null> {
+    // Playwright servers expose a build-time test flag. Synthetic suites assert
+    // exact request ledgers, so keep this non-essential telemetry local to the
+    // fixture instead of letting it reach the network. Production never sets
+    // NEXT_PUBLIC_PLAYWRIGHT_TEST and always records the server-derived
+    // milestones.
+    if (process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === '1') return null
     try {
       return await this.request<SignupMilestonesResponse>('/analytics/signup/milestones', {
         method: 'POST',
