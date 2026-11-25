@@ -15,6 +15,7 @@ import {
   resetAnalyticsUser,
   type AnalyticsConsent,
 } from '@/lib/analytics/posthog'
+import { resolveLandingContext } from '@/lib/analytics/landing'
 import AnalyticsConsentBanner from './AnalyticsConsentBanner'
 import { apiClient } from '@/lib/api-client'
 import {
@@ -55,7 +56,7 @@ export default function AnalyticsProvider() {
       setInitialized(true)
       if (lastTrackedPath.current !== path) {
         lastTrackedPath.current = path
-        capturePageview(path)
+        capturePageview(path, resolveLandingContext(path))
       }
     })
   }
@@ -100,7 +101,7 @@ export default function AnalyticsProvider() {
     if (!ready || consent !== 'granted' || !initialized) return
     if (lastTrackedPath.current === pathname) return
     lastTrackedPath.current = pathname
-    capturePageview(pathname)
+    capturePageview(pathname, resolveLandingContext(pathname))
   }, [pathname, ready, consent, initialized])
 
   useEffect(() => {

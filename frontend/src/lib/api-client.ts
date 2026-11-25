@@ -1717,6 +1717,80 @@ export interface AdminActivationResponse {
   generated_at: string
 }
 
+export interface AdminLandingConversionRow {
+  // Grouped rows only carry the labels for the dimensions they group by.
+  page_key?: string | null
+  page_label?: string
+  missing_page_key?: boolean
+  experiment?: string | null
+  experiment_label?: string
+  missing_experiment?: boolean
+  variant?: string | null
+  variant_label?: string
+  missing_variant?: boolean
+  device_class?: 'mobile' | 'tablet' | 'desktop' | 'unknown'
+  device_label?: string
+  visits: number
+  trial_starts: number
+  registrations: number
+  subscriptions: number
+  sample_size: number
+  conversion_rate: number
+  trial_conversion_rate: number
+  subscription_conversion_rate: number
+}
+
+export interface AdminLandingConversionResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_segment_size: number
+  summary: {
+    period_days: number
+    funnel_steps: {
+      landing_visits: number
+      trial_starts: number
+      registrations: number
+      subscriptions: number
+    }
+    conversion_rates: {
+      landing_to_trial: number
+      trial_to_registration: number
+      registration_to_subscription: number
+      overall_conversion: number
+    }
+    sample_sizes: {
+      landing_visits: number
+      trial_starts: number
+      registrations: number
+      subscriptions: number
+    }
+    attribution: {
+      model: string
+      attributed_trial_starts: number
+      attributed_registrations: number
+      unattributed_trial_starts: number
+      unattributed_registrations: number
+      registration_coverage_pct: number
+      description: string
+    }
+  }
+  by_device: AdminLandingConversionRow[]
+  by_page: AdminLandingConversionRow[]
+  by_page_variant: AdminLandingConversionRow[]
+  by_page_variant_device: AdminLandingConversionRow[]
+  suppressed_cells: number
+  truncated_cells: number
+  supported_page_keys: string[]
+  variant_labels: {
+    missing: string
+    missing_experiment: string
+    missing_page: string
+    unknown_device: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -5449,6 +5523,11 @@ class ApiClient {
     if (params?.end_date) qs.set('end_date', params.end_date)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminTrafficSourcesResponse>(`/admin/analytics/traffic-sources${suffix}`)
+  }
+
+  async getAdminLandingConversion(days = 30): Promise<AdminLandingConversionResponse> {
+    const qs = new URLSearchParams({ days: String(days) })
+    return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
   }
 
   async getAdminAiCost(params?: {

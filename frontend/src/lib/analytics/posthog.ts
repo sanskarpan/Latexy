@@ -261,25 +261,40 @@ export function captureAnalyticsEvent(event: string, properties?: AnalyticsPrope
   }
 }
 
-export function capturePageview(pathname: string): void {
+export function capturePageview(
+  pathname: string,
+  context?: {
+    pageKey?: string | null
+    experiment?: string | null
+    variant?: string | null
+    deviceClass?: string | null
+  },
+): void {
   if (!client || readAnalyticsConsent() !== 'granted' || typeof window === 'undefined') return
   const path = sanitizeAnalyticsPath(pathname)
   const utm = readUtmParams(window.location.search)
   const referrerHost = safeReferrerHost()
   const hasAttribution = Object.keys(utm).length > 0 || Boolean(referrerHost)
+  const properties: AnalyticsProperties = {
+    // Origin + sanitized path only; UTM values are captured separately below
+    // because sanitizeAnalyticsPath deliberately strips the query string.
+    $current_url: `${window.location.origin}${path}`,
+    // A host is enough for source reporting and cannot carry a query-string
+    // token or an arbitrary external path.
+    ...(referrerHost ? { $referrer: `https://${referrerHost}` } : {}),
+    path,
+    ...utm,
+    ...(referrerHost ? { referrer_host: referrerHost } : {}),
+    ...(hasAttribution ? { landing_path: path } : {}),
+  }
+  // Landing attribution is low-cardinality only. A missing variant is omitted
+  // rather than filled in with an invented control group.
+  if (context?.pageKey) properties.page_key = context.pageKey
+  if (context?.experiment) properties.experiment = context.experiment
+  if (context?.variant) properties.variant = context.variant
+  if (context?.deviceClass) properties.device_class = context.deviceClass
   try {
-    client.capture('$pageview', {
-      // Origin + sanitized path only; UTM values are captured separately below
-      // because sanitizeAnalyticsPath deliberately strips the query string.
-      $current_url: `${window.location.origin}${path}`,
-      // A host is enough for source reporting and cannot carry a query-string
-      // token or an arbitrary external path.
-      ...(referrerHost ? { $referrer: `https://${referrerHost}` } : {}),
-      path,
-      ...utm,
-      ...(referrerHost ? { referrer_host: referrerHost } : {}),
-      ...(hasAttribution ? { landing_path: path } : {}),
-    })
+    client.capture('$pageview', properties)
   } catch {
     // Best effort.
   }
