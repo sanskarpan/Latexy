@@ -22,6 +22,7 @@ const MOCK_FLAGS: object[] = [
 async function openFlags(page: Page) {
   await page.goto('/admin', { waitUntil: 'domcontentloaded' })
   await page.getByRole('tab', { name: 'Feature Flags', exact: true }).click()
+  await page.getByLabel('Reason for feature flag changes').fill('Synthetic admin feature-flag test')
 }
 
 async function mockAuth(page: Page) {
@@ -218,6 +219,7 @@ test.describe('/admin — toggle flags', () => {
     expect(patchCalled).toBe(true)
     expect(patchedKey).toBe('trial_limits')
     expect(patchBody.enabled).toBe(false)
+    expect(patchBody.reason).toBe('Synthetic admin feature-flag test')
   })
 
   test('toggle updates flag state optimistically', async ({ page }) => {

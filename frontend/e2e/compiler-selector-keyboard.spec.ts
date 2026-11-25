@@ -31,6 +31,9 @@ test('C07 saved owner selects a compiler with keyboard navigation and one settin
     // Reuse the ordinary synthetic owner API/CORS boundary. C07 is available;
     // background compilation is denied and no administrative role is granted.
     await mockEngineAncillaryApi(page, OWNER, { c07: true, c05: false, c06: false })
+    await mockEngineRoute(page, '**/analytics/signup/milestones', route => fulfillEngineResponse(route, {
+        json: { provider: 'email', email_verified: true, recorded: [] },
+    }))
     await mockEngineRoute(page, url => url.pathname === '/api/auth/get-session', route => fulfillEngineResponse(route, {
         json: { session: { token: TOKEN }, user: { id: OWNER, email: 'compiler-owner@example.invalid', name: 'Compiler owner', role: 'user' } },
     }))

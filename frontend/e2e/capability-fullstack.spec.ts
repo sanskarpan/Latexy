@@ -51,6 +51,7 @@ async function setAdminCapability(
     : `${label} for ${scope === 'role' ? 'role ' : ''}${scope === 'family' ? 'pro' : scope === 'sku' ? 'pro_annual' : 'user'}`
   const control = page.getByRole('switch', { name, exact: true })
   await expect(control).toHaveAttribute('aria-checked', String(!enabled))
+  await page.getByLabel('Reason for permission changes').fill('Synthetic capability test change')
   const changed = page.waitForResponse((response) =>
     new URL(response.url()).pathname.startsWith('/admin/entitlements/')
       && response.request().method() === 'PATCH',
@@ -82,6 +83,7 @@ test('real role toggles hide desktop/mobile controls and block API while owner d
     await expect(adminPage.getByRole('heading', { name: 'Capability inventory' })).toBeVisible({ timeout: 45_000 })
     await adminPage.getByRole('searchbox', { name: 'Search capabilities' }).fill('b03')
     await adminPage.getByRole('button', { name: 'Account roles' }).click()
+    await adminPage.getByLabel('Reason for permission changes').fill('Synthetic capability role test change')
     const created = await actorContext.request.post(`${backend}/resumes/`, {
       headers: actor.headers,
       data: { title: 'Synthetic saved source', latex_content: '\\documentclass{article}\\begin{document}Existing source remains.\\end{document}' },

@@ -129,9 +129,22 @@ describe('replay triage URL builder', () => {
       expect(href).not.toContain('/r/')
       expect(href).not.toContain('/share/')
     }
-    // The editor route is the templated form, never a real résumé id.
+    // The first route is a plain templated product path, never a résumé id.
     const routeValue = groupValues(links.routes[0].href)[0] as { value: string }
-    expect(routeValue.value).toBe('/workspace/:resumeId/edit')
+    expect(routeValue.value).toBe('/dashboard')
+  })
+
+  it('never offers document, share, portfolio, or guest-editor routes', () => {
+    const paths = REPLAY_TRIAGE_ROUTES.map((route) => route.path)
+    expect(paths).not.toContain('/workspace/:resumeId/edit')
+    for (const path of paths) {
+      expect(path).not.toMatch(/^\/(?:workspace|workspaces|try|r|u|share|portfolio)(?:\/|$)/)
+    }
+    const links = replayTriageLinks(config)
+    for (const route of links.routes) {
+      const value = (groupValues(route.href)[0] as { value: string }).value
+      expect(value.startsWith('/workspace')).toBe(false)
+    }
   })
 
   it('builds a deterministic URL for arbitrary filters', () => {

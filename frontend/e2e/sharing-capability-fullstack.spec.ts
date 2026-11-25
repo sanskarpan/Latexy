@@ -60,9 +60,9 @@ test('public sharing survives policy recovery, isolates accounts and permanently
     await pool.query("UPDATE users SET role='user',subscription_plan='pro_annual',subscription_status='active' WHERE id=ANY($1::uuid[])", [[o.id, s.id]])
     async function policy(axis: 'global' | 'role' | 'family' | 'sku', key: string, enabled: boolean) {
       const path = axis === 'global' ? `kill-switch/${key}` : axis === 'role' ? 'roles' : 'matrix'
-      const data = axis === 'global' ? { feature_key: key, enabled }
-        : axis === 'role' ? { role: 'user', feature_key: key, enabled }
-        : { plan_family: axis === 'family' ? 'pro' : 'pro_annual', feature_key: key, enabled }
+      const data = axis === 'global' ? { feature_key: key, enabled, reason: 'Synthetic sharing capability test' }
+        : axis === 'role' ? { role: 'user', feature_key: key, enabled, reason: 'Synthetic sharing capability test' }
+        : { plan_family: axis === 'family' ? 'pro' : 'pro_annual', feature_key: key, enabled, reason: 'Synthetic sharing capability test' }
       const response = await admin.request.patch(`${backend}/admin/entitlements/${path}`, { headers: a.headers, data })
       expect(response.status(), await response.text()).toBe(200)
     }

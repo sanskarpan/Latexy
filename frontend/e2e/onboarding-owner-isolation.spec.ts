@@ -275,6 +275,19 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
     recordBlocked(route.request())
     await route.abort()
   })
+  await page.route((url) => url.origin === apiOrigin && normalizeApiPath(url.pathname) === '/analytics/signup/milestones', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': baseOrigin, 'access-control-allow-credentials': 'true' },
+        body: JSON.stringify({ provider: 'email', email_verified: true, recorded: [] }),
+      })
+      return
+    }
+    recordBlocked(route.request())
+    await route.abort()
+  })
   await page.route((url) => url.origin === apiOrigin && normalizeApiPath(url.pathname) === '/telemetry/frontend', async (route) => {
     if (route.request().method() === 'POST') {
       await route.abort()

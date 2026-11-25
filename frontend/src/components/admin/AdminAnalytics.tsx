@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient, type AdminAnalyticsOverviewResponse, type AdminKpiTrend } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
+import AdminCompileLatency from '@/components/admin/AdminCompileLatency'
 import AdminOperations from '@/components/admin/AdminOperations'
 import { analyticsDashboardLinks, analyticsReplayTriageLinks } from '@/lib/analytics/posthog'
 
@@ -374,6 +375,8 @@ export default function AdminAnalytics() {
 
       <OperationsStrip data={operations} />
 
+      <AdminCompileLatency days={days} />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
           <h3 className="text-sm font-semibold text-fg">Product events per day</h3>
@@ -421,7 +424,10 @@ export default function AdminAnalytics() {
         {posthogLinks && replayTriageLinks ? (
           <div className="mt-4 space-y-4">
             <div className="flex flex-wrap gap-2">
-              <a href={posthogLinks.replays} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
+              <a href="/admin?tab=replays" className="rounded-[var(--radius-md)] bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
+                Replay library
+              </a>
+              <a href={posthogLinks.replays} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
                 Open session replays
               </a>
               <a href={posthogLinks.dashboards} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">

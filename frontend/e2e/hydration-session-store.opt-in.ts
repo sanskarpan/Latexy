@@ -131,6 +131,10 @@ test('real Better Auth SSR snapshot stays stable for a late consumer and refresh
     define: {
       'process.env.NEXT_PUBLIC_APP_URL': 'undefined',
       'process.env.NEXT_PUBLIC_API_URL': 'window.location.origin',
+      // This synthetic bundle is not served by Next, so opt out of the
+      // non-essential signup-milestone call explicitly instead of letting it
+      // reach the tiny fixture server and pollute its console ledger.
+      'process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST': '"1"',
       'process.env.NODE_ENV': '"production"',
     },
   })

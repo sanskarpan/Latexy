@@ -13,10 +13,13 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Revenue | `POST /admin/billing/refunds` | Create a refund request (full, or partial with a provider line-item ID) |
 | Revenue | `POST /admin/billing/refunds/{id}/approve\|reject` | Second-admin decision; the requester cannot decide their own request |
 | Revenue | `POST /admin/billing/refunds/{id}/execute` | Submit an approved/retryable refund to Dodo |
-| Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments |
+| Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments plus the provider-segmented signup start → complete → verified funnel, median time-to-verify and OAuth-failure counters |
+| Growth & Cost | `GET /analytics/conversion-funnel` | Admin-only landing → trial → registration → subscription funnel; now includes the same server-derived signup/provider report |
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
+| Growth & Cost | `GET /admin/analytics/feature-depth` | Per-feature users/events, median and p95 events per user, repeat rate, frequency buckets (1, 2-4, 5-9, 10+), habitual users (>=5 events/week), and distinct-feature breadth; plan and signup-cohort filters, groups below five users suppressed |
+| Growth & Cost | `GET /admin/analytics/compile-latency` | p50/p95/p99 compile latency by plan family, compiler, and template with sample counts, explicit sparse buckets, missing-attribution counts and ranked slowest buckets |
 | Customers | `GET /admin/users/{id}/360` | Masked account, activation, usage, billing, security, and integration summary |
 | Customers | `POST /admin/users/{id}/pii/reveal` | Admin-only email/name reveal with a mandatory reason and audit record |
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
@@ -41,6 +44,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - Audit payloads are bounded and redacted. Secrets, credentials, document
   content, prompts, job descriptions, and direct identifiers are dropped rather
   than stored, and before/after contain only fields whose values changed.
+- Compile-latency analytics reads only persisted aggregate dimensions
+  (`plan_family`, `compiler`, `template_id`) and duration on completed
+  compilations. It never reads résumé source, document content, or compile
+  error text.
 - Support can open only the Customers surface. Support sees masked email/name,
   no admin actions, and cannot reveal PII or perform mutations.
 - Refunds use separation of duties: one admin requests, a different admin
@@ -53,7 +60,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   revealed PII is overlaid live and is never cached.
 - No provider credential, card detail, or bank detail is returned to the browser.
 - Growth segments and retention cohorts suppress rates below five users to
-  avoid re-identifying a small group.
+  avoid re-identifying a small group. Feature-depth groups below five users are
+  omitted and a filtered cohort below five users returns no counts; only
+  aggregate counts are returned, never event metadata, document text, or
+  per-user event rows.
 - KPI comparisons use an equal-length previous window. A zero (or negative)
   baseline returns no percent delta instead of infinity, and the UI uses a
   neutral tone in that case. Snapshot KPIs compare against the count at the
@@ -162,6 +172,12 @@ serve normal traffic; there is no application delete path or scheduled purge.
 - `backend/test/test_admin_alerts_api.py` covers evaluator deduplication,
   occurrence counts, auto-resolution, admin-only acknowledgement/snooze and
   audit coverage.
+- `backend/test/test_signup_funnel.py` covers server-derived provider
+  assignment/unknown fallback, start → complete → verified conversion, median
+  time-to-verify, OAuth failure counts, cohort suppression below 5, PII/token
+  exclusion and admin-only access.
+- `frontend/src/__tests__/signup-funnel.test.ts` covers the server-derived OAuth
+  callback failure counter and its wiring into the Better Auth route.
 - `frontend/src/__tests__/admin-control-room.test.ts` pins the tab wiring,
   support-only navigation, refund controls, operations-panel loading and
   PostHog privacy hardening.
@@ -172,5 +188,8 @@ serve normal traffic; there is no application delete path or scheduled purge.
 2. Deploy backend with the migration in the held release path.
 3. Deploy the frontend after the backend health check.
 4. Verify `/health`, `/readyz`, `/admin/billing/summary`, and the Revenue tab.
-5. The five known quarantined Dodo test dead letters may be acknowledged with a
+5. Apply Alembic `0081_signup_funnel_providers` before the backend rollout;
+   it backfills `users.auth_provider` from Better Auth account rows and creates
+   the aggregate `signup_funnel_events` table used by the Growth tab.
+6. The five known quarantined Dodo test dead letters may be acknowledged with a
    reason after review; acknowledgement does not grant access or move money.

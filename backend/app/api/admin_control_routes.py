@@ -14,13 +14,16 @@ from ..database.connection import get_db
 from ..middleware.auth_middleware import require_admin_actor, require_admin_or_support
 from ..services import admin_user_service
 from ..services.admin_audit_service import (
+    CHANGE_HISTORY_TARGET_TYPES,
     DEFAULT_AUDIT_PAGE_SIZE,
     MAX_AUDIT_PAGE_SIZE,
     AdminActor,
     audit_row_summary,
     list_admin_audit,
+    list_admin_change_history,
 )
 from ..services.admin_billing_service import admin_billing_service
+from ..services.admin_compile_latency_service import compile_latency_snapshot
 from ..services.admin_growth_service import admin_growth_service
 
 router = APIRouter()
@@ -731,6 +734,64 @@ async def get_admin_ai_cost(
     )
 
 
+@router.get("/admin/analytics/feature-depth")
+async def get_admin_feature_depth(
+    days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    cohort: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    signup_month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Aggregate per-feature frequency, depth, and breadth."""
+    try:
+        return await admin_growth_service.feature_depth(
+            db, days=days, plan=plan, cohort=cohort or signup_month
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/admin/analytics/compile-latency")
+async def get_admin_compile_latency(
+    days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    compiler: Optional[str] = Query(None, max_length=32),
+    template: Optional[str] = Query(None, max_length=64),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    try:
+        return await compile_latency_snapshot(
+            db,
+            days=days,
+            plan=plan,
+            compiler=compiler,
+            template=template,        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@router.get("/admin/analytics/ai-usage")
+async def get_admin_ai_usage(
+    days: int = Query(30, ge=1, le=365),
+    plan: Optional[str] = Query(None, max_length=50),
+    feature: Optional[str] = Query(None, max_length=120),
+    provider: Optional[str] = Query(None, max_length=80),
+    model: Optional[str] = Query(None, max_length=160),
+    persona: Optional[str] = Query(None, max_length=64),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    return await admin_growth_service.ai_usage(
+        db,
+        days=days,
+        plan=plan,
+        feature=feature,
+        provider=provider,
+        model=model,
+        persona=persona,
+    )
+
 @router.get("/admin/analytics/timeseries")
 async def get_admin_analytics_timeseries(
     days: int = Query(30, ge=1, le=365),
@@ -799,6 +860,53 @@ async def get_admin_audit_log(
             "action": action,
             "target_type": target_type,
             "target_id": target_id,
+            "created_after": created_after.isoformat() if created_after else None,
+            "created_before": created_before.isoformat() if created_before else None,
+        },
+    }
+
+
+@router.get("/admin/change-history")
+async def get_admin_change_history(
+    key: Optional[str] = Query(None, max_length=255),
+    target_id: Optional[str] = Query(None, max_length=255),
+    actor_user_id: Optional[str] = Query(None, max_length=36),
+    action: Optional[str] = Query(None, max_length=120),
+    created_after: Optional[datetime] = Query(None),
+    created_before: Optional[datetime] = Query(None),
+    limit: int = Query(DEFAULT_AUDIT_PAGE_SIZE, ge=1, le=MAX_AUDIT_PAGE_SIZE),
+    cursor: Optional[str] = Query(None, max_length=500),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Read-only history for feature flags, kill-switches and matrix cells."""
+    try:
+        rows, total, has_more, next_cursor = await list_admin_change_history(
+            db,
+            key=key,
+            target_id=target_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "items": [audit_row_summary(row) for row in rows],
+        "total": total,
+        "limit": limit,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "read_only": True,
+        "target_types": list(CHANGE_HISTORY_TARGET_TYPES),
+        "filters": {
+            "key": key,
+            "target_id": target_id,
+            "actor_user_id": actor_user_id,
+            "action": action,
             "created_after": created_after.isoformat() if created_after else None,
             "created_before": created_before.isoformat() if created_before else None,
         },

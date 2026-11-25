@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Check, Loader2, X } from 'lucide-react'
 import { authClient, useSession } from '@/lib/auth-client'
+import { apiClient } from '@/lib/api-client'
 
 // Keep in sync with EmailVerifyBanner — clearing it un-dismisses the banner so a
 // failed verification still leaves the user a visible resend path in the app.
@@ -26,6 +27,7 @@ function VerifyEmailInner() {
   // success signal here; failures arrive on the same URL as `&error=CODE`.
   const verified = params.get('verified') === '1'
   const ranRef = useRef(false)
+  const milestoneRecordedRef = useRef(false)
 
   const [status, setStatus] = useState<Status>(() =>
     urlError ? 'error' : verified ? 'success' : token ? 'verifying' : 'error',
@@ -68,6 +70,14 @@ function VerifyEmailInner() {
     } catch {
       /* ignore storage errors */
     }
+  }, [status])
+
+  // Record the server-derived verification milestone exactly once. The backend
+  // checks users.email_verified itself; this page never supplies a provider.
+  useEffect(() => {
+    if (status !== 'success' || milestoneRecordedRef.current) return
+    milestoneRecordedRef.current = true
+    void apiClient.recordSignupMilestones()
   }, [status])
 
   const handleResend = async () => {

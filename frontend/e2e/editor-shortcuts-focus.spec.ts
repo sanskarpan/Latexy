@@ -38,6 +38,9 @@ async function openSavedEditor(page: Page) {
     return route.abort()
   })
   await mockEngineAncillaryApi(page, OWNER, { c04: true, c05: false, c06: false })
+  await mockEngineRoute(page, '**/analytics/signup/milestones', route => fulfillEngineResponse(route, {
+    json: { provider: 'email', email_verified: true, recorded: [] },
+  }))
   await mockEngineRoute(page, url => url.pathname === '/api/auth/get-session', route => fulfillEngineResponse(route, {
     json: { session: { token: 'shortcuts-synthetic-session' }, user: { id: OWNER, email: 'shortcuts@example.invalid', name: 'Shortcuts owner', role: 'user' } },
   }))

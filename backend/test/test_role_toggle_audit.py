@@ -17,14 +17,15 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
     update = AsyncMock()
     state = AsyncMock(return_value={"verified": True})
     logger = Mock()
+    audit = AsyncMock()
     monkeypatch.setattr(admin_routes.entitlement_service, "set_role_cell", update)
     monkeypatch.setattr(admin_routes.entitlement_service, "get_state", state)
-    monkeypatch.setattr(admin_routes, "record_admin_audit", AsyncMock())
+    monkeypatch.setattr(admin_routes, "record_admin_audit", audit)
     monkeypatch.setattr(admin_routes, "logger", logger)
     # Force equal values constructed at runtime rather than source constants.
     body = admin_routes.RoleMatrixUpdateRequest(
         role="".join(list(role)), feature_key="".join(["b", "0", "3"]),
-        enabled=False, expected_enabled=True,
+        enabled=False, expected_enabled=True, reason="Role audit test",
     )
     db = AsyncMock()
     actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
@@ -33,6 +34,7 @@ async def test_role_toggle_logs_canonical_registry_fields(monkeypatch, role):
     update.assert_awaited_once_with(role, "b03", False, db, expected_enabled=True, commit=False)
     assert update.call_args.args[0] is next(known for known in CAPABILITY_ROLES if known == role)
     assert update.call_args.args[1] is get_feature("b03").key
+    assert audit.call_args.kwargs["reason"] == "Role audit test"
     logger.info.assert_called_once_with(
         "admin_entitlement_role_updated admin_user_id=%s role=%s feature_key=%s enabled=%s",
         "synthetic-admin-id", role, "b03", "False",
@@ -61,7 +63,9 @@ async def test_invalid_role_toggle_cannot_write_or_emit_success_audit(monkeypatc
     audit = AsyncMock()
     monkeypatch.setattr(admin_routes, "record_admin_audit", audit)
     monkeypatch.setattr(admin_routes, "logger", logger)
-    body = admin_routes.RoleMatrixUpdateRequest(role=role, feature_key=feature, enabled=True)
+    body = admin_routes.RoleMatrixUpdateRequest(
+        role=role, feature_key=feature, enabled=True, reason="Role audit test"
+    )
     actor = AdminActor(user_id="synthetic-admin-id", email="admin@example.com", role="admin")
     with pytest.raises(HTTPException) as exc:
         await admin_routes.update_role_matrix_cell(body, None, Mock(), actor)

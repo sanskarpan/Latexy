@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import cache_manager
 from ..database import models
+from .signup_funnel_service import provider_from_auth_id, signup_funnel_service
 
 User = models.User
 Resume = models.Resume
@@ -84,6 +85,19 @@ def _month_bounds(month: str) -> tuple[datetime, datetime]:
 
 def _median(values: list[float]) -> float | None:
     return float(statistics.median(values)) if values else None
+
+
+def _percentile(values: list[int], percentile: int) -> float | None:
+    """Nearest-rank percentile over an already-concrete sample.
+
+    Nearest rank is deliberate: event counts are integers, so an interpolated
+    p95 would report a per-user event count that no user actually had.
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(0, (len(ordered) * percentile + 99) // 100 - 1)
+    return float(ordered[min(rank, len(ordered) - 1)])
 
 
 async def _cache_get(key: str) -> dict[str, Any] | None:
@@ -231,16 +245,34 @@ class AdminGrowthService:
         activation_window_days = max(1, min(activation_window_days, 365))
         now = datetime.now(timezone.utc)
         start = now - timedelta(days=days)
-        stmt = select(User.id, User.subscription_plan, User.created_at).where(User.created_at >= start)
+        stmt = select(
+            User.id, User.subscription_plan, User.created_at, User.auth_provider
+        ).where(User.created_at >= start)
         if plan:
             stmt = stmt.where(User.subscription_plan == plan)
         users = (await db.execute(stmt)).all()
         providers = await _provider_map(db, [row[0] for row in users])
+
+        def _effective_provider(user_id: str, stored: str | None) -> str:
+            normalized = provider_from_auth_id(stored) if stored else "unknown"
+            if normalized != "unknown":
+                return normalized
+            return provider_from_auth_id(providers.get(user_id))
+
         if provider:
-            users = [row for row in users if providers.get(str(row[0])) == provider]
+            provider_filter = provider_from_auth_id(provider)
+            users = [
+                row
+                for row in users
+                if _effective_provider(str(row[0]), row.auth_provider) == provider_filter
+            ]
         user_ids = [str(row[0]) for row in users]
         first = await _first_events(db, user_ids)
-        signup_times = {str(user_id): created_at for user_id, _plan_id, created_at in users if created_at}
+        signup_times = {
+            str(user_id): created_at
+            for user_id, _plan_id, created_at, _auth_provider in users
+            if created_at
+        }
         cohort_ids = set(signup_times)
 
         def _reached_for_window(window_days: int) -> dict[str, set[str]]:
@@ -346,16 +378,24 @@ class AdminGrowthService:
         by_plan: dict[str, list[str]] = defaultdict(list)
         by_provider: dict[str, list[str]] = defaultdict(list)
         by_signup_cohort: dict[str, list[str]] = defaultdict(list)
-        for user_id, plan_id, created_at in users:
+        for user_id, plan_id, created_at, auth_provider in users:
             uid = str(user_id)
             by_plan[plan_id or "free"].append(uid)
-            by_provider[providers.get(uid, "unknown")].append(uid)
+            by_provider[_effective_provider(uid, auth_provider)].append(uid)
             if created_at is not None:
                 by_signup_cohort[_month_label(created_at)].append(uid)
 
         plan_rows, hidden_plan = _segment_rows(by_plan)
         provider_rows, hidden_provider = _segment_rows(by_provider)
         cohort_rows, hidden_cohort = _segment_rows(by_signup_cohort)
+
+        # Signup start -> complete -> verified, with provider segments,
+        # OAuth-failure counters and median time-to-verify. This is separate
+        # from the activation milestones above: it only uses aggregate funnel
+        # events plus server-derived accounts, never document content.
+        signup_metrics = await signup_funnel_service.signup_funnel(
+            db, days=days, plan=plan, provider=provider
+        )
 
         reconciliation = {
             "signup": {"source": ACTIVATION_SOURCES["signup"][0], "users": cohort_size},
@@ -382,6 +422,7 @@ class AdminGrowthService:
             "by_plan": plan_rows,
             "by_provider": provider_rows,
             "by_signup_cohort": cohort_rows,
+            "signup_funnel": signup_metrics,
             "suppressed_segments": {
                 "plan": hidden_plan,
                 "provider": hidden_provider,
@@ -645,6 +686,217 @@ class AdminGrowthService:
             "generated_at": now.isoformat(),
         }
 
+    async def feature_depth(
+        self,
+        db: AsyncSession,
+        *,
+        days: int = 30,
+        plan: str | None = None,
+        cohort: str | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate per-user feature frequency, depth, and breadth.
+
+        Only counts leave the database: event metadata, document text, and
+        per-user rows are never selected. Feature groups and filtered cohorts
+        below ``MIN_SEGMENT_SIZE`` users are suppressed so a small group cannot
+        be re-identified.
+        """
+        days = max(1, min(int(days), 365))
+        plan = (plan or "").strip() or None
+        cohort = (cohort or "").strip() or None
+        cohort_bounds = _month_bounds(cohort) if cohort else None
+
+        now = datetime.now(timezone.utc)
+        today = now.date()
+        start_day = today - timedelta(days=days - 1)
+        start_at = datetime.combine(start_day, time.min, tzinfo=timezone.utc)
+        end_at = datetime.combine(today + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        # events/week >= 5 is equivalent to events >= ceil(5 * days / 7).
+        habitual_minimum_events = (5 * days + 6) // 7
+
+        feature_expr = func.coalesce(
+            UsageAnalytics.event_metadata["feature"].as_string(),
+            UsageAnalytics.action,
+        ).label("feature")
+        conditions = [
+            UsageAnalytics.created_at >= start_at,
+            UsageAnalytics.created_at < end_at,
+            UsageAnalytics.user_id.is_not(None),
+        ]
+        if plan:
+            conditions.append(User.subscription_plan == plan)
+        if cohort_bounds is not None:
+            conditions.append(User.created_at >= cohort_bounds[0])
+            conditions.append(User.created_at < cohort_bounds[1])
+
+        rows = (
+            await db.execute(
+                select(
+                    feature_expr,
+                    UsageAnalytics.user_id.label("user_id"),
+                    func.count(UsageAnalytics.id).label("events"),
+                )
+                .select_from(UsageAnalytics)
+                .join(User, User.id == UsageAnalytics.user_id)
+                .where(*conditions)
+                .group_by(feature_expr, UsageAnalytics.user_id)
+            )
+        ).all()
+
+        feature_counts: dict[str, dict[str, int]] = defaultdict(dict)
+        user_features: dict[str, set[str]] = defaultdict(set)
+        user_events: dict[str, int] = defaultdict(int)
+        for row in rows:
+            feature = str(row.feature or "unknown")
+            user_id = str(row.user_id)
+            count = int(row.events or 0)
+            feature_counts[feature][user_id] = count
+            user_features[user_id].add(feature)
+            user_events[user_id] += count
+
+        def _breadth(user_ids: Iterable[str]) -> dict[str, Any]:
+            sizes = [len(user_features[user_id]) for user_id in user_ids]
+            return {
+                "average_features_per_user": round(sum(sizes) / len(sizes), 2) if sizes else 0.0,
+                "median_features_per_user": _median([float(size) for size in sizes]),
+                "distribution": [
+                    {"key": "1", "label": "1", "users": sum(1 for size in sizes if size == 1)},
+                    {"key": "2", "label": "2", "users": sum(1 for size in sizes if size == 2)},
+                    {"key": "3", "label": "3", "users": sum(1 for size in sizes if size == 3)},
+                    {"key": "4", "label": "4", "users": sum(1 for size in sizes if size == 4)},
+                    {"key": "5+", "label": "5+", "users": sum(1 for size in sizes if size >= 5)},
+                ],
+            }
+
+        def _empty_totals() -> dict[str, Any]:
+            return {
+                "users": 0,
+                "events": 0,
+                "features": 0,
+                "median_events_per_user": None,
+                "p95_events_per_user": None,
+                "repeat_users": 0,
+                "repeat_rate": 0.0,
+                "habitual_users": 0,
+                "habitual_rate": 0.0,
+                "breadth": _breadth([]),
+            }
+
+        response: dict[str, Any] = {
+            "days": days,
+            "start_date": start_day.isoformat(),
+            "end_date": today.isoformat(),
+            "timezone": "UTC",
+            "filters": {
+                "days": days,
+                "plan": plan,
+                "cohort": cohort,
+                "start_date": start_day.isoformat(),
+                "end_date": today.isoformat(),
+                "timezone": "UTC",
+            },
+            "minimum_group_size": MIN_SEGMENT_SIZE,
+            "habitual_weekly_threshold": 5,
+            "habitual_minimum_events": habitual_minimum_events,
+            "habitual_definition": (
+                "A user is habitual for a group when their events per week in the "
+                "window is at least 5 (events * 7 / days >= 5)."
+            ),
+            "suppressed": False,
+            "suppressed_features": 0,
+            "truncated_features": 0,
+            "totals": _empty_totals(),
+            "features": [],
+            "generated_at": now.isoformat(),
+        }
+
+        audience_users = len(user_events)
+        if audience_users == 0:
+            return response
+        if audience_users < MIN_SEGMENT_SIZE:
+            # A filtered cohort below the privacy floor returns no counts at all.
+            response["suppressed"] = True
+            response["suppressed_features"] = len(feature_counts)
+            return response
+
+        user_totals = list(user_events.values())
+        repeat_users = sum(1 for count in user_totals if count >= 2)
+        habitual_users = sum(1 for count in user_totals if count >= habitual_minimum_events)
+        response["totals"] = {
+            "users": audience_users,
+            "events": sum(user_totals),
+            "features": len(feature_counts),
+            "median_events_per_user": _median([float(count) for count in user_totals]),
+            "p95_events_per_user": _percentile(user_totals, 95),
+            "repeat_users": repeat_users,
+            "repeat_rate": _pct(repeat_users, audience_users),
+            "habitual_users": habitual_users,
+            "habitual_rate": _pct(habitual_users, audience_users),
+            "breadth": _breadth(user_events.keys()),
+        }
+
+        features: list[dict[str, Any]] = []
+        suppressed_features = 0
+        for feature, counts_by_user in feature_counts.items():
+            users = len(counts_by_user)
+            if users < MIN_SEGMENT_SIZE:
+                suppressed_features += 1
+                continue
+            counts = list(counts_by_user.values())
+            feature_users = list(counts_by_user.keys())
+            event_total = sum(counts)
+            repeat = sum(1 for count in counts if count >= 2)
+            habitual = sum(1 for count in counts if count >= habitual_minimum_events)
+            sole_feature_users = sum(1 for user_id in feature_users if len(user_features[user_id]) == 1)
+            breadth = _breadth(feature_users)
+            buckets = []
+            for key, low, high in (
+                ("1", 1, 1),
+                ("2-4", 2, 4),
+                ("5-9", 5, 9),
+                ("10+", 10, None),
+            ):
+                bucket_users = sum(
+                    1 for count in counts if count >= low and (high is None or count <= high)
+                )
+                buckets.append(
+                    {
+                        "key": key,
+                        "label": key,
+                        "users": bucket_users,
+                        "share": _pct(bucket_users, users),
+                    }
+                )
+            features.append(
+                {
+                    "feature": feature,
+                    "users": users,
+                    "events": event_total,
+                    "events_per_user": round(event_total / users, 2),
+                    "median_events_per_user": _median([float(count) for count in counts]),
+                    "p95_events_per_user": _percentile(counts, 95),
+                    "repeat_users": repeat,
+                    "repeat_rate": _pct(repeat, users),
+                    "habitual_users": habitual,
+                    "habitual_rate": _pct(habitual, users),
+                    "buckets": buckets,
+                    "breadth": {
+                        "average_features_per_user": breadth["average_features_per_user"],
+                        "median_features_per_user": breadth["median_features_per_user"],
+                        "sole_feature_users": sole_feature_users,
+                        "multi_feature_users": users - sole_feature_users,
+                    },
+                }
+            )
+
+        features.sort(key=lambda item: (-item["events"], item["feature"]))
+        if len(features) > MAX_BREAKDOWN_GROUPS:
+            response["truncated_features"] = len(features) - MAX_BREAKDOWN_GROUPS
+            features = features[:MAX_BREAKDOWN_GROUPS]
+        response["suppressed_features"] = suppressed_features
+        response["features"] = features
+        return response
+
     async def ai_cost(
         self,
         db: AsyncSession,
@@ -666,6 +918,29 @@ class AdminGrowthService:
             persona=persona,
             invoice_total_minor=invoice_total_minor,
             invoice_reference=invoice_reference,
+        )
+
+    async def ai_usage(
+        self,
+        db: AsyncSession,
+        *,
+        days: int = 30,
+        plan: str | None = None,
+        feature: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        persona: str | None = None,
+    ) -> dict[str, Any]:
+        from .admin_ai_usage_service import ai_usage_snapshot
+
+        return await ai_usage_snapshot(
+            db,
+            days=days,
+            plan=plan,
+            feature=feature,
+            provider=provider,
+            model=model,
+            persona=persona,
         )
 
     async def timeseries(

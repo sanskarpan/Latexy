@@ -5,9 +5,13 @@ import {
   apiClient,
   type AdminActivationResponse,
   type AdminAiCostResponse,
+  type AdminFeatureDepthResponse,
+  type AdminAiUsageResponse,
+  type AdminAiUsageRow,
   type AdminFilteredTimeseriesResponse,
   type AdminRetentionResponse,
   type AdminRetentionRow,
+  type AdminSignupFunnel,
   type AdminTimeseriesDimension,
   type AdminTimeseriesMetric,
 } from '@/lib/api-client'
@@ -34,6 +38,42 @@ function formatDuration(seconds: number | null | undefined): string {
   if (seconds < 3_600) return `${(seconds / 60).toFixed(1)}m`
   if (seconds < 86_400) return `${(seconds / 3_600).toFixed(1)}h`
   return `${(seconds / 86_400).toFixed(1)}d`
+}
+
+function formatLatency(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—'
+  if (ms < 1_000) return `${Math.round(ms)}ms`
+  return `${(ms / 1_000).toFixed(2)}s`
+}
+
+type UsageDimension = 'feature' | 'provider' | 'model' | 'persona' | 'plan' | 'credential_source'
+
+const USAGE_DIMENSIONS: Array<{ key: UsageDimension; label: string }> = [
+  { key: 'feature', label: 'Feature' },
+  { key: 'provider', label: 'Provider' },
+  { key: 'model', label: 'Model' },
+  { key: 'persona', label: 'Persona' },
+  { key: 'plan', label: 'Plan' },
+  { key: 'credential_source', label: 'Credential source' },
+]
+
+function usageRows(data: AdminAiUsageResponse, dimension: UsageDimension): AdminAiUsageRow[] {
+  switch (dimension) {
+    case 'feature':
+      return data.by_feature
+    case 'provider':
+      return data.by_provider
+    case 'model':
+      return data.by_model
+    case 'persona':
+      return data.by_persona
+    case 'plan':
+      return data.by_plan
+    case 'credential_source':
+      return data.by_credential_source
+    default:
+      return data.by_feature
+  }
 }
 
 function retentionCell(cell: { numerator: number; denominator: number; rate: number | null }): string {
@@ -176,6 +216,108 @@ function Funnel({ data }: { data: AdminActivationResponse }) {
             )}
           </div>
         ))}
+      </div>
+    </section>
+  )
+}
+
+function SignupFunnel({ data }: { data: AdminSignupFunnel }) {
+  const minimum = data.minimum_segment_size ?? 5
+  const hidden = data.suppressed_segments?.provider ?? 0
+  const failures = data.oauth_failures ?? { total: 0, by_provider: [], by_code: [] }
+  const steps = data.steps ?? []
+
+  return (
+    <section className="mt-4 rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-fg">Signup funnel by auth provider</h3>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
+            Start → complete → verified for accounts created in the selected period.
+            Providers are derived server-side from Better Auth account rows; a
+            client-supplied provider is never attributed to an account. Verification
+            rate is verified accounts over completed accounts, and median time is
+            measured from the first stored verification event.
+          </p>
+        </div>
+        <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
+          {formatNumber(data.completed)} accounts
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {steps.map((step) => (
+          <div key={step.key} className="rounded-[var(--radius-md)] border border-line bg-surface-2/40 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-3">{step.label}</p>
+            <p className="mt-1 text-xl font-semibold text-fg">{formatNumber(step.count)}</p>
+            <p className="mt-0.5 text-[10px] text-fg-3">
+              {step.key === 'signup_started'
+                ? '100% of starts'
+                : `${step.from_previous ?? 0}% of previous step · ${step.from_start}% of starts`}
+            </p>
+            {step.key === 'email_verified' && (
+              <p className="mt-1 text-[10px] text-fg-3">
+                Median time to verify: {formatDuration(step.median_seconds)}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-md border border-line">
+        <table className="w-full min-w-[620px] border-collapse text-xs">
+          <caption className="sr-only">Signup conversion and median verification time by auth provider</caption>
+          <thead>
+            <tr className="border-b border-line bg-surface-2/60 text-[10px] uppercase tracking-wider text-fg-3">
+              <th scope="col" className="px-3 py-2 text-left font-semibold">Provider</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Starts</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Accounts</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Verified</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Start → account</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Verify rate</th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold">Median to verify</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.by_provider.map((row) => (
+              <tr key={row.provider} className="border-t border-line">
+                <td className="px-3 py-1.5 text-fg-2">{row.provider_label || row.label}</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{formatNumber(row.started)}</td>
+                <td className="px-3 py-1.5 text-right text-fg">{formatNumber(row.completed)}</td>
+                <td className="px-3 py-1.5 text-right text-fg">{formatNumber(row.verified)}</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{row.conversion_start_to_complete.toFixed(1)}%</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{row.verification_rate.toFixed(1)}%</td>
+                <td className="px-3 py-1.5 text-right text-fg-3">{formatDuration(row.median_seconds_to_verify)}</td>
+              </tr>
+            ))}
+            {data.by_provider.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-5 text-center text-fg-3">
+                  No provider has at least {minimum} accounts in this period.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {hidden > 0 && (
+          <p className="border-t border-line px-3 py-1.5 text-[10px] text-fg-3">
+            {hidden} small provider {hidden === 1 ? 'segment' : 'segments'} hidden ({'<'}
+            {minimum} accounts).
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-fg-3">
+        <span className="font-semibold uppercase tracking-[0.16em]">OAuth failures</span>
+        <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 font-semibold text-fg">
+          {formatNumber(failures.total)} total
+        </span>
+        {failures.by_provider.map((row) => (
+          <span key={row.provider} className="rounded-full border border-line px-2 py-0.5">
+            {row.provider_label || row.label}: {formatNumber(row.count)}
+          </span>
+        ))}
+        {failures.by_provider.length === 0 && <span>No provider failures recorded.</span>}
       </div>
     </section>
   )
@@ -493,6 +635,203 @@ function Cost({
   )
 }
 
+function AiUsage({
+  data,
+  plan,
+  feature,
+  provider,
+  model,
+  persona,
+  onPlan,
+  onFeature,
+  onProvider,
+  onModel,
+  onPersona,
+  onApply,
+  loading,
+}: {
+  data: AdminAiUsageResponse
+  plan: string
+  feature: string
+  provider: string
+  model: string
+  persona: string
+  onPlan: (value: string) => void
+  onFeature: (value: string) => void
+  onProvider: (value: string) => void
+  onModel: (value: string) => void
+  onPersona: (value: string) => void
+  onApply: () => void
+  loading: boolean
+}) {
+  const [dimension, setDimension] = useState<UsageDimension>('feature')
+  const rows = usageRows(data, dimension)
+  const hidden = data.suppression.by_dimension[dimension] ?? 0
+  const chart = data.by_feature.slice(0, 8).map((row) => ({ name: row.label, value: row.runs }))
+  const reconciliation = useMemo(
+    () => data.reconciliation.sources.reduce((sum, row) => sum + row.runs, 0),
+    [data.reconciliation.sources],
+  )
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">AI usage breakdown</h3>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-3">
+              Aggregate runs from optimization history and resume-engine stages by feature, provider, model, persona,
+              plan, and credential source. No prompts, documents, keys, or per-user rows are read.
+            </p>
+          </div>
+          <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
+            {data.period_days} days · {data.start_date} → {data.end_date} · UTC
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="text-[11px] text-fg-2">
+            Usage plan filter
+            <select value={plan} onChange={(event) => onPlan(event.target.value)} className="mt-1 block min-h-[38px] rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg">
+              {PLAN_OPTIONS.map((item) => <option key={item || 'all'} value={item}>{item || 'All plans'}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Feature
+            <input value={feature} onChange={(event) => onFeature(event.target.value)} maxLength={120} placeholder="optimization_patches" className="mt-1 block min-h-[38px] w-44 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Provider
+            <input value={provider} onChange={(event) => onProvider(event.target.value)} maxLength={80} placeholder="openai" className="mt-1 block min-h-[38px] w-32 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Model
+            <input value={model} onChange={(event) => onModel(event.target.value)} maxLength={160} placeholder="gpt-4o" className="mt-1 block min-h-[38px] w-40 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <label className="text-[11px] text-fg-2">
+            Persona
+            <input value={persona} onChange={(event) => onPersona(event.target.value)} maxLength={64} placeholder="startup" className="mt-1 block min-h-[38px] w-32 rounded border border-line bg-bg px-3 py-1.5 text-xs text-fg" />
+          </label>
+          <button type="button" onClick={onApply} disabled={loading} className="min-h-[38px] rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
+            Apply usage filters
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card label="AI runs" value={formatNumber(data.totals.runs)} detail={`${formatNumber(data.totals.users)} users · ${formatNumber(data.totals.tokens)} tokens`} />
+        <Card
+          label="Success / error"
+          value={`${formatNumber(data.totals.successes)} / ${formatNumber(data.totals.errors)}`}
+          detail={`${data.totals.success_rate}% success · ${data.totals.pending} pending`}
+          tone={data.totals.errors > 0 ? 'text-warn' : 'text-ok'}
+        />
+        <Card label="p95 latency" value={formatLatency(data.totals.latency_p95_ms)} detail={`p50 ${formatLatency(data.totals.latency_p50_ms)} · ${formatNumber(data.totals.latency_samples)} samples`} />
+        <Card label="Suppressed groups" value={formatNumber(data.suppressed_groups)} detail={`Minimum ${data.minimum_group_size} users or runs per row`} />
+      </div>
+
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+        <h3 className="text-sm font-semibold text-fg">Runs by feature</h3>
+        <p className="mt-1 text-[11px] text-fg-3">Aggregate run counts only. Groups under {data.minimum_group_size} users or runs are hidden.</p>
+        <div className="mt-3"><FeatureUsageBars data={chart} /></div>
+      </div>
+
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">Usage detail</h3>
+            <p className="mt-1 text-[11px] text-fg-3">Aggregate-only rows with success/error, p50/p95 latency, and token counts.</p>
+          </div>
+          <div className="inline-flex flex-wrap rounded-[var(--radius-md)] border border-line bg-surface p-0.5" role="group" aria-label="AI usage dimension">
+            {USAGE_DIMENSIONS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                aria-pressed={dimension === item.key}
+                onClick={() => setDimension(item.key)}
+                className={`rounded px-2.5 py-1 text-[11px] font-medium ${dimension === item.key ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'}`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] border-collapse text-xs">
+            <caption className="sr-only">AI usage by {dimension}</caption>
+            <thead>
+              <tr className="border-b border-line bg-surface-2/60 text-[10px] uppercase tracking-wider text-fg-3">
+                <th scope="col" className="px-4 py-2 text-left font-semibold">{USAGE_DIMENSIONS.find((item) => item.key === dimension)?.label}</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Users</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Runs</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Success</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Error</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Pending</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">p50</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">p95</th>
+                <th scope="col" className="px-4 py-2 text-right font-semibold">Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${dimension}-${row.label}`} className="border-t border-line">
+                  <td className="px-4 py-2 text-fg-2">{row.label}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatNumber(row.users)}</td>
+                  <td className="px-4 py-2 text-right text-fg">{formatNumber(row.runs)}</td>
+                  <td className="px-4 py-2 text-right text-ok">{formatNumber(row.successes)}</td>
+                  <td className={`px-4 py-2 text-right ${row.errors > 0 ? 'text-err' : 'text-fg-3'}`}>{formatNumber(row.errors)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatNumber(row.pending)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatLatency(row.latency_p50_ms)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatLatency(row.latency_p95_ms)}</td>
+                  <td className="px-4 py-2 text-right text-fg-3">{formatNumber(row.tokens)}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-4 py-8 text-center text-fg-3">
+                    No {dimension.replace('_', ' ')} row has at least {data.minimum_group_size} users and runs.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 text-[10px] text-fg-3">
+          <span>{hidden > 0 ? `${hidden} small ${dimension.replace('_', ' ')} group${hidden === 1 ? '' : 's'} hidden (<${data.minimum_group_size} users or runs).` : 'No groups hidden for this dimension.'}</span>
+          <span>{formatNumber(reconciliation)} reconciled source rows · {formatDateTime(data.generated_at)}</span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Reconciliation to source tables</h3>
+          <p className="mt-1 text-[10px] text-fg-3">Aggregate counts from the same first-party rows used in the breakdown.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {data.reconciliation.sources.map((row) => (
+              <li key={row.source} className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
+                <span className="text-fg-2">{row.source.replace(/_/g, ' ')}</span>
+                <span className="text-fg-3">{formatNumber(row.runs)} runs · {formatNumber(row.successes)} ok · {formatNumber(row.errors)} err · {formatNumber(row.tokens)} tokens</span>
+              </li>
+            ))}
+            <li className="flex items-center justify-between gap-2 border-t border-line pt-1.5">
+              <span className="text-fg-2">Run admissions</span>
+              <span className="text-fg-3">{formatNumber(data.reconciliation.resume_engine_runs.runs)} runs · {formatNumber(data.reconciliation.resume_engine_runs.successes)} completed · {formatNumber(data.reconciliation.resume_engine_runs.errors)} failed/cancelled</span>
+            </li>
+          </ul>
+        </div>
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-fg">Privacy and coverage</h3>
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-3">{data.persona_source}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-3">{data.credential_source_note}</p>
+          <ul className="mt-2 space-y-1 text-[10px] text-fg-3">
+            {data.notes.map((note) => <li key={note}>• {note}</li>)}
+          </ul>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function Explorer({
   data,
   metric,
@@ -597,6 +936,230 @@ function Explorer({
   )
 }
 
+function FeatureDepth({
+  data,
+  loading,
+  error,
+  plan,
+  cohort,
+  planOptions,
+  cohortOptions,
+  onPlan,
+  onCohort,
+  onApply,
+}: {
+  data: AdminFeatureDepthResponse | null
+  loading: boolean
+  error: string | null
+  plan: string
+  cohort: string
+  planOptions: readonly string[]
+  cohortOptions: Array<{ month: string; users: number }>
+  onPlan: (value: string) => void
+  onCohort: (value: string) => void
+  onApply: () => void
+}) {
+  const minimum = data?.minimum_group_size ?? 5
+  const totals = data?.totals
+  const breadth = totals?.breadth
+
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
+      <div className="border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">Feature depth &amp; frequency</h3>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-3">
+              Per-user frequency from first-party usage events. Buckets count users by events per feature; habitual users
+              average at least {data?.habitual_weekly_threshold ?? 5} events per week in the selected window. Counts only —
+              no event metadata, document text, or per-user logs.
+            </p>
+          </div>
+          <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-fg-3">
+            {data ? (data.suppressed ? 'cohort hidden' : `${formatNumber(totals?.users ?? 0)} users`) : '—'}
+          </span>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            Plan
+            <select
+              aria-label="Feature depth plan filter"
+              value={plan}
+              onChange={(event) => onPlan(event.target.value)}
+              className="mt-1 block min-h-[36px] rounded border border-line bg-bg px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-fg"
+            >
+              {planOptions.map((item) => (
+                <option key={item || 'all'} value={item}>{item || 'All plans'}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
+            Signup cohort
+            <select
+              aria-label="Feature depth signup cohort filter"
+              value={cohort}
+              onChange={(event) => onCohort(event.target.value)}
+              className="mt-1 block min-h-[36px] rounded border border-line bg-bg px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-fg"
+            >
+              <option value="">All cohorts</option>
+              {cohortOptions.map((month) => (
+                <option key={month.month} value={month.month}>
+                  {month.month} · {formatNumber(month.users)} users
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={onApply}
+            disabled={loading}
+            className="min-h-[36px] rounded border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+          >
+            {loading ? 'Loading…' : 'Apply filters'}
+          </button>
+          {data && (
+            <span className="text-[10px] text-fg-3">
+              {data.filters.plan ? `plan=${data.filters.plan}` : 'all plans'}
+              {data.filters.cohort ? ` · cohort=${data.filters.cohort}` : ''} · {data.start_date} → {data.end_date} · UTC
+            </span>
+          )}
+        </div>
+        {error && (
+          <p role="alert" className="mt-3 rounded border border-err/20 bg-err/[0.06] px-3 py-2 text-xs text-err">
+            {error}
+          </p>
+        )}
+      </div>
+
+      {data?.suppressed ? (
+        <div className="px-5 py-8 text-center text-sm text-fg-3">
+          This cohort has fewer than {minimum} users in the selected window, so its counts are hidden.
+        </div>
+      ) : data && totals ? (
+        <>
+          <div className="grid gap-px border-b border-line bg-line sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {[
+              { label: 'Users', value: formatNumber(totals.users) },
+              { label: 'Events', value: formatNumber(totals.events) },
+              { label: 'Median / user', value: totals.median_events_per_user == null ? '—' : totals.median_events_per_user.toFixed(1) },
+              { label: 'p95 / user', value: totals.p95_events_per_user == null ? '—' : totals.p95_events_per_user.toFixed(1) },
+              { label: 'Repeat rate', value: `${totals.repeat_rate.toFixed(1)}%` },
+              { label: 'Habitual users', value: `${formatNumber(totals.habitual_users)} · ${totals.habitual_rate.toFixed(1)}%` },
+            ].map((item) => (
+              <div key={item.label} className="bg-surface px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-3">{item.label}</p>
+                <p className="mt-1 text-lg font-semibold text-fg">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {breadth && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-5 py-3 text-[11px] text-fg-3">
+              <span className="font-semibold text-fg-2">
+                Breadth: {breadth.average_features_per_user.toFixed(1)} distinct features/user
+                {breadth.median_features_per_user != null ? ` · median ${breadth.median_features_per_user.toFixed(1)}` : ''}
+              </span>
+              {breadth.distribution.map((bin) => (
+                <span key={bin.key}>{bin.label} feature{bin.key === '1' ? '' : 's'}: {formatNumber(bin.users)} users</span>
+              ))}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <caption className="sr-only">Feature depth, frequency buckets, and habitual usage</caption>
+              <thead>
+                <tr className="border-b border-line text-[10px] uppercase tracking-wider text-fg-3">
+                  <th scope="col" className="px-5 py-3 text-left font-semibold">Feature</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Users</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Events</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Median</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">p95</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Repeat</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Habitual</th>
+                  <th scope="col" className="px-3 py-3 text-left font-semibold">Frequency mix</th>
+                  <th scope="col" className="px-3 py-3 text-right font-semibold">Breadth</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.features.map((row) => (
+                  <tr key={row.feature} className="border-t border-line align-top">
+                    <td className="px-5 py-3 font-mono text-xs text-fg">{row.feature}</td>
+                    <td className="px-3 py-3 text-right text-xs text-fg">{formatNumber(row.users)}</td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">{formatNumber(row.events)}</td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.median_events_per_user == null ? '—' : row.median_events_per_user.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.p95_events_per_user == null ? '—' : row.p95_events_per_user.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.repeat_rate.toFixed(1)}%
+                      <span className="block text-[10px] text-fg-3">{formatNumber(row.repeat_users)} users</span>
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.habitual_rate.toFixed(1)}%
+                      <span className="block text-[10px] text-fg-3">{formatNumber(row.habitual_users)} users</span>
+                    </td>
+                    <td className="min-w-[260px] px-3 py-3">
+                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
+                        {row.buckets.map((bucket, index) => (
+                          <span
+                            key={bucket.key}
+                            className={['bg-fg-3/40', 'bg-accent/70', 'bg-ok/70', 'bg-warn/70'][index] ?? 'bg-fg-3/40'}
+                            style={{ width: `${bucket.share}%` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-fg-3">
+                        {row.buckets.map((bucket) => (
+                          <span key={bucket.key}>{bucket.label}: {formatNumber(bucket.users)}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs text-fg-2">
+                      {row.breadth.average_features_per_user.toFixed(1)}/user
+                      <span className="block text-[10px] text-fg-3">
+                        {formatNumber(row.breadth.sole_feature_users)} sole-feature
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {data.features.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-5 py-8 text-center text-sm text-fg-3">
+                      No feature group in this selection has at least {minimum} users.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 text-[10px] text-fg-3">
+            <span>
+              Habitual threshold: {data.habitual_minimum_events} events in {data.days} days (≥
+              {data.habitual_weekly_threshold}/week). {data.habitual_definition}
+            </span>
+            <span>
+              {data.suppressed_features > 0
+                ? `${data.suppressed_features} small feature group${data.suppressed_features === 1 ? '' : 's'} hidden (<${minimum} users).`
+                : `All visible groups have at least ${minimum} users.`}
+              {data.truncated_features > 0 ? ` ${data.truncated_features} lower-volume groups truncated.` : ''}
+            </span>
+          </div>
+        </>
+      ) : !data && error ? (
+        <div className="px-5 py-8 text-center text-sm text-fg-3">
+          Feature depth is unavailable. Adjust the filters or retry.
+        </div>
+      ) : (
+        <div role="status" className="px-5 py-8 text-center text-sm text-fg-3">Loading feature depth…</div>
+      )}
+    </section>
+  )
+}
+
 export default function AdminGrowth() {
   const [days, setDays] = useState<number>(30)
   const [retentionWeeks, setRetentionWeeks] = useState<number>(8)
@@ -604,6 +1167,7 @@ export default function AdminGrowth() {
   const [activation, setActivation] = useState<AdminActivationResponse | null>(null)
   const [retention, setRetention] = useState<AdminRetentionResponse | null>(null)
   const [cost, setCost] = useState<AdminAiCostResponse | null>(null)
+  const [usage, setUsage] = useState<AdminAiUsageResponse | null>(null)
   const [series, setSeries] = useState<AdminFilteredTimeseriesResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -612,6 +1176,18 @@ export default function AdminGrowth() {
   const [costPlan, setCostPlan] = useState('')
   const [costFeature, setCostFeature] = useState('')
   const [costApplied, setCostApplied] = useState<{ plan: string; feature: string }>({ plan: '', feature: '' })
+  const [usagePlan, setUsagePlan] = useState('')
+  const [usageFeature, setUsageFeature] = useState('')
+  const [usageProvider, setUsageProvider] = useState('')
+  const [usageModel, setUsageModel] = useState('')
+  const [usagePersona, setUsagePersona] = useState('')
+  const [usageApplied, setUsageApplied] = useState<{
+    plan: string
+    feature: string
+    provider: string
+    model: string
+    persona: string
+  }>({ plan: '', feature: '', provider: '', model: '', persona: '' })
   const [metric, setMetric] = useState<AdminTimeseriesMetric>('events')
   const [dimension, setDimension] = useState<'' | AdminTimeseriesDimension>('plan')
   const [value, setValue] = useState('pro')
@@ -621,15 +1197,22 @@ export default function AdminGrowth() {
     value: string
   }>({ metric: 'events', dimension: 'plan', value: 'pro' })
   const [explorerLoading, setExplorerLoading] = useState(false)
+  const [depth, setDepth] = useState<AdminFeatureDepthResponse | null>(null)
+  const [depthPlan, setDepthPlan] = useState('')
+  const [depthCohort, setDepthCohort] = useState('')
+  const [depthApplied, setDepthApplied] = useState<{ plan: string; cohort: string }>({ plan: '', cohort: '' })
+  const [depthLoading, setDepthLoading] = useState(false)
+  const [depthError, setDepthError] = useState<string | null>(null)
   const loadGeneration = useRef(0)
   const seriesGeneration = useRef(0)
+  const depthGeneration = useRef(0)
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current
     setLoading(true)
     setError(null)
     try {
-      const [nextActivation, nextRetention, nextCost] = await Promise.all([
+      const [nextActivation, nextRetention, nextCost, nextUsage] = await Promise.all([
         apiClient.getAdminActivation({
           days,
           plan: plan || undefined,
@@ -641,11 +1224,20 @@ export default function AdminGrowth() {
           plan: costApplied.plan || undefined,
           feature: costApplied.feature || undefined,
         }),
+        apiClient.getAdminAiUsage({
+          days,
+          plan: usageApplied.plan || undefined,
+          feature: usageApplied.feature || undefined,
+          provider: usageApplied.provider || undefined,
+          model: usageApplied.model || undefined,
+          persona: usageApplied.persona || undefined,
+        }),
       ])
       if (loadGeneration.current !== generation) return
       setActivation(nextActivation)
       setRetention(nextRetention)
       setCost(nextCost)
+      setUsage(nextUsage)
     } catch (err) {
       if (loadGeneration.current === generation) {
         setError(err instanceof Error ? err.message : 'Failed to load growth analytics')
@@ -653,7 +1245,7 @@ export default function AdminGrowth() {
     } finally {
       if (loadGeneration.current === generation) setLoading(false)
     }
-  }, [days, plan, provider, retentionWeeks, signupMonth, costApplied])
+  }, [days, plan, provider, retentionWeeks, signupMonth, costApplied, usageApplied])
 
   useEffect(() => {
     void load()
@@ -682,6 +1274,30 @@ export default function AdminGrowth() {
   useEffect(() => {
     void loadSeries()
   }, [loadSeries])
+
+  const loadDepth = useCallback(async () => {
+    const generation = ++depthGeneration.current
+    setDepthLoading(true)
+    setDepthError(null)
+    try {
+      const next = await apiClient.getAdminFeatureDepth({
+        days,
+        plan: depthApplied.plan || undefined,
+        cohort: depthApplied.cohort || undefined,
+      })
+      if (depthGeneration.current === generation) setDepth(next)
+    } catch (err) {
+      if (depthGeneration.current === generation) {
+        setDepthError(err instanceof Error ? err.message : 'Failed to load feature depth')
+      }
+    } finally {
+      if (depthGeneration.current === generation) setDepthLoading(false)
+    }
+  }, [days, depthApplied])
+
+  useEffect(() => {
+    void loadDepth()
+  }, [loadDepth])
 
   const signupMonths = retention?.available_signup_months ?? []
 
@@ -727,6 +1343,7 @@ export default function AdminGrowth() {
       {loading && !activation && <div role="status" className="py-12 text-center text-sm text-fg-3">Loading growth analytics…</div>}
 
       {activation && <Funnel data={activation} />}
+      {activation?.signup_funnel && <SignupFunnel data={activation.signup_funnel} />}
       {retention && <Retention data={retention} />}
       {cost && (
         <Cost
@@ -736,6 +1353,32 @@ export default function AdminGrowth() {
           onPlan={setCostPlan}
           onFeature={setCostFeature}
           onApply={() => setCostApplied({ plan: costPlan, feature: costFeature })}
+          loading={loading}
+        />
+      )}
+
+      {usage && (
+        <AiUsage
+          data={usage}
+          plan={usagePlan}
+          feature={usageFeature}
+          provider={usageProvider}
+          model={usageModel}
+          persona={usagePersona}
+          onPlan={setUsagePlan}
+          onFeature={setUsageFeature}
+          onProvider={setUsageProvider}
+          onModel={setUsageModel}
+          onPersona={setUsagePersona}
+          onApply={() =>
+            setUsageApplied({
+              plan: usagePlan,
+              feature: usageFeature,
+              provider: usageProvider,
+              model: usageModel,
+              persona: usagePersona,
+            })
+          }
           loading={loading}
         />
       )}
@@ -768,6 +1411,19 @@ export default function AdminGrowth() {
         onValue={setValue}
         onApply={() => setApplied({ metric, dimension, value })}
         loading={explorerLoading}
+      />
+
+      <FeatureDepth
+        data={depth}
+        loading={depthLoading}
+        error={depthError}
+        plan={depthPlan}
+        cohort={depthCohort}
+        planOptions={PLAN_OPTIONS}
+        cohortOptions={signupMonths}
+        onPlan={setDepthPlan}
+        onCohort={setDepthCohort}
+        onApply={() => setDepthApplied({ plan: depthPlan, cohort: depthCohort })}
       />
 
       <p className="text-[10px] text-fg-3">

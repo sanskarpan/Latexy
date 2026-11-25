@@ -38,6 +38,7 @@ async function signup(context: BrowserContext, frontend: string, name: string) {
 async function setGlobalSwitch(page: Page, label: string, enabled: boolean) {
   const control = page.getByRole('switch', { name: label, exact: true })
   await expect(control).toBeVisible()
+  await page.getByLabel('Reason for permission changes').fill('Synthetic interview capability test change')
   if ((await control.getAttribute('aria-checked')) !== String(enabled)) {
     const response = page.waitForResponse(candidate => candidate.url().includes('/admin/entitlements/kill-switch/')
       && candidate.request().method() === 'PATCH')

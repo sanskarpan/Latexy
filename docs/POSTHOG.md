@@ -132,7 +132,8 @@ linked to card data. No endpoint sends a customer email or name to PostHog.
 
 The admin **Analytics** tab renders this payload and links to PostHog replays,
 dashboards, people, replay privacy settings, and a set of **pre-filtered replay
-triage** links (see below).
+triage** links (see below). The admin **Replays** tab hosts the fuller replay
+library/browser with saved filters and a custom filter builder.
 
 ## Dashboards to create in PostHog
 
@@ -147,9 +148,10 @@ Create these once in the project; the admin deep links assume the project.
 4. **Billing funnel**: `checkout_started` → `backend_payment_succeeded` →
    `backend_subscription_status_changed`.
 5. **Retention**: weekly retained users after first `compilation_tracked`.
-6. **Replay review**: filter to `/workspace/:resumeId/edit`,
-   `/dashboard`, `/billing`, `/pricing`; exclude `/r/:token` and `/u/:username`
-   (already blocked at the project level).
+6. **Replay review**: filter to `/dashboard`, `/templates`, `/tracker`,
+   `/billing`, `/pricing`, and `/settings`; exclude `/r/:token`,
+   `/u/:username`, `/share/:token`, `/portfolio/:username`, and workspace/editor
+   paths (already blocked at capture).
 7. **Admin actions**: `backend_admin_*` events grouped by admin ID.
 
 ## Replay review workflow
@@ -184,24 +186,49 @@ admin date range (7/30/90 days) is preserved as a relative `date_from`
 | Checkout failures | `filter_group` event `checkout_failed` |
 | JS errors | `filter_group` property `{ key: "level", operator: "exact", type: "log_entry", value: ["error"] }` |
 | Long sessions | `duration: [{ key: "active_seconds", operator: "gt", type: "recording", value: 120 }]` |
-| By route (editor, dashboard, billing, pricing) | `filter_group` property `{ key: "$current_url", operator: "icontains", type: "event", value: "<templated path>" }` |
+| By route (dashboard, templates, tracker, billing, pricing, settings) | `filter_group` property `{ key: "$current_url", operator: "icontains", type: "event", value: "<templated path>" }` |
 | By plan (free, basic, pro, byok, team) | `filter_group` property `{ key: "plan", operator: "exact", type: "person", value: ["<plan>"] }` |
 
 Route paths use the already-templated values from `sanitizeAnalyticsPath`
-(`/workspace/:resumeId/edit`, `/dashboard`, `/billing`, `/pricing`), and plan
-values are the low-cardinality `plan` person-property enums. A link therefore
-never contains a token, an email, a résumé or workspace id, or document
-content.
+(`/dashboard`, `/templates`, `/tracker`, `/billing`, `/pricing`, `/settings`),
+and plan values are the low-cardinality `plan` person-property enums. A link
+therefore never contains a token, an email, a résumé or workspace id, or
+document content. Document, share, portfolio, and guest-editor paths are
+deliberately absent from the allowlist.
+
+## Replay library/browser
+
+The admin **Replays** tab (`?tab=replays`) is a library over the same link
+builders. It adds:
+
+- **Saved filters** for checkout failures, console errors, long sessions,
+  route-specific errors, plan-specific errors, and combined route + checkout
+  triage.
+- A **custom filter builder** that combines sanitized route, plan, console
+  error, minimum active duration, and `checkout_failed` under one AND group.
+- A **consent coverage and masking policy** panel. It states the opt-in model,
+  the capture-before-consent block, withdrawal behavior, excluded surfaces,
+  total text/input/attribute masking, the PostHog "Total privacy" project
+  setting, and the absence of any disable-masking control.
+- **Triage deep links** for the common views plus the configured project's
+  replay home and replay privacy settings.
+
+The browser stores no replay data and renders no replay player. Every action is
+an external PostHog link for the configured project and selected 7/30/90-day
+range; the filter contract lives in
+`frontend/src/lib/analytics/replay-browser.ts` and is unit tested in
+`frontend/src/__tests__/replay-browser.test.ts`.
 
 Guardrails hold for these links exactly as for the rest of the analytics
 boundary:
 
-- **Admin-only.** The links render inside the admin Analytics tab, which is
-  behind the admin role; there is no new public surface.
+- **Admin-only.** The links render inside the admin Analytics and Replays tabs,
+  which are behind the admin role; there is no new public surface.
 - **Consent-based and masked.** They only *open* the existing replay list; they
   do not change capture. Replays remain opt-in and fully text/input masked.
-- **No document surfaces.** The links do not reference `/r/:token`, `/u/:username`,
-  or `/share/:token`; résumé, share, and portfolio pages stay blocked.
+- **No document surfaces.** The links do not reference `/workspace*`, `/try`,
+  `/r/:token`, `/u/:username`, `/share/:token`, or `/portfolio/:username`;
+  résumé, share, portfolio, and guest-editor pages stay blocked.
 - **No tokens or PII in URLs.** Filter values are enum strings and templated
   paths only.
 
@@ -219,7 +246,7 @@ boundary:
 bash scripts/ci/no-session-recording.sh
 
 # Frontend unit tests
-cd frontend && pnpm exec vitest run src/__tests__/analytics-posthog.test.ts
+cd frontend && pnpm exec vitest run src/__tests__/analytics-posthog.test.ts src/__tests__/replay-links.test.ts src/__tests__/replay-browser.test.ts
 
 # Backend data-boundary tests
 cd backend && SKIP_INFRA_CHECK=1 .venv/Scripts/python.exe -m pytest test/test_posthog_analytics.py -q

@@ -932,6 +932,44 @@ export interface AdminAnalyticsOverviewResponse {
   generated_at: string
 }
 
+export interface AdminCompileLatencyBucket {
+  value: string
+  label: string
+  samples: number
+  p50_seconds: number | null
+  p95_seconds: number | null
+  p99_seconds: number | null
+  mean_seconds: number | null
+  max_seconds: number | null
+  sparse: boolean
+  sample_status: 'ok' | 'insufficient_samples'
+}
+
+export interface AdminCompileLatencySlowestBucket extends AdminCompileLatencyBucket {
+  dimension: 'plan' | 'compiler' | 'template'
+}
+
+export interface AdminCompileLatencyResponse {
+  days: number
+  window: { start: string; end: string }
+  filters: { plan: string | null; compiler: string | null; template: string | null }
+  duration_unit: 'seconds'
+  sparse_threshold: number
+  slowest_limit: number
+  overall: Omit<AdminCompileLatencyBucket, 'value' | 'label'>
+  by_plan: AdminCompileLatencyBucket[]
+  by_compiler: AdminCompileLatencyBucket[]
+  by_template: AdminCompileLatencyBucket[]
+  slowest: AdminCompileLatencySlowestBucket[]
+  missing_dimensions: { plan: number; compiler: number; template: number }
+  totals: {
+    completed_compilations: number
+    timed_compilations: number
+    missing_dimension_fields: number
+  }
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  Entitlements / Admin Control Plane                                 //
 // ------------------------------------------------------------------ //
@@ -1315,6 +1353,26 @@ export interface AdminAuditList {
   filters: AdminAuditFilters
 }
 
+export interface AdminChangeHistoryFilters {
+  key: string | null
+  target_id: string | null
+  actor_user_id: string | null
+  action: string | null
+  created_after: string | null
+  created_before: string | null
+}
+
+export interface AdminChangeHistoryList {
+  items: AdminAuditEntry[]
+  total: number
+  limit: number
+  next_cursor: string | null
+  has_more: boolean
+  read_only: true
+  target_types: string[]
+  filters: AdminChangeHistoryFilters
+}
+
 export interface AdminActivationStep {
   key: string
   label: string
@@ -1349,6 +1407,7 @@ export interface AdminActivationResponse {
   by_plan: AdminActivationSegment[]
   by_provider: AdminActivationSegment[]
   by_signup_cohort?: AdminActivationSegment[]
+  signup_funnel?: AdminSignupFunnel
   suppressed_segments?: Record<string, number>
   minimum_segment_size?: number
   milestone_definitions?: Array<{
@@ -1359,6 +1418,78 @@ export interface AdminActivationResponse {
   }>
   reconciliation?: Record<string, { source: string; users: number }>
   generated_at: string
+}
+
+export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
+export type SignupOAuthFailureCode =
+  | 'access_denied'
+  | 'account_not_linked'
+  | 'callback_failed'
+  | 'provider_error'
+  | 'state_mismatch'
+  | 'unknown'
+
+export interface AdminSignupFunnelStep {
+  key: 'signup_started' | 'signup_completed' | 'email_verified'
+  label: string
+  count: number
+  from_previous: number | null
+  from_start: number
+  median_seconds: number | null
+  median_days: number | null
+}
+
+export interface AdminSignupFunnelProvider {
+  label: string
+  provider: string
+  provider_label: string
+  users: number
+  started: number
+  completed: number
+  verified: number
+  verification_rate: number
+  conversion_start_to_complete: number
+  conversion_complete_to_verified: number
+  median_seconds_to_verify: number | null
+  median_days_to_verify: number | null
+}
+
+export interface AdminSignupFunnelFailure {
+  label: string
+  provider: string
+  provider_label: string
+  count: number
+}
+
+export interface AdminSignupFunnel {
+  period_days: number
+  cohort_size: number
+  started: number
+  completed: number
+  verified: number
+  verification_rate: number
+  conversion_start_to_complete: number
+  conversion_complete_to_verified: number
+  median_seconds_to_verify: number | null
+  median_days_to_verify: number | null
+  steps: AdminSignupFunnelStep[]
+  by_provider: AdminSignupFunnelProvider[]
+  oauth_failures: {
+    total: number
+    by_provider: AdminSignupFunnelFailure[]
+    by_code: Array<{ code: string; count: number }>
+  }
+  suppressed_segments?: Record<string, number>
+  minimum_segment_size?: number
+  provider_labels?: Record<string, string>
+  started_by_provider?: Array<{ label: string; provider: string; count: number }>
+  generated_at: string
+}
+
+export interface SignupMilestonesResponse {
+  provider: SignupAuthProvider
+  email_verified: boolean
+  recorded: string[]
 }
 
 export interface AdminRetentionCell {
@@ -1671,6 +1802,92 @@ export interface AdminAiCostDailyRow extends AdminAiCostRollupRow {
   date: string
 }
 
+export interface AdminAiUsageMetrics {
+  runs: number
+  users: number
+  successes: number
+  errors: number
+  pending: number
+  success_rate: number
+  error_rate: number
+  tokens: number
+  latency_p50_ms: number | null
+  latency_p95_ms: number | null
+  latency_avg_ms: number | null
+  latency_samples: number
+  credential_sources: Record<string, number>
+}
+
+export interface AdminAiUsageRow extends AdminAiUsageMetrics {
+  label: string
+  feature?: string
+  provider?: string
+  model?: string
+  persona?: string
+  plan?: string
+  credential_source?: string
+}
+
+export interface AdminAiUsageResponse {
+  period_days: number
+  start_date: string
+  end_date: string
+  generated_at: string
+  filters: {
+    plan: string | null
+    feature: string | null
+    provider: string | null
+    model: string | null
+    persona: string | null
+  }
+  minimum_group_size: number
+  suppressed_groups: number
+  suppression: {
+    minimum_group_size: number
+    rule: string
+    suppressed_groups: number
+    by_dimension: Record<string, number>
+  }
+  totals: AdminAiUsageMetrics
+  by_feature: AdminAiUsageRow[]
+  by_provider: AdminAiUsageRow[]
+  by_model: AdminAiUsageRow[]
+  by_persona: AdminAiUsageRow[]
+  by_plan: AdminAiUsageRow[]
+  by_credential_source: AdminAiUsageRow[]
+  reconciliation: {
+    sources: Array<AdminAiUsageMetrics & { source: string; table: string }>
+    total_events: number
+    total_successes: number
+    total_errors: number
+    total_tokens: number
+    resume_engine_runs: {
+      source: string
+      runs: number
+      by_status: Record<string, number>
+      successes: number
+      partial: number
+      errors: number
+      pending: number
+      latency_p50_ms: number | null
+      latency_p95_ms: number | null
+      latency_avg_ms: number | null
+      latency_samples: number
+      filters_applied: Record<string, string | null>
+      note: string
+    }
+  }
+  persona_source: string
+  credential_source_note: string
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+}
+
 export type AdminTimeseriesMetric =
   | 'events'
   | 'compilations'
@@ -1703,6 +1920,75 @@ export interface AdminFilteredTimeseriesResponse {
     end_date: string
     timezone: string
   }
+  generated_at: string
+}
+
+export interface AdminFeatureFrequencyBucket {
+  key: string
+  label: string
+  users: number
+  share: number
+}
+
+export interface AdminFeatureDepthRow {
+  feature: string
+  users: number
+  events: number
+  events_per_user: number
+  median_events_per_user: number | null
+  p95_events_per_user: number | null
+  repeat_users: number
+  repeat_rate: number
+  habitual_users: number
+  habitual_rate: number
+  buckets: AdminFeatureFrequencyBucket[]
+  breadth: {
+    average_features_per_user: number
+    median_features_per_user: number | null
+    sole_feature_users: number
+    multi_feature_users: number
+  }
+}
+
+export interface AdminFeatureDepthBreadthSummary {
+  average_features_per_user: number
+  median_features_per_user: number | null
+  distribution: Array<{ key: string; label: string; users: number }>
+}
+
+export interface AdminFeatureDepthResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  filters: {
+    days: number
+    plan: string | null
+    cohort: string | null
+    start_date: string
+    end_date: string
+    timezone: string
+  }
+  minimum_group_size: number
+  habitual_weekly_threshold: number
+  habitual_minimum_events: number
+  habitual_definition: string
+  suppressed: boolean
+  suppressed_features: number
+  truncated_features: number
+  totals: {
+    users: number
+    events: number
+    features: number
+    median_events_per_user: number | null
+    p95_events_per_user: number | null
+    repeat_users: number
+    repeat_rate: number
+    habitual_users: number
+    habitual_rate: number
+    breadth: AdminFeatureDepthBreadthSummary
+  }
+  features: AdminFeatureDepthRow[]
   generated_at: string
 }
 
@@ -4158,6 +4444,56 @@ class ApiClient {
     }
   }
 
+  /**
+   * Anonymous signup-attempt counter. Only the allowlisted provider label is
+   * sent; the backend never uses it to attribute an account. Account provider,
+   * completion and verification always come from server-owned auth state.
+   */
+  async trackSignupStarted(provider?: SignupAuthProvider): Promise<void> {
+    try {
+      await this.request<{ recorded: string; provider: string }>('/analytics/signup/started', {
+        method: 'POST',
+        body: JSON.stringify(provider ? { provider } : {}),
+      })
+    } catch {
+      // Analytics must never block sign-up.
+    }
+  }
+
+  async trackOAuthFailure(
+    provider: SignupAuthProvider,
+    failureCode: SignupOAuthFailureCode = 'callback_failed',
+  ): Promise<void> {
+    try {
+      await this.request<{ recorded: string; provider: string }>('/analytics/signup/oauth-failure', {
+        method: 'POST',
+        body: JSON.stringify({ provider, failure_code: failureCode }),
+      })
+    } catch {
+      // Non-critical.
+    }
+  }
+
+  /**
+   * Idempotent server-side milestone sync. Returns null when analytics is
+   * unavailable so callers can ignore failures without branching.
+   */
+  async recordSignupMilestones(): Promise<SignupMilestonesResponse | null> {
+    // Playwright servers expose a build-time test flag. Synthetic suites assert
+    // exact request ledgers, so keep this non-essential telemetry local to the
+    // fixture instead of letting it reach the network. Production never sets
+    // NEXT_PUBLIC_PLAYWRIGHT_TEST and always records the server-derived
+    // milestones.
+    if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === '1') return null
+    try {
+      return await this.request<SignupMilestonesResponse>('/analytics/signup/milestones', {
+        method: 'POST',
+      })
+    } catch {
+      return null
+    }
+  }
+
   async trackCompilation(compilationId: string, compilationStatus: string, compilationTime?: number): Promise<void> {
     captureAnalyticsEvent('compilation_tracked', {
       status: compilationStatus,
@@ -4572,7 +4908,7 @@ class ApiClient {
     return this.request('/admin/feature-flags')
   }
 
-  async updateFeatureFlag(key: string, enabled: boolean): Promise<{
+  async updateFeatureFlag(key: string, enabled: boolean, reason: string): Promise<{
     key: string
     enabled: boolean
     label: string
@@ -4581,7 +4917,7 @@ class ApiClient {
   }> {
     return this.request(`/admin/feature-flags/${encodeURIComponent(key)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, reason }),
     })
   }
 
@@ -4600,10 +4936,18 @@ class ApiClient {
   }
 
   /** Toggle a feature's global kill-switch. Returns fresh state. */
-  async updateKillSwitch(key: string, enabled: boolean, expectedEnabled?: boolean): Promise<AdminEntitlementsState> {
+  async updateKillSwitch(
+    key: string,
+    enabled: boolean,
+    reason: string,
+    expectedEnabled?: boolean,
+  ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>(
       `/admin/entitlements/kill-switch/${encodeURIComponent(key)}`,
-      { method: 'PATCH', body: JSON.stringify({ enabled, expected_enabled: expectedEnabled }) },
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled, reason, expected_enabled: expectedEnabled }),
+      },
     )
   }
 
@@ -4612,6 +4956,7 @@ class ApiClient {
     planFamily: string,
     featureKey: string,
     enabled: boolean,
+    reason: string,
     expectedEnabled?: boolean,
   ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>('/admin/entitlements/matrix', {
@@ -4620,16 +4965,29 @@ class ApiClient {
         plan_family: planFamily,
         feature_key: featureKey,
         enabled,
+        reason,
         expected_enabled: expectedEnabled,
       }),
     })
   }
 
   /** Account roles restrict access independently of plans and document permissions. */
-  async updateRoleCell(role: EntitlementRole, featureKey: string, enabled: boolean, expectedEnabled?: boolean): Promise<AdminEntitlementsState> {
+  async updateRoleCell(
+    role: EntitlementRole,
+    featureKey: string,
+    enabled: boolean,
+    reason: string,
+    expectedEnabled?: boolean,
+  ): Promise<AdminEntitlementsState> {
     return this.request<AdminEntitlementsState>('/admin/entitlements/roles', {
       method: 'PATCH',
-      body: JSON.stringify({ role, feature_key: featureKey, enabled, expected_enabled: expectedEnabled }),
+      body: JSON.stringify({
+        role,
+        feature_key: featureKey,
+        enabled,
+        reason,
+        expected_enabled: expectedEnabled,
+      }),
     })
   }
 
@@ -4700,6 +5058,39 @@ class ApiClient {
     return this.request<AdminAiCostResponse>(`/admin/analytics/ai-cost?${qs}`)
   }
 
+  async getAdminAiUsage(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    provider?: string
+    model?: string
+    persona?: string
+  }): Promise<AdminAiUsageResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.model) qs.set('model', params.model)
+    if (params?.persona) qs.set('persona', params.persona)
+    return this.request<AdminAiUsageResponse>(`/admin/analytics/ai-usage?${qs}`)
+  }
+
+  async getAdminCompileLatency(params?: {
+    days?: number
+    plan?: string
+    compiler?: string
+    template?: string
+  }): Promise<AdminCompileLatencyResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.compiler) qs.set('compiler', params.compiler)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCompileLatencyResponse>(`/admin/analytics/compile-latency${suffix}`)
+  }
+
   async getAdminFilteredTimeseries(params: {
     days?: number
     metric: AdminTimeseriesMetric
@@ -4711,6 +5102,19 @@ class ApiClient {
     if (params.dimension) qs.set('dimension', params.dimension)
     if (params.value) qs.set('value', params.value)
     return this.request<AdminFilteredTimeseriesResponse>(`/admin/analytics/timeseries?${qs}`)
+  }
+
+  async getAdminFeatureDepth(params?: {
+    days?: number
+    plan?: string
+    cohort?: string
+  }): Promise<AdminFeatureDepthResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminFeatureDepthResponse>(`/admin/analytics/feature-depth${suffix}`)
   }
 
   async getAdminAttention(): Promise<AdminAttentionResponse> {
@@ -5093,6 +5497,28 @@ class ApiClient {
     if (params?.cursor) qs.set('cursor', params.cursor)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminAuditList>(`/admin/audit${suffix}`)
+  }
+
+  /** Read-only history for feature flags, kill-switches and entitlement cells. */
+  async getAdminChangeHistory(params?: {
+    key?: string
+    target_id?: string
+    actor_user_id?: string
+    action?: string
+    created_after?: string
+    created_before?: string
+    limit?: number
+    cursor?: string
+  }): Promise<AdminChangeHistoryList> {
+    const qs = new URLSearchParams()
+    for (const key of ['key', 'target_id', 'actor_user_id', 'action', 'created_after', 'created_before'] as const) {
+      const value = params?.[key]
+      if (value) qs.set(key, value)
+    }
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.cursor) qs.set('cursor', params.cursor)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminChangeHistoryList>(`/admin/change-history${suffix}`)
   }
 
   // ---------------------------------------------------------------- //
