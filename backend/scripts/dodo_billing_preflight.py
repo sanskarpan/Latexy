@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0082_signup_funnel_providers"
+EXPECTED_HEAD = "0083_compile_error_taxonomy"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -30,7 +30,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
     "0076_spare_authority_handover", "0077_admin_control_room", "0078_admin_alerts",
     "0079_tenant_domain_expiry", "0080_queue_snapshots", "0081_compile_latency_dimensions",
-    "0082_signup_funnel_providers",
+    "0082_signup_funnel_providers", "0083_compile_error_taxonomy",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -194,6 +194,8 @@ CAPABILITY_SCHEMA_COLUMNS = {
     "0081_compile_latency_dimensions": {},
     # Adds the signup-funnel event table and users.auth_provider only.
     "0082_signup_funnel_providers": {},
+    # Adds the allowlisted compile-error class column/index only.
+    "0083_compile_error_taxonomy": {},
 }
 
 
