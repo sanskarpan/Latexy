@@ -183,6 +183,17 @@ def _stored_attribution(metadata: Mapping[str, Any]) -> dict[str, str] | None:
     return attribution
 
 
+def validate_stored_attribution(metadata: Mapping[str, Any]) -> dict[str, str] | None:
+    """Public, side-effect-free validation for another analytics service.
+
+    Trial attribution reads the same server-stored first-touch row and must
+    apply the exact same allowlist and sanitizers. Invalid or absent metadata
+    returns ``None`` rather than raising or echoing caller-controlled values.
+    """
+
+    return _stored_attribution(metadata)
+
+
 @dataclass
 class _Bucket:
     visitors: set[str] = field(default_factory=set)

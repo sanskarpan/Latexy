@@ -96,6 +96,13 @@ from .traffic_source_routes import router as traffic_source_router
 router.include_router(traffic_source_router)
 router.include_router(admin_traffic_source_router)
 
+# Consented trial -> account -> subscription linkage and cohort reporting.
+from .trial_attribution_routes import admin_router as admin_trial_attribution_router
+from .trial_attribution_routes import router as trial_attribution_router
+
+router.include_router(trial_attribution_router)
+router.include_router(admin_trial_attribution_router)
+
 # Include Resume routes
 from .pdf_import_routes import router as pdf_import_router
 
@@ -1286,7 +1293,13 @@ async def get_trial_status(
     try:
         ip_address = request.client.host if request.client else None
         limit = await _get_trial_limit(user_id, db)
-        status = await trial_service.get_trial_status(db, fingerprint, ip_address, limit=limit)
+        status = await trial_service.get_trial_status(
+            db,
+            fingerprint,
+            ip_address,
+            limit=limit,
+            visitor_id=request.cookies.get("latexy_traffic_visitor"),
+        )
 
         return TrialStatusResponse(
             usageCount=status["usageCount"],
@@ -1316,6 +1329,7 @@ async def track_usage(request_data: TrackUsageRequest, request: Request, db: Asy
             session_id=request_data.sessionId,
             resource_type=request_data.resourceType,
             metadata=request_data.metadata,
+            visitor_id=request.cookies.get("latexy_traffic_visitor"),
         )
 
         return TrackUsageResponse(
@@ -1395,6 +1409,9 @@ async def compile_latex_anonymous(
             ip_address=ip_address,
             user_agent=request.headers.get("user-agent") if request else None,
             resource_type="resume",
+            visitor_id=(
+                request.cookies.get("latexy_traffic_visitor") if request else None
+            ),
         )
         if not usage_result["success"]:
             error_messages = {

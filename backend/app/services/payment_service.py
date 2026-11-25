@@ -1547,6 +1547,9 @@ class PaymentService:
             user = await db.get(User, intent.user_id)
             if can_grant_access and user and (not user.subscription_id or user.subscription_id == intent.id):
                 user.subscription_plan, user.subscription_status, user.subscription_id = "lifetime", "active", intent.id
+        attribution_user_id = str(intent.user_id)
+        attribution_subscription_id = str(intent.id)
+        attribution_plan_id = intent.plan_id
         await db.commit()
         record_business_event("payment", "success")
         if not was_duplicate:
@@ -1564,6 +1567,24 @@ class PaymentService:
                 await db.rollback()
                 logger.error("Referral qualification failed after payment", extra={"error_type": type(exc).__name__})
                 raise
+        # Persist the trial -> paid conversion without ever delaying or rolling
+        # back the entitlement change above. No linked trial means a no-op.
+        try:
+            from .trial_attribution_service import link_subscription_for_user
+
+            await link_subscription_for_user(
+                db,
+                user_id=attribution_user_id,
+                subscription_id=attribution_subscription_id,
+                plan_id=attribution_plan_id,
+                paid_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:
+            await db.rollback()
+            logger.warning(
+                "Trial attribution subscription link failed (%s)",
+                type(exc).__name__,
+            )
         return {"success": True}
 
     async def _handle_subscription_event(

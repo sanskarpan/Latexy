@@ -1964,6 +1964,77 @@ export interface AdminTrafficSourcesResponse {
   generated_at: string
 }
 
+export interface AdminTrialAttributionRow {
+  label: string
+  trial_starts: number
+  signups: number | null
+  paid_users: number | null
+  trial_to_signup_pct: number | null
+  trial_to_paid_pct: number | null
+  signup_to_paid_pct: number | null
+  median_days_to_signup: number | null
+  median_days_to_paid: number | null
+  paid_within_7d: number | null
+  paid_within_30d: number | null
+  paid_within_90d: number | null
+  conversion_within_7d_pct: number | null
+  conversion_within_30d_pct: number | null
+  conversion_within_90d_pct: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminTrialAttributionResponse {
+  period: { start: string; end: string; days: number }
+  minimum_cohort_size: number
+  conversion_windows_days: number[]
+  totals: {
+    trial_starts: number
+    linked_trials: number
+    unlinked_trials: number
+    anonymous_source_trials: number
+    signups: number | null
+    paid_users: number | null
+    trial_to_signup_pct: number | null
+    trial_to_paid_pct: number | null
+    signup_to_paid_pct: number | null
+    median_days_to_signup: number | null
+    median_days_to_paid: number | null
+    paid_within_7d: number | null
+    paid_within_30d: number | null
+    paid_within_90d: number | null
+    conversion_within_7d_pct: number | null
+    conversion_within_30d_pct: number | null
+    conversion_within_90d_pct: number | null
+    source_attributed_trials: number
+    linkage_coverage_pct: number
+    source_coverage_pct: number
+  }
+  reconciliation: {
+    period_trial_starts: number
+    linked_trials: number
+    unlinked_trials: number
+    anonymous_trials: number
+    source_attributed_trials: number
+    unattributed_trials: number
+    cohort_signups: number
+    cohort_paid_users: number
+    subscriptions_linked_to_cohort: number
+    period_signups: number
+    period_paid_subscriptions: number
+    period_paid_users: number
+    unattributed_signups: number
+    unattributed_paid_users: number
+    deleted_user_attributions: number
+  }
+  by_source: AdminTrialAttributionRow[]
+  by_plan: AdminTrialAttributionRow[]
+  by_signup_month: AdminTrialAttributionRow[]
+  suppressed: Record<string, number>
+  truncated: Record<string, number>
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminRetentionCell {
   count: number
   eligible: number
@@ -5593,6 +5664,21 @@ class ApiClient {
   async getAdminLandingConversion(days = 30): Promise<AdminLandingConversionResponse> {
     const qs = new URLSearchParams({ days: String(days) })
     return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
+  }
+
+  async getAdminTrialAttribution(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminTrialAttributionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTrialAttributionResponse>(
+      `/admin/analytics/trial-attribution${suffix}`,
+    )
   }
 
   async getAdminAiCost(params?: {
