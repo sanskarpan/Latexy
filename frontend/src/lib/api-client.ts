@@ -1084,6 +1084,106 @@ export interface AdminBillingSummary {
   recent_refund_requests: AdminRefundRequest[]
 }
 
+export interface AdminSubscriptionSummary {
+  active_at_start: number
+  active_at_end: number
+  plan_mix_total: number
+  upgrades: number
+  downgrades: number
+  lateral_moves: number
+  movement_total: number
+  cancellations: number
+  cancellation_scheduled: number
+  expired: number
+  payment_failed: number
+  refunded: number
+  churn_count: number
+  churn_rate: number | null
+  new_paid: number
+  reactivations: number
+  mrr_minor: number
+  mrr: number
+}
+
+export interface AdminSubscriptionPlanMix {
+  plan_id: string
+  subscriptions: number
+  users: number
+  share_pct: number
+  mrr_minor: number
+  mrr: number
+  currency: string
+}
+
+export interface AdminSubscriptionMovement {
+  direction: 'upgrade' | 'downgrade' | 'lateral'
+  from_plan: string
+  to_plan: string
+  count: number
+  users: number
+}
+
+export interface AdminSubscriptionChurn {
+  reason: string
+  count: number
+  users: number
+}
+
+export interface AdminSubscriptionCohortPlanMix {
+  plan_id: string
+  subscriptions: number
+  currency: string
+}
+
+export interface AdminSubscriptionCohort extends AdminSubscriptionSummary {
+  cohort: string
+  users: number
+  plan_mix: AdminSubscriptionCohortPlanMix[]
+}
+
+export interface AdminSubscriptionAnalyticsResponse {
+  period_days: number
+  period_start: string
+  period_end: string
+  currency: string
+  minor_unit: string
+  minimum_cohort_size: number
+  filters: {
+    days: number
+    start: string
+    end: string
+    signup_month: string | null
+    signup_from: string | null
+    signup_to: string | null
+    plan: string | null
+    timezone: string
+  }
+  available_signup_months: Array<{ month: string; users: number }>
+  summary: AdminSubscriptionSummary
+  plan_mix: AdminSubscriptionPlanMix[]
+  movements: AdminSubscriptionMovement[]
+  churn: AdminSubscriptionChurn[]
+  cohorts: AdminSubscriptionCohort[]
+  suppressed: boolean
+  suppressed_cohorts: number
+  reconciliation: {
+    history_rows: number
+    backfill_rows: number
+    movement_total_reconciles: boolean
+    churn_reconciles: boolean
+    plan_mix_total_matches_active_at_end: boolean
+    current_active_subscriptions: number
+    plan_mix_matches_current: boolean
+    checks: Array<{
+      key: string
+      label: string
+      ok: boolean
+      detail: string
+    }>
+  }
+  generated_at: string
+}
+
 export interface AdminBillingWebhook {
   id: string
   provider: string
@@ -5166,6 +5266,29 @@ class ApiClient {
     if (params?.start) qs.set('start', params.start)
     if (params?.end) qs.set('end', params.end)
     return this.request<AdminBillingSummary>(`/admin/billing/summary?${qs}`)
+  }
+
+  async getAdminSubscriptionAnalytics(params?: {
+    days?: number
+    start?: string
+    end?: string
+    signup_month?: string
+    signup_from?: string
+    signup_to?: string
+    plan?: string
+  }): Promise<AdminSubscriptionAnalyticsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    if (params?.signup_month) qs.set('signup_month', params.signup_month)
+    if (params?.signup_from) qs.set('signup_from', params.signup_from)
+    if (params?.signup_to) qs.set('signup_to', params.signup_to)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSubscriptionAnalyticsResponse>(
+      `/admin/subscriptions/analytics${suffix}`,
+    )
   }
 
   async getAdminBillingWebhooks(params?: {

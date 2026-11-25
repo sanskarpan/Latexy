@@ -15,6 +15,7 @@ import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
+import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
@@ -29,7 +30,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'replays' | 'billing' | 'growth' | 'customers' | 'audit' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'replays' | 'billing' | 'subscriptions' | 'growth' | 'customers' | 'audit' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -37,6 +38,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analytics', label: 'Analytics' },
   { id: 'replays', label: 'Replays' },
   { id: 'billing', label: 'Revenue' },
+  { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
@@ -944,6 +946,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'analytics' && <AdminAnalytics />}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'billing' && <AdminBilling />}
+        {tab === 'subscriptions' && <AdminSubscriptions />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
         {tab === 'audit' && (

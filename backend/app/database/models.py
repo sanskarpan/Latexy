@@ -877,6 +877,70 @@ class Subscription(Base):
     payments: Mapped[List["Payment"]] = relationship("Payment", back_populates="subscription")
 
 
+class SubscriptionHistory(Base):
+    """Append-only subscription plan/status transition ledger.
+
+    Rows are written by the billing service inside the subscription mutation
+    transaction. ``previous_*`` columns make upgrades/downgrades and churn
+    reconstructable without parsing logs. The table intentionally stores only a
+    user UUID, plan/status identifiers, period timestamps and allowlisted event
+    metadata: no email, name, document, provider payload, token or free text.
+    """
+
+    __tablename__ = "subscription_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "effective_at",
+            "plan_id",
+            "status",
+            name="uq_subscription_history_transition",
+        ),
+        CheckConstraint(
+            "event_type IN ('subscription_created', 'plan_changed', "
+            "'status_changed', 'activated', 'renewed', 'period_updated', "
+            "'cancellation_scheduled', 'cancelled', 'expired', "
+            "'payment_failed', 'refunded', 'checkout_failed', "
+            "'checkout_unknown', 'admin_override', 'backfill')",
+            name="ck_subscription_history_event_type",
+        ),
+        CheckConstraint(
+            "source IN ('billing', 'checkout', 'reconcile', 'admin', 'backfill')",
+            name="ck_subscription_history_source",
+        ),
+        Index("idx_subscription_history_user_effective", "user_id", "effective_at"),
+        Index("idx_subscription_history_effective_type", "effective_at", "event_type"),
+        Index(
+            "idx_subscription_history_subscription_effective",
+            "subscription_id",
+            "effective_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True
+    )
+    plan_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    previous_plan_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    previous_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    current_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    current_period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="billing", server_default="billing"
+    )
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Payment(Base):
     """Payment history."""
 
