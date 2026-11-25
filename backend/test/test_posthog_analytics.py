@@ -46,6 +46,42 @@ def test_sanitizer_bounds_strings_and_property_count():
     assert len(safe) <= 25
 
 
+def test_sanitizer_preserves_allowlisted_campaign_attribution():
+    safe = sanitize_posthog_properties(
+        {
+            "utm_source": "Google",
+            "utm_medium": "cpc",
+            "utm_campaign": "launch",
+            "utm_content": "hero",
+            "utm_term": "resume-builder",
+            "referrer_host": "news.ycombinator.com",
+            "landing_path": "/r/abc123?token=secret",
+        }
+    )
+    assert safe == {
+        "utm_source": "google",
+        "utm_medium": "cpc",
+        "utm_campaign": "launch",
+        "utm_content": "hero",
+        "utm_term": "resume-builder",
+        "referrer_host": "news.ycombinator.com",
+        "landing_path": "/r/:token",
+    }
+
+
+def test_sanitizer_drops_free_form_campaign_attribution():
+    safe = sanitize_posthog_properties(
+        {
+            "utm_source": "free form",
+            "utm_content": "person@example.com",
+            "utm_campaign": "a" * 65,
+            "referrer_host": "https://127.0.0.1/private?token=x",
+            "landing_path": "https://evil.example/r/secret?token=x",
+        }
+    )
+    assert safe == {}
+
+
 class _FakeClient:
     def __init__(self):
         self.calls = []

@@ -1492,6 +1492,42 @@ export interface SignupMilestonesResponse {
   recorded: string[]
 }
 
+export interface AdminTrafficSourceRow {
+  label: string
+  sessions: number
+  visitors: number
+  signups: number | null
+  paid_users: number | null
+  signup_conversion: number | null
+  paid_conversion: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminTrafficSourceTotals {
+  sessions: number
+  visitors: number
+  signups: number
+  paid_users: number
+  signup_conversion: number
+  paid_conversion: number
+}
+
+export interface AdminTrafficSourcesResponse {
+  period: { start: string; end: string; days: number }
+  minimum_cohort_size: number
+  attribution_window_days: number
+  totals: AdminTrafficSourceTotals
+  unattributed_signups: number
+  by_source: AdminTrafficSourceRow[]
+  by_medium: AdminTrafficSourceRow[]
+  by_campaign: AdminTrafficSourceRow[]
+  by_referrer: AdminTrafficSourceRow[]
+  suppressed: Record<string, number>
+  truncated: Record<string, number>
+  notes?: Record<string, string>
+  generated_at: string
+}
+
 export interface AdminRetentionCell {
   count: number
   eligible: number
@@ -5038,6 +5074,19 @@ class ApiClient {
     const qs = new URLSearchParams({ weeks: String(weeks) })
     if (signupMonth) qs.set('signup_month', signupMonth)
     return this.request<AdminRetentionResponse>(`/admin/analytics/retention?${qs}`)
+  }
+
+  async getAdminTrafficSources(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminTrafficSourcesResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTrafficSourcesResponse>(`/admin/analytics/traffic-sources${suffix}`)
   }
 
   async getAdminAiCost(params?: {

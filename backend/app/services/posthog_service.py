@@ -14,6 +14,12 @@ from typing import Any, Dict, Optional
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from .traffic_source_service import (
+    UTM_FIELDS,
+    normalize_utm_values,
+    sanitize_landing_path,
+    sanitize_referrer_host,
+)
 
 logger = get_logger(__name__)
 
@@ -40,7 +46,25 @@ _SENSITIVE_KEY_PARTS = (
     "job_description",
     "cover_letter",
 )
-_SAFE_KEY_ALLOWLIST = frozenset({"feature_key", "plan_key", "event_type", "surface", "route"})
+_SAFE_KEY_ALLOWLIST = frozenset(
+    {
+        "feature_key",
+        "plan_key",
+        "event_type",
+        "surface",
+        "route",
+        # Allowlisted campaign attribution. ``utm_content`` would otherwise be
+        # dropped by the generic "content" guard even though it is a bounded,
+        # low-cardinality marketing label.
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term",
+        "referrer_host",
+        "landing_path",
+    }
+)
 # Client-originated events may only mirror a finite vocabulary. Without this,
 # any authenticated caller could create unlimited PostHog event names (data
 # poisoning / billable cardinality) through one generic tracking endpoint.
@@ -82,6 +106,31 @@ def sanitize_posthog_properties(properties: Optional[Dict[str, Any]]) -> Dict[st
         if lowered.startswith("$"):
             continue
         if key not in _SAFE_KEY_ALLOWLIST and any(part in lowered for part in _SENSITIVE_KEY_PARTS):
+            continue
+        if key in UTM_FIELDS:
+            try:
+                normalized = normalize_utm_values({key: value}).get(key)
+            except (TypeError, ValueError):
+                continue
+            if normalized is None:
+                continue
+            safe[key] = normalized
+            continue
+        if key == "referrer_host":
+            try:
+                normalized_host = sanitize_referrer_host(value)
+            except (TypeError, ValueError):
+                continue
+            if normalized_host is None:
+                continue
+            safe[key] = normalized_host
+            continue
+        if key == "landing_path":
+            try:
+                normalized_path = sanitize_landing_path(value)
+            except (TypeError, ValueError):
+                continue
+            safe[key] = normalized_path
             continue
         if value is None or isinstance(value, bool):
             safe[key] = value
