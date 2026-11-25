@@ -4484,7 +4484,7 @@ class ApiClient {
     // fixture instead of letting it reach the network. Production never sets
     // NEXT_PUBLIC_PLAYWRIGHT_TEST and always records the server-derived
     // milestones.
-    if (process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === '1') return null
+    if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === '1') return null
     try {
       return await this.request<SignupMilestonesResponse>('/analytics/signup/milestones', {
         method: 'POST',
