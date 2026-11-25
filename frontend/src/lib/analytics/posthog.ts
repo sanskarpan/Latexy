@@ -225,15 +225,30 @@ export function captureAnalyticsEvent(event: string, properties?: AnalyticsPrope
   }
 }
 
-export function capturePageview(pathname: string): void {
+export function capturePageview(
+  pathname: string,
+  context?: {
+    pageKey?: string | null
+    experiment?: string | null
+    variant?: string | null
+    deviceClass?: string | null
+  },
+): void {
   if (!client || readAnalyticsConsent() !== 'granted' || typeof window === 'undefined') return
   const path = sanitizeAnalyticsPath(pathname)
+  const properties: AnalyticsProperties = {
+    $current_url: `${window.location.origin}${path}`,
+    $referrer: safeReferrer(),
+    path,
+  }
+  // Landing attribution is low-cardinality only. A missing variant is omitted
+  // rather than filled in with an invented control group.
+  if (context?.pageKey) properties.page_key = context.pageKey
+  if (context?.experiment) properties.experiment = context.experiment
+  if (context?.variant) properties.variant = context.variant
+  if (context?.deviceClass) properties.device_class = context.deviceClass
   try {
-    client.capture('$pageview', {
-      $current_url: `${window.location.origin}${path}`,
-      $referrer: safeReferrer(),
-      path,
-    })
+    client.capture('$pageview', properties)
   } catch {
     // Best effort.
   }

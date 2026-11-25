@@ -385,6 +385,9 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "signup_funnel_routes": frozenset({
         "record_signup_started", "record_oauth_failure", "record_signup_milestones",
     }),
+    "landing_conversion_routes": frozenset({
+        "get_admin_landing_conversion",
+    }),
     "telemetry_routes": frozenset({
         "ingest_frontend_telemetry",
     }),

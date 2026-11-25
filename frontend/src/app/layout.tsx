@@ -22,6 +22,7 @@ import { I18nProvider } from '@/components/I18nProvider'
 import { normalizeUiLocale } from '@/lib/i18n'
 import ReferralCapture from '@/components/ReferralCapture'
 import AnalyticsProvider from '@/components/analytics/AnalyticsProvider'
+import LandingPageviewTracker from '@/components/analytics/LandingPageviewTracker'
 import PWARegistration from '@/components/PWARegistration'
 import { siteUrl } from '@/lib/site-url'
 
@@ -103,6 +104,7 @@ export default async function RootLayout({
             <AuthSync />
             <ReferralCapture />
             <AnalyticsProvider />
+            <LandingPageviewTracker />
             <TenantThemeSync />
             <WebVitalsReporter />
             <div className="min-h-screen flex flex-col">

@@ -15,6 +15,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Revenue | `POST /admin/billing/refunds/{id}/execute` | Submit an approved/retryable refund to Dodo |
 | Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments plus the provider-segmented signup start → complete → verified funnel, median time-to-verify and OAuth-failure counters |
 | Growth & Cost | `GET /analytics/conversion-funnel` | Admin-only landing → trial → registration → subscription funnel; now includes the same server-derived signup/provider report |
+| Growth & Cost | `GET /admin/analytics/landing-conversion` | Landing visits and same-device first-touch trial/registration conversion by page key, experiment/variant, and mobile/tablet/desktop class; overall funnel summary kept as the authoritative sample, missing variants labelled, cells below five visits suppressed |
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
@@ -63,7 +64,11 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   avoid re-identifying a small group. Feature-depth groups below five users are
   omitted and a filtered cohort below five users returns no counts; only
   aggregate counts are returned, never event metadata, document text, or
-  per-user event rows.
+  per-user event rows. Landing-conversion cells below five visits are omitted,
+  missing variant/page data is labelled instead of imputed, and the report
+  credits a registration at most once using the earliest same-device landing
+  view; it never builds a cross-device user funnel. No path, query string,
+  share token, account id, or device fingerprint is returned.
 - KPI comparisons use an equal-length previous window. A zero (or negative)
   baseline returns no percent delta instead of infinity, and the UI uses a
   neutral tone in that case. Snapshot KPIs compare against the count at the

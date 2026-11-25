@@ -26,6 +26,12 @@ from ..database.models import (
     UsageAnalytics,
     User,
 )
+from .landing_conversion_service import (
+    normalize_device_class,
+    normalize_experiment,
+    normalize_page_key,
+    normalize_variant,
+)
 from .posthog_service import posthog_service
 from .signup_funnel_service import signup_funnel_service
 
@@ -1243,14 +1249,38 @@ class AnalyticsService:
         user_id: Optional[UUID] = None,
         device_fingerprint: Optional[str] = None,
         page: Optional[str] = None,
+        page_key: Optional[str] = None,
+        experiment: Optional[str] = None,
+        variant: Optional[str] = None,
+        device_class: Optional[str] = None,
         feature: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> bool:
-        """Track user journey events (page views, feature usage, etc.). Returns True on success."""
+        """Track user journey events (page views, feature usage, etc.). Returns True on success.
+
+        Landing attribution fields are bounded to low-cardinality values and
+        stored only in the existing JSON metadata column, so no migration or new
+        identifier table is needed. Missing variants stay absent rather than
+        being imputed as a control group.
+        """
         metadata = {}
         if page:
             metadata["page"] = page
+        if page_key:
+            normalized_page_key = normalize_page_key(page_key)
+            if normalized_page_key is not None:
+                metadata["page_key"] = normalized_page_key
+        if experiment:
+            normalized_experiment = normalize_experiment(experiment)
+            if normalized_experiment is not None:
+                metadata["experiment"] = normalized_experiment
+        if variant:
+            normalized_variant = normalize_variant(variant)
+            if normalized_variant is not None:
+                metadata["variant"] = normalized_variant
+        if device_class:
+            metadata["device_class"] = normalize_device_class(device_class, user_agent)
         if feature:
             metadata["feature"] = feature
 
@@ -1263,6 +1293,7 @@ class AnalyticsService:
             ip_address=ip_address,
             user_agent=user_agent
         )
+
 
 # Global analytics service instance
 analytics_service = AnalyticsService()
