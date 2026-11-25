@@ -168,6 +168,7 @@ from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_control_routes import router as admin_control_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
+from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
@@ -185,6 +186,14 @@ router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
 router.include_router(admin_subscription_router)
+router.include_router(admin_gdpr_router)
+
+# Data-subject GDPR rights are intentionally outside the admin capability
+# surface: an account must be able to export or delete itself regardless of
+# plan, feature flags or support status.
+from .account_gdpr_routes import router as account_gdpr_router
+
+router.include_router(account_gdpr_router)
 
 # Include Job Application Tracker routes
 from .email_status_routes import router as email_status_router

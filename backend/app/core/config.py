@@ -271,6 +271,25 @@ class Settings(BaseSettings):
         default=False,
         description="Enable the stateless legacy HS256 JWT auth fallback (migration only; off by default)",
     )
+    # GDPR data-subject workflow. The export signing key should be rotated
+    # independently of JWT/Better Auth credentials in production; when unset a
+    # domain-separated key is derived from the auth secret instead.
+    GDPR_EXPORT_SIGNING_KEY: str = Field(
+        default="",
+        description="HMAC key for signed, time-limited GDPR export bundles (falls back to auth secret derivation)",
+    )
+    GDPR_EXPORT_TTL_MINUTES: int = Field(
+        default=30,
+        ge=5,
+        le=1440,
+        description="Lifetime of a signed GDPR export download token",
+    )
+    GDPR_REAUTH_MAX_AGE_MINUTES: int = Field(
+        default=15,
+        ge=1,
+        le=120,
+        description="Maximum session age accepted as re-authentication for account deletion",
+    )
     TRUST_PROXY_HEADERS: bool = Field(
         default=False,
         description="Trust X-Forwarded-For for client IP (enable ONLY behind a trusted reverse proxy)",

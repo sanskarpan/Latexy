@@ -1872,6 +1872,122 @@ export interface AdminChangeHistoryList {
   filters: AdminChangeHistoryFilters
 }
 
+// ---------------------------------------------------------------- //
+//  GDPR data-subject workflow                                      //
+// ---------------------------------------------------------------- //
+
+export type GdprRequestType = 'export' | 'deletion'
+export type GdprRequestStatus =
+  | 'pending'
+  | 'legal_review'
+  | 'approved'
+  | 'processing'
+  | 'ready'
+  | 'completed'
+  | 'failed'
+  | 'rejected'
+  | 'cancelled'
+  | 'blocked'
+  | 'expired'
+
+export interface GdprRetentionException {
+  category: string
+  tables: string[]
+  reason: string
+  legal_basis: string
+}
+
+export interface GdprTableResult {
+  table: string
+  step: string
+  action: 'delete' | 'update' | 'anonymize' | 'retain'
+  status: 'completed' | 'failed' | 'retained'
+  rows_affected: number
+  description?: string
+  error_code?: string
+  reason?: string
+  category?: string
+}
+
+export interface GdprRequestSummary {
+  id: string
+  request_type: GdprRequestType
+  status: GdprRequestStatus
+  legal_review_status: 'not_required' | 'pending' | 'approved' | 'rejected'
+  identity_verified: boolean
+  reauthenticated_at: string | null
+  confirmed_at: string | null
+  legal_reviewed_at: string | null
+  review_note: string | null
+  legal_hold_blocked: boolean
+  export_expires_at: string | null
+  export_downloaded_at: string | null
+  export_available: boolean
+  failure_code: string | null
+  failure_detail: string | null
+  attempts: number
+  failed_tables: string[]
+  table_results: GdprTableResult[]
+  retention_exceptions: GdprRetentionException[]
+  created_at: string | null
+  updated_at: string | null
+  finished_at: string | null
+  can_cancel: boolean
+  // Admin list fields.
+  user_id?: string | null
+  user_email_masked?: string | null
+  legal_reviewed_by?: string | null
+  legal_hold_active?: boolean
+}
+
+export interface GdprPolicy {
+  deletion_confirmation: string
+  export_ttl_minutes: number
+  reauth_max_age_minutes: number
+  retention_exceptions: GdprRetentionException[]
+  export_scope: { included: string[]; excluded: string[] }
+}
+
+export interface GdprExportResponse {
+  request: GdprRequestSummary
+  download_token: string
+  download_path: string
+  download_token_header: string
+  expires_at: string | null
+  reissued: boolean
+}
+
+export interface GdprDeletionResponse {
+  request: GdprRequestSummary
+  created: boolean
+  retention_exceptions: GdprRetentionException[]
+}
+
+export interface GdprRequestList {
+  items: GdprRequestSummary[]
+  total: number
+  limit?: number
+  offset?: number
+}
+
+export interface GdprLegalHold {
+  id: string
+  user_id: string
+  user_email_masked: string | null
+  active: boolean
+  reason: string
+  placed_by: string
+  placed_at: string | null
+  released_by: string | null
+  released_at: string | null
+  release_reason: string | null
+}
+
+export interface GdprLegalHoldList {
+  items: GdprLegalHold[]
+  total: number
+}
+
 export interface AdminActivationStep {
   key: string
   label: string
@@ -6329,6 +6445,125 @@ class ApiClient {
     if (params?.cursor) qs.set('cursor', params.cursor)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminChangeHistoryList>(`/admin/change-history${suffix}`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  GDPR data-subject workflow                                      //
+  // ---------------------------------------------------------------- //
+
+  async getGdprPolicy(): Promise<GdprPolicy> {
+    return this.request<GdprPolicy>('/account/gdpr/policy')
+  }
+
+  async getGdprRequests(limit = 50): Promise<GdprRequestList> {
+    const suffix = limit ? `?limit=${encodeURIComponent(String(limit))}` : ''
+    return this.request<GdprRequestList>(`/account/gdpr/requests${suffix}`)
+  }
+
+  async getGdprRequest(id: string): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/account/gdpr/requests/${encodeURIComponent(id)}`,
+    )
+  }
+
+  async requestGdprExport(): Promise<GdprExportResponse> {
+    return this.request<GdprExportResponse>('/account/gdpr/exports', {
+      method: 'POST',
+    })
+  }
+
+  async requestGdprDeletion(body: {
+    confirmation: string
+    reason?: string
+  }): Promise<GdprDeletionResponse> {
+    return this.request<GdprDeletionResponse>('/account/gdpr/deletion', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async cancelGdprDeletion(id: string): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/account/gdpr/deletion/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' },
+    )
+  }
+
+  async downloadGdprExport(id: string, token: string): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${API_BASE}/account/gdpr/exports/${encodeURIComponent(id)}/download`,
+      { headers: { 'X-GDPR-Export-Token': token } },
+    )
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      throw new Error(`HTTP ${response.status}: ${parseApiErrorMessage(bodyText, response.statusText)}`)
+    }
+    return response.blob()
+  }
+
+  async getAdminGdprRequests(params?: {
+    status?: GdprRequestStatus
+    request_type?: GdprRequestType
+    limit?: number
+    offset?: number
+  }): Promise<GdprRequestList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.request_type) qs.set('request_type', params.request_type)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<GdprRequestList>(`/admin/gdpr/requests${suffix}`)
+  }
+
+  async reviewAdminGdprRequest(
+    id: string,
+    body: { decision: 'approved' | 'rejected'; note: string },
+  ): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/admin/gdpr/requests/${encodeURIComponent(id)}/review`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async executeAdminGdprDeletion(
+    id: string,
+    note?: string,
+  ): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/admin/gdpr/requests/${encodeURIComponent(id)}/execute`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ note: note || null }),
+      },
+    )
+  }
+
+  async getAdminGdprLegalHolds(
+    activeOnly = true,
+  ): Promise<GdprLegalHoldList> {
+    const suffix = activeOnly ? '?active_only=true' : '?active_only=false'
+    return this.request<GdprLegalHoldList>(`/admin/gdpr/legal-holds${suffix}`)
+  }
+
+  async placeAdminGdprLegalHold(body: {
+    user_id: string
+    reason: string
+  }): Promise<GdprLegalHold> {
+    return this.request<GdprLegalHold>('/admin/gdpr/legal-holds', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async releaseAdminGdprLegalHold(
+    id: string,
+    reason: string,
+  ): Promise<GdprLegalHold> {
+    return this.request<GdprLegalHold>(
+      `/admin/gdpr/legal-holds/${encodeURIComponent(id)}/release`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
   }
 
   // ---------------------------------------------------------------- //

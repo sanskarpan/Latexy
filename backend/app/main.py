@@ -250,7 +250,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=_allow_credentials,
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "traceparent", "tracestate"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "X-GDPR-Export-Token", "traceparent", "tracestate"],
     # Without expose_headers the browser hides every non-CORS-safelisted response
     # header from JS, so the Retry-After on a 429 would be unreadable and the
     # header-carrying fix above pointless. X-Request-ID (set by
