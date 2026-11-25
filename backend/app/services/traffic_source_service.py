@@ -183,8 +183,6 @@ def _stored_attribution(metadata: Mapping[str, Any]) -> dict[str, str] | None:
     return attribution
 
 
-<<<<<<< HEAD
-=======
 def validate_stored_attribution(metadata: Mapping[str, Any]) -> dict[str, str] | None:
     """Public, side-effect-free validation for another analytics service.
 
@@ -196,7 +194,6 @@ def validate_stored_attribution(metadata: Mapping[str, Any]) -> dict[str, str] |
     return _stored_attribution(metadata)
 
 
->>>>>>> origin/t3/trial-to-paid-cohort-attribution
 @dataclass
 class _Bucket:
     visitors: set[str] = field(default_factory=set)
