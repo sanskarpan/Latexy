@@ -1084,6 +1084,79 @@ export interface AdminBillingSummary {
   recent_refund_requests: AdminRefundRequest[]
 }
 
+export interface AdminCheckoutFunnelStep {
+  key: 'checkout_started' | 'checkout_completed' | 'checkout_paid'
+  label: string
+  count: number
+  from_previous: number
+  from_start: number
+  drop_off: number
+  drop_off_pct: number
+}
+
+export interface AdminCheckoutFailureBucket {
+  bucket: 'provider_declined' | 'validation' | 'abandoned' | 'unavailable' | 'unknown'
+  label: string
+  description: string
+  count: number
+  share: number
+}
+
+export interface AdminCheckoutFunnelPlan {
+  plan_id: string
+  started: number
+  completed: number
+  paid: number
+  failed: number
+  conversion_pct: number
+}
+
+export interface AdminCheckoutFunnelPaidAmount {
+  currency: string
+  amount_minor: number
+  checkouts: number
+}
+
+export interface AdminCheckoutFunnelReconciliation {
+  started: number
+  completed: number
+  paid: number
+  failed: number
+  completed_not_paid: number
+  failure_bucket_sum: number
+  started_equals_paid_plus_failed: boolean
+  completed_at_least_paid: boolean
+  failure_buckets_match: boolean
+}
+
+export interface AdminCheckoutFunnel {
+  range_days: number
+  period_start: string
+  period_end: string
+  generated_at: string
+  billing_mode: string
+  currency: string
+  minimum_segment_size: number
+  abandonment_hours: number
+  steps: AdminCheckoutFunnelStep[]
+  conversion: {
+    started_to_completed: number
+    completed_to_paid: number
+    started_to_paid: number
+  }
+  failures: {
+    total: number
+    buckets: AdminCheckoutFailureBucket[]
+  }
+  reconciliation: AdminCheckoutFunnelReconciliation
+  paid_amounts: AdminCheckoutFunnelPaidAmount[]
+  by_plan: AdminCheckoutFunnelPlan[]
+  suppressed_segments: number
+  excluded_other_mode_attempts: number
+  definitions: Record<string, string>
+  notes: string[]
+}
+
 export interface AdminBillingWebhook {
   id: string
   provider: string
@@ -5166,6 +5239,11 @@ class ApiClient {
     if (params?.start) qs.set('start', params.start)
     if (params?.end) qs.set('end', params.end)
     return this.request<AdminBillingSummary>(`/admin/billing/summary?${qs}`)
+  }
+
+  async getAdminCheckoutFunnel(days = 30): Promise<AdminCheckoutFunnel> {
+    const qs = new URLSearchParams({ days: String(days) })
+    return this.request<AdminCheckoutFunnel>(`/admin/billing/checkout-funnel?${qs}`)
   }
 
   async getAdminBillingWebhooks(params?: {

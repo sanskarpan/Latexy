@@ -156,6 +156,7 @@ router.include_router(reference_router)
 # Include Admin routes (feature flags + public config)
 from .admin_alert_routes import router as admin_alert_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
+from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_control_routes import router as admin_control_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
@@ -163,6 +164,7 @@ from .admin_routes import router as admin_router
 router.include_router(admin_router)
 router.include_router(admin_control_router)
 router.include_router(admin_billing_reconciliation_router)
+router.include_router(admin_checkout_funnel_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_alert_router)
 
