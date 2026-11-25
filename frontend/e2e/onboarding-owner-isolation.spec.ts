@@ -275,6 +275,24 @@ async function installFixture(page: Page, options: FixtureOptions): Promise<Fixt
     recordBlocked(route.request())
     await route.abort()
   })
+  await page.route((url) => url.origin === apiOrigin && (normalizeApiPath(url.pathname) === '/account/gdpr/policy' || normalizeApiPath(url.pathname) === '/account/gdpr/requests'), async (route) => {
+    if (route.request().method() === 'GET') {
+      const path = normalizeApiPath(new URL(route.request().url()).pathname)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': baseOrigin, 'access-control-allow-credentials': 'true' },
+        body: JSON.stringify(path === '/account/gdpr/requests' ? { items: [], total: 0 } : {
+          deletion_confirmation: 'DELETE MY ACCOUNT', export_ttl_minutes: 60,
+          reauth_max_age_minutes: 15, retention_exceptions: [],
+          export_scope: { included: [], excluded: [] },
+        }),
+      })
+      return
+    }
+    recordBlocked(route.request())
+    await route.abort()
+  })
   await page.route((url) => url.origin === apiOrigin && normalizeApiPath(url.pathname) === '/analytics/track/page-view', async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({

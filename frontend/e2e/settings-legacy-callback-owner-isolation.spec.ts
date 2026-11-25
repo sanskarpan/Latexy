@@ -259,7 +259,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       '/dropbox/status', '/google-drive/status', '/me', '/me/preferences',
       '/config/feature-flags', '/config/entitlements', '/tenants/resolve-host',
       '/analytics/signup/milestones',
-      '/analytics/track/page-view',
+      '/analytics/track/page-view', '/account/gdpr/policy', '/account/gdpr/requests',
     ].includes(pathname) || (options.allowGitHubDisconnect && pathname === '/github/disconnect')
     const sameOriginBackendRequest = apiOrigin === appOrigin
       && (apiPrefixMatches || (!apiPrefix && rootApiPath))
@@ -322,6 +322,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
         '/settings/notifications', '/github/status', '/zotero/status', '/mendeley/status',
         '/dropbox/status', '/google-drive/status', '/me', '/me/preferences',
         '/config/feature-flags', '/config/entitlements', '/tenants/resolve-host',
+        '/account/gdpr/policy', '/account/gdpr/requests',
       ].includes(apiPath)
       const providerStatus = ['github', 'zotero', 'mendeley', 'dropbox', 'google-drive']
         .some((name) => apiPath === `/${name}/status`)
@@ -345,6 +346,22 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
     if (apiPath === '/telemetry/frontend' && method === 'POST') {
       // Web-vitals/page-view telemetry is explicitly synthetic and never reaches a real service.
       await route.fulfill({ status: 204, headers: { 'access-control-allow-origin': appOrigin, 'access-control-allow-credentials': 'true' } })
+      return
+    }
+
+    if (apiPath === '/account/gdpr/policy' && method === 'GET') {
+      await fulfillJson(route, {
+        deletion_confirmation: 'DELETE MY ACCOUNT',
+        export_ttl_minutes: 60,
+        reauth_max_age_minutes: 15,
+        retention_exceptions: [],
+        export_scope: { included: [], excluded: [] },
+      })
+      return
+    }
+
+    if (apiPath === '/account/gdpr/requests' && method === 'GET') {
+      await fulfillJson(route, { items: [], total: 0 })
       return
     }
 
