@@ -9,11 +9,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import get_plan_config
 from ..core.redis import get_redis_client
 from ..database import models
 from .admin_audit_service import AdminActor, record_admin_audit
-from .payment_service import PAID_SUBSCRIPTION_STATUSES, payment_service
+from .admin_revenue_service import live_provider_clause, monthly_amount, revenue_analytics
+from .payment_service import payment_service
 
 Payment = models.Payment
 Subscription = models.Subscription
@@ -23,21 +23,9 @@ AdminRefundRequest = models.AdminRefundRequest
 User = models.User
 
 
-def _monthly_amount(plan_id: str | None, quoted_amount: int | None) -> int:
-    config = get_plan_config(plan_id) or {}
-    is_annual = str(config.get("interval") or "").lower() == "year"
-    # Checkout stores the annual total in quoted_amount. Normalize annual
-    # subscriptions through the monthly-equivalent path instead of treating
-    # the whole year's price as one month of MRR.
-    if type(quoted_amount) is int and quoted_amount >= 0 and not is_annual:
-        amount = quoted_amount
-    elif type(config.get("monthly_equivalent_price")) is int:
-        amount = int(config["monthly_equivalent_price"])
-    else:
-        amount = int(config.get("price") or 0)
-        if is_annual:
-            amount = round(amount / 12)
-    return max(0, amount)
+# Kept as an alias for existing imports/tests; normalization lives with the
+# revenue analytics so MRR, ARPU and plan mix always share one policy.
+_monthly_amount = monthly_amount
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -273,6 +261,8 @@ class AdminBillingService:
         *,
         start: datetime | None = None,
         end: datetime | None = None,
+        currency: str | None = None,
+        granularity: str = "day",
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         period_end = _as_utc(end) or now
@@ -284,85 +274,13 @@ class AdminBillingService:
             period_days = max(1, (window_seconds + 86_399) // 86_400)
         else:
             period_days = days
-        active_rows = (
-            await db.execute(
-                select(Subscription.plan_id, Subscription.quoted_amount, Subscription.current_period_end).where(
-                    Subscription.status.in_(PAID_SUBSCRIPTION_STATUSES)
-                )
-            )
-        ).all()
-        active_count = sum(
-            1
-            for _plan_id, _amount, sub_period_end in active_rows
-            if sub_period_end is None or sub_period_end >= now
-        )
-        past_due = int(
-            (
-                await db.execute(
-                    select(func.count()).select_from(Subscription).where(
-                        Subscription.status.in_(("past_due", "on_hold"))
-                    )
-                )
-            ).scalar_one()
-        )
-        mrr_paise = sum(
-            _monthly_amount(plan_id, amount)
-            for plan_id, amount, sub_period_end in active_rows
-            if sub_period_end is None or sub_period_end >= now
-        )
-        plan_mix: dict[str, dict[str, Any]] = {}
-        for plan_id, amount, sub_period_end in active_rows:
-            if sub_period_end is not None and sub_period_end < now:
-                continue
-            bucket = plan_mix.setdefault(plan_id, {"plan_id": plan_id, "subscriptions": 0, "mrr": 0})
-            bucket["subscriptions"] += 1
-            bucket["mrr"] += _monthly_amount(plan_id, amount)
-        for bucket in plan_mix.values():
-            bucket["mrr"] = round(bucket["mrr"] / 100, 2)
-
-        gross = int(
-            (
-                await db.execute(
-                    select(func.coalesce(func.sum(Payment.amount), 0)).where(
-                        Payment.created_at >= period_start,
-                        Payment.created_at <= period_end,
-                        Payment.status.in_(("paid", "partially_refunded", "captured", "refunded")),
-                    )
-                )
-            ).scalar_one()
-        )
-        payments_count = int(
-            (
-                await db.execute(
-                    select(func.count()).select_from(Payment).where(
-                        Payment.created_at >= period_start,
-                        Payment.created_at <= period_end,
-                        Payment.status.in_(("paid", "partially_refunded", "captured", "refunded")),
-                    )
-                )
-            ).scalar_one()
-        )
-        refunded = int(
-            (
-                await db.execute(
-                    select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(
-                        PaymentRefund.created_at >= period_start,
-                        PaymentRefund.created_at <= period_end,
-                        PaymentRefund.status == "succeeded",
-                    )
-                )
-            ).scalar_one()
-        )
-        refunds_count = int(
-            (
-                await db.execute(
-                    select(func.count()).select_from(PaymentRefund).where(
-                        PaymentRefund.created_at >= period_start,
-                        PaymentRefund.created_at <= period_end,
-                        PaymentRefund.status == "succeeded",
-                    )
-                )
-            ).scalar_one()
+        analytics = await revenue_analytics(
+            db,
+            period_start=period_start,
+            period_end=period_end,
+            currency=currency,
+            granularity=granularity,
+            now=now,
         )
         open_refunds = int(
             (
@@ -373,12 +291,14 @@ class AdminBillingService:
                 )
             ).scalar_one()
         )
+        live_webhooks = live_provider_clause(BillingWebhookEvent.provider)
         unacknowledged_failures = int(
             (
                 await db.execute(
                     select(func.count()).select_from(BillingWebhookEvent).where(
                         BillingWebhookEvent.status == "failed",
                         BillingWebhookEvent.acknowledged_at.is_(None),
+                        live_webhooks,
                     )
                 )
             ).scalar_one()
@@ -387,7 +307,8 @@ class AdminBillingService:
             (
                 await db.execute(
                     select(func.count()).select_from(BillingWebhookEvent).where(
-                        BillingWebhookEvent.received_at >= now - timedelta(hours=24)
+                        BillingWebhookEvent.received_at >= now - timedelta(hours=24),
+                        live_webhooks,
                     )
                 )
             ).scalar_one()
@@ -398,6 +319,7 @@ class AdminBillingService:
                     select(func.count()).select_from(BillingWebhookEvent).where(
                         BillingWebhookEvent.status == "failed",
                         BillingWebhookEvent.received_at >= now - timedelta(hours=24),
+                        live_webhooks,
                     )
                 )
             ).scalar_one()
@@ -407,36 +329,34 @@ class AdminBillingService:
                 select(AdminRefundRequest).order_by(AdminRefundRequest.requested_at.desc()).limit(8)
             )
         ).scalars().all()
-        arpu_paise = int(round(mrr_paise / active_count)) if active_count else 0
-        return {
+        mrr_minor = int(analytics["mrr_minor"])
+        arpu_minor = int(analytics["arpu_minor"])
+        net_minor = int(analytics["net_revenue_minor"])
+        response = {
             "period_days": period_days,
             "period_start": period_start.isoformat(),
             "period_end": period_end.isoformat(),
             "generated_at": now.isoformat(),
-            "currency": "INR",
-            "mrr": round(mrr_paise / 100, 2),
-            "arr": round(mrr_paise * 12 / 100, 2),
-            "mrr_minor": mrr_paise,
-            "arr_minor": mrr_paise * 12,
-            "arpu": round(arpu_paise / 100, 2),
-            "arpu_minor": arpu_paise,
-            "active_subscriptions": active_count,
-            "past_due_subscriptions": past_due,
-            "gross_revenue": round(gross / 100, 2),
-            "refunded": round(refunded / 100, 2),
-            "net_revenue": round((gross - refunded) / 100, 2),
-            "gross_revenue_minor": gross,
-            "refunded_minor": refunded,
-            "net_revenue_minor": gross - refunded,
-            "payments_count": payments_count,
-            "refunds_count": refunds_count,
+            **analytics,
+            "mrr": round(mrr_minor / 100, 2),
+            "arr": round(mrr_minor * 12 / 100, 2),
+            "arpu": round(arpu_minor / 100, 2),
+            "gross_revenue": round(int(analytics["gross_revenue_minor"]) / 100, 2),
+            "refunded": round(int(analytics["refunded_minor"]) / 100, 2),
+            "refunds": round(int(analytics["refunded_minor"]) / 100, 2),
+            "refunds_minor": int(analytics["refunded_minor"]),
+            "net_revenue": round(net_minor / 100, 2),
+            "chargebacks": round(int(analytics["chargebacks_minor"]) / 100, 2),
+            "net_revenue_after_chargebacks": round(
+                int(analytics["net_revenue_after_chargebacks_minor"]) / 100, 2
+            ),
             "open_refund_requests": open_refunds,
             "unacknowledged_webhook_failures": unacknowledged_failures,
             "webhooks_24h": webhook_24h,
             "webhook_failures_24h": webhook_failed_24h,
-            "plan_mix": sorted(plan_mix.values(), key=lambda item: (-item["mrr"], item["plan_id"])),
             "recent_refund_requests": [_refund_row(row) for row in recent_refunds],
         }
+        return response
 
     async def list_webhooks(
         self,

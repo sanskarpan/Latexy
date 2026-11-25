@@ -1029,6 +1029,148 @@ export interface AdminBillingPlanMix {
   plan_id: string
   subscriptions: number
   mrr: number
+  mrr_minor: number
+  interval: string
+  revenue: number
+  revenue_minor: number
+  refunded: number
+  refunded_minor: number
+  net_revenue: number
+  net_revenue_minor: number
+  payments_count: number
+  refunds_count: number
+  share_percent: number
+}
+
+export interface AdminBillingMrrInterval {
+  interval: string
+  subscriptions: number
+  mrr_minor: number
+  mrr: number
+}
+
+export interface AdminBillingMrrNormalization {
+  basis: string
+  annual_divisor: number
+  weekly_weeks_per_month: number
+  lifetime_policy: string
+  active_subscriptions: number
+  recurring_subscriptions: number
+  by_interval: AdminBillingMrrInterval[]
+}
+
+export interface AdminBillingRevenuePoint {
+  bucket: string
+  label: string
+  gross_revenue_minor: number
+  refunds_minor: number
+  chargebacks_minor: number
+  net_revenue_minor: number
+  net_revenue_after_chargebacks_minor: number
+  payments_count: number
+  refunds_count: number
+  chargebacks_count: number
+}
+
+export interface AdminBillingRefundStatus {
+  status: string
+  count: number
+  amount_minor: number
+}
+
+export interface AdminBillingRecentRefund {
+  id: string
+  payment_id: string
+  amount_minor: number
+  currency: string
+  status: string
+  created_at: string | null
+}
+
+export interface AdminBillingRefundView {
+  currency: string
+  total_minor: number
+  total: number
+  count: number
+  succeeded_minor: number
+  succeeded: number
+  succeeded_count: number
+  failed_minor: number
+  failed_count: number
+  pending_minor: number
+  pending_count: number
+  by_status: AdminBillingRefundStatus[]
+  recent: AdminBillingRecentRefund[]
+}
+
+export interface AdminBillingChargebackItem {
+  id: string
+  event_type: string
+  status: string
+  amount_minor: number | null
+  currency: string | null
+  payment_id: string | null
+  payment_linked: boolean
+  bucket: string
+  event_at: string | null
+  received_at: string | null
+}
+
+export interface AdminBillingChargebackStatus {
+  status: string
+  count: number
+  amount_minor: number
+  events: number
+}
+
+export interface AdminBillingChargebackView {
+  currency: string
+  total_minor: number
+  total: number
+  count: number
+  events_count: number
+  open_count: number
+  resolved_count: number
+  lost_count: number
+  won_count: number
+  open_minor: number
+  resolved_minor: number
+  lost_minor: number
+  won_minor: number
+  unlinked_count: number
+  amount_unavailable_count: number
+  by_status: AdminBillingChargebackStatus[]
+  items: AdminBillingChargebackItem[]
+}
+
+export interface AdminBillingReconciliationCheck {
+  key: string
+  label: string
+  ok: boolean
+  expected_minor: number
+  actual_minor: number
+  difference_minor: number
+}
+
+export interface AdminBillingRevenueReconciliation {
+  currency: string
+  gross_from_payments_minor: number
+  refunded_from_payment_refunds_minor: number
+  net_revenue_minor: number
+  expected_net_minor: number
+  difference_minor: number
+  balanced: boolean
+  payments_count: number
+  refunds_count: number
+  chargebacks_from_events_minor: number
+  net_after_chargebacks_minor: number
+  plan_mix_attributed_revenue_minor: number
+  plan_mix_attributed_refunds_minor: number
+  plan_mix_attributed_net_minor: number
+  plan_mix_revenue_difference_minor: number
+  test_mode_excluded: boolean
+  test_mode_policy: string
+  checks: AdminBillingReconciliationCheck[]
 }
 
 export interface AdminRefundRequest {
@@ -1060,6 +1202,7 @@ export interface AdminBillingSummary {
   period_end: string
   generated_at: string
   currency: string
+  granularity: 'day' | 'month'
   mrr: number
   arr: number
   mrr_minor: number
@@ -1067,19 +1210,30 @@ export interface AdminBillingSummary {
   arpu: number
   arpu_minor: number
   active_subscriptions: number
+  active_recurring_subscriptions: number
   past_due_subscriptions: number
   gross_revenue: number
   refunded: number
   net_revenue: number
+  chargebacks: number
+  net_revenue_after_chargebacks: number
   gross_revenue_minor: number
   refunded_minor: number
   net_revenue_minor: number
+  chargebacks_minor: number
+  chargebacks_count: number
+  net_revenue_after_chargebacks_minor: number
   payments_count: number
   refunds_count: number
   open_refund_requests: number
   unacknowledged_webhook_failures: number
   webhooks_24h: number
   webhook_failures_24h: number
+  mrr_normalization: AdminBillingMrrNormalization
+  revenue_series: AdminBillingRevenuePoint[]
+  refund_view: AdminBillingRefundView
+  chargeback_view: AdminBillingChargebackView
+  reconciliation: AdminBillingRevenueReconciliation
   plan_mix: AdminBillingPlanMix[]
   recent_refund_requests: AdminRefundRequest[]
 }
@@ -5160,11 +5314,18 @@ class ApiClient {
 
   async getAdminBillingSummary(
     days = 30,
-    params?: { start?: string; end?: string },
+    params?: {
+      start?: string
+      end?: string
+      granularity?: 'day' | 'month'
+      currency?: string
+    },
   ): Promise<AdminBillingSummary> {
     const qs = new URLSearchParams({ days: String(days) })
     if (params?.start) qs.set('start', params.start)
     if (params?.end) qs.set('end', params.end)
+    if (params?.granularity) qs.set('granularity', params.granularity)
+    if (params?.currency) qs.set('currency', params.currency)
     return this.request<AdminBillingSummary>(`/admin/billing/summary?${qs}`)
   }
 
