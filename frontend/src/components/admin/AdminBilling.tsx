@@ -11,6 +11,7 @@ import {
 } from '@/lib/api-client'
 import AdminRevenueBreakdown from './AdminRevenueBreakdown'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
+import AdminCheckoutFunnel from './AdminCheckoutFunnel'
 
 const RANGES = [7, 30, 90] as const
 const PAGE_SIZE = 25
@@ -1089,6 +1090,8 @@ export default function AdminBilling() {
           the affected accounts; no automatic retry or refund is performed.
         </div>
       )}
+
+      <AdminCheckoutFunnel />
 
       {summary && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
