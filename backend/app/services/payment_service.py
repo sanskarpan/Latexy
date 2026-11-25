@@ -24,6 +24,13 @@ from .dodo_provider import DodoAPIError, DodoProvider
 from .email_service import email_service
 from .posthog_service import posthog_service
 from .referral_service import referral_service
+from .subscription_history_service import (
+    record_created_subscription,
+    record_subscription_transition,
+)
+from .subscription_history_service import (
+    snapshot as subscription_snapshot,
+)
 
 logger = get_logger(__name__)
 Payment, Subscription, User = db_models.Payment, db_models.Subscription, db_models.User
@@ -462,6 +469,13 @@ class PaymentService:
             )
             db.add(intent)
             await db.flush()
+            await record_created_subscription(
+                db,
+                intent,
+                effective_at=intent.current_period_start,
+                reason="checkout_created",
+                source="checkout",
+            )
             if coupon:
                 reserved, message = await self._reserve_coupon(
                     db, coupon["code"], concrete, user_id, intent_id,
@@ -532,12 +546,22 @@ class PaymentService:
             row = await db.scalar(select(Subscription).where(Subscription.id == intent_id)
                                   .with_for_update().execution_options(populate_existing=True))
             if row and row.status in {"checkout_pending", "checkout_unknown"}:
+                before_checkout_failure = subscription_snapshot(row)
                 row.status = "checkout_unknown" if exc.code == "provider_unavailable" or exc.code == "invalid_checkout_session" or exc.status_code >= 500 else "failed"
                 if row.status == "failed":
                     await self._set_coupon_reservation_status(db, intent_id, "released")
                     user = await db.get(User, user_id)
                     if user and user.subscription_id == intent_id:
                         user.subscription_plan, user.subscription_status, user.subscription_id = "free", "inactive", None
+                await record_subscription_transition(
+                    db,
+                    row,
+                    before_checkout_failure,
+                    reason="checkout_failed" if row.status == "failed" else "checkout_unknown",
+                    source="checkout",
+                    effective_at=datetime.now(timezone.utc),
+                    event_type="checkout_failed" if row.status == "failed" else "checkout_unknown",
+                )
                 await db.commit()
             else:
                 await db.rollback()
@@ -548,12 +572,22 @@ class PaymentService:
             row = await db.scalar(select(Subscription).where(Subscription.id == intent_id)
                                   .with_for_update().execution_options(populate_existing=True))
             if row and row.status in {"checkout_pending", "checkout_unknown"}:
+                before_checkout_failure = subscription_snapshot(row)
                 row.status = "checkout_unknown" if provider_request_started else "failed"
                 if row.status == "failed":
                     await self._set_coupon_reservation_status(db, intent_id, "released")
                     user = await db.get(User, user_id)
                     if user and user.subscription_id == intent_id:
                         user.subscription_plan, user.subscription_status, user.subscription_id = "free", "inactive", None
+                await record_subscription_transition(
+                    db,
+                    row,
+                    before_checkout_failure,
+                    reason="checkout_failed" if row.status == "failed" else "checkout_unknown",
+                    source="checkout",
+                    effective_at=datetime.now(timezone.utc),
+                    event_type="checkout_failed" if row.status == "failed" else "checkout_unknown",
+                )
                 await db.commit()
             else:
                 await db.rollback()
@@ -621,10 +655,19 @@ class PaymentService:
             return {"success": True, "message": "Subscription has already ended."}
         user = await db.scalar(select(User).where(User.id == user_id)
                                .with_for_update().execution_options(populate_existing=True))
+        before_cancellation = subscription_snapshot(sub)
         if sub.status in {"active", "cancel_scheduled"}:
             sub.status = "cancel_scheduled"
         if user and user.subscription_id == sub.id:
             user.subscription_status = sub.status
+        await record_subscription_transition(
+            db,
+            sub,
+            before_cancellation,
+            reason="cancellation_scheduled",
+            source="billing",
+            effective_at=datetime.now(timezone.utc),
+        )
         await db.commit()
         return {"success": True, "message": "Cancellation scheduled for the end of the billing cycle."}
 
@@ -820,7 +863,13 @@ class PaymentService:
                         return {"success": False, "status": "closed", "message": "Checkout changed while recovery was running."}
                     intent.provider_subscription_id = failed_subscription_id
                     intent.provider_customer_id = failed_customer_id
-                    await self._end_subscription(db, intent, "failed")
+                    await self._end_subscription(
+                        db,
+                        intent,
+                        "failed",
+                        effective_at=datetime.now(timezone.utc),
+                        reason="checkout_failed",
+                    )
                     await db.commit()
                     return {"success": False, "status": "closed", "message": "The provider confirmed this checkout failed."}
 
@@ -991,6 +1040,7 @@ class PaymentService:
                 newer_lifecycle_event = bool(
                     refreshed_intent.provider_event_at and refreshed_intent.provider_event_at > recovery_time
                 )
+                before_reconcile = subscription_snapshot(refreshed_intent)
                 if (
                     not newer_lifecycle_event
                     and refreshed_intent.status in {"active", "cancel_scheduled"}
@@ -1008,6 +1058,14 @@ class PaymentService:
                     else:
                         refreshed_intent.status = "active"
                         refreshed_user.subscription_status = "active"
+                await record_subscription_transition(
+                    db,
+                    refreshed_intent,
+                    before_reconcile,
+                    reason="reconcile",
+                    source="reconcile",
+                    effective_at=recovery_time,
+                )
                 await db.commit()
                 return {
                     "success": True, "status": "reconciled", "subscriptionId": provider_subscription_id or None,
@@ -1357,6 +1415,7 @@ class PaymentService:
         )
         if intent is None:
             return {"success": False, "error": "Local checkout intent disappeared"}
+        before_payment = subscription_snapshot(intent)
         terminal_intent = intent.status in {"cancelled", "expired", "failed", "refunded"}
         # A checkout can remain payable at the provider after the local intent
         # is closed. Verify and ledger a genuine late capture for reconciliation,
@@ -1547,6 +1606,17 @@ class PaymentService:
             user = await db.get(User, intent.user_id)
             if can_grant_access and user and (not user.subscription_id or user.subscription_id == intent.id):
                 user.subscription_plan, user.subscription_status, user.subscription_id = "lifetime", "active", intent.id
+        await record_subscription_transition(
+            db,
+            intent,
+            before_payment,
+            reason="payment_succeeded",
+            source="billing",
+            effective_at=now,
+        )
+        attribution_user_id = str(intent.user_id)
+        attribution_subscription_id = str(intent.id)
+        attribution_plan_id = intent.plan_id
         await db.commit()
         record_business_event("payment", "success")
         if not was_duplicate:
@@ -1564,6 +1634,24 @@ class PaymentService:
                 await db.rollback()
                 logger.error("Referral qualification failed after payment", extra={"error_type": type(exc).__name__})
                 raise
+        # Persist the trial -> paid conversion without ever delaying or rolling
+        # back the entitlement change above. No linked trial means a no-op.
+        try:
+            from .trial_attribution_service import link_subscription_for_user
+
+            await link_subscription_for_user(
+                db,
+                user_id=attribution_user_id,
+                subscription_id=attribution_subscription_id,
+                plan_id=attribution_plan_id,
+                paid_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:
+            await db.rollback()
+            logger.warning(
+                "Trial attribution subscription link failed (%s)",
+                type(exc).__name__,
+            )
         return {"success": True}
 
     async def _handle_subscription_event(
@@ -1586,6 +1674,7 @@ class PaymentService:
                 "retryable": False,
                 "error": "Subscription did not match a local checkout intent",
             }
+        before_subscription = subscription_snapshot(intent)
         sub_id = str(data.get("subscription_id") or "")
         if not sub_id or (intent.provider_subscription_id and sub_id != intent.provider_subscription_id):
             return {"success": False, "error": "Subscription identifier does not match the local intent"}
@@ -1681,7 +1770,14 @@ class PaymentService:
             if status in {"paused", "on_hold", "past_due"}:
                 intent.status = status
             elif status in {"failed", "cancelled", "expired"}:
-                await self._end_subscription(db, intent, "failed" if status == "failed" else status)
+                await self._end_subscription(
+                    db,
+                    intent,
+                    "failed" if status == "failed" else status,
+                    effective_at=event_at,
+                    reason="payment_failed" if status == "failed" else "provider_status_change",
+                    record_history=False,
+                )
             elif status == "active":
                 if data.get("cancel_at_next_billing_date") is True:
                     intent.status = "cancel_scheduled"
@@ -1725,9 +1821,31 @@ class PaymentService:
                 if user and user.subscription_id == intent.id:
                     user.subscription_status = "cancel_scheduled"
             else:
-                await self._end_subscription(db, intent, "cancelled")
+                await self._end_subscription(
+                    db,
+                    intent,
+                    "cancelled",
+                    effective_at=event_at,
+                    reason="provider_status_change",
+                    record_history=False,
+                )
         elif state_event in {"subscription.failed", "subscription.expired"}:
-            await self._end_subscription(db, intent, "failed" if state_event.endswith("failed") else "expired")
+            await self._end_subscription(
+                db,
+                intent,
+                "failed" if state_event.endswith("failed") else "expired",
+                effective_at=event_at,
+                reason="payment_failed" if state_event.endswith("failed") else "expiration",
+                record_history=False,
+            )
+        await record_subscription_transition(
+            db,
+            intent,
+            before_subscription,
+            reason="plan_change" if plan_change and next_plan_id else "provider_status_change",
+            source="billing",
+            effective_at=event_at,
+        )
         await db.commit()
         posthog_service.capture(
             str(intent.user_id),
@@ -1736,7 +1854,17 @@ class PaymentService:
         )
         return {"success": True}
 
-    async def _end_subscription(self, db: AsyncSession, intent: Subscription, status: str) -> None:
+    async def _end_subscription(
+        self,
+        db: AsyncSession,
+        intent: Subscription,
+        status: str,
+        *,
+        effective_at: datetime | None = None,
+        reason: str = "provider_status_change",
+        record_history: bool = True,
+    ) -> None:
+        before = subscription_snapshot(intent) if record_history else None
         intent.status = status
         intent.cancelled_at = datetime.now(timezone.utc)
         await self._set_coupon_reservation_status(db, intent.id, "released")
@@ -1745,6 +1873,15 @@ class PaymentService:
             user.subscription_plan, user.subscription_status, user.subscription_id = "free", status, None
         if resolve_plan_family(intent.plan_id) == "team":
             await self._revoke_team_seats(db, intent.user_id)
+        if record_history:
+            await record_subscription_transition(
+                db,
+                intent,
+                before,
+                reason=reason,
+                source="billing",
+                effective_at=effective_at or datetime.now(timezone.utc),
+            )
 
     async def _handle_refund_event(self, db: AsyncSession, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
         refund_id, payment_id = str(data.get("refund_id") or ""), str(data.get("payment_id") or "")
@@ -1814,7 +1951,13 @@ class PaymentService:
                 payment.status = "refunded"
                 intent = await db.get(Subscription, payment.subscription_id) if payment.subscription_id else None
                 if intent and intent.plan_id == "lifetime":
-                    await self._end_subscription(db, intent, "refunded")
+                    await self._end_subscription(
+                        db,
+                        intent,
+                        "refunded",
+                        effective_at=datetime.now(timezone.utc),
+                        reason="refund",
+                    )
                 if previous_payment_status != "refunded":
                     await referral_service.reverse_paid_payment(db, payment.id)
             elif total:

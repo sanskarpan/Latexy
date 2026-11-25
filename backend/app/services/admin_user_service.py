@@ -21,6 +21,10 @@ from ..core.logging import get_logger
 from ..core.redis import cache_manager, get_redis_client
 from ..database import models
 from .admin_audit_service import AdminActor, audit_row_summary, record_admin_audit
+from .admin_user_timeline_service import (
+    DEFAULT_TIMELINE_LIMIT,
+    build_subscription_timeline,
+)
 from .entitlement_service import (
     ENTITLEMENT_OVERRIDES_KEY,
     entitlement_overrides_from_metadata,
@@ -229,22 +233,38 @@ async def build_user_360(
     *,
     user_id: str,
     actor_role: str,
+    timeline_limit: int = DEFAULT_TIMELINE_LIMIT,
+    timeline_offset: int = 0,
 ) -> dict[str, Any]:
     """Compose the always-masked 360 view.
 
     Revealed PII is never overlaid here and never cached; the UI calls the
-    single-field reveal endpoint and holds the value client-side.
+    single-field reveal endpoint and holds the value client-side. The timeline
+    is composed live for every request so pagination and newly arrived billing
+    rows never serve a stale cached page.
     """
     cached = await _read_user_360_cache(user_id, actor_role)
     if cached is not None:
-        return cached
+        payload = cached
+    else:
+        user = await db.get(User, user_id)
+        if user is None:
+            raise KeyError("User not found")
+        payload = await _compose_user_360(db, user=user, actor_role=actor_role)
+        await _write_user_360_cache(user_id, actor_role, payload)
 
-    user = await db.get(User, user_id)
-    if user is None:
-        raise KeyError("User not found")
-    payload = await _compose_user_360(db, user=user, actor_role=actor_role)
-    await _write_user_360_cache(user_id, actor_role, payload)
-    return payload
+    timeline = await build_subscription_timeline(
+        db,
+        user_id=user_id,
+        actor_role=actor_role,
+        limit=timeline_limit,
+        offset=timeline_offset,
+    )
+    billing = dict(payload.get("billing") or {})
+    billing["timeline"] = timeline
+    # Keep the canonical page under billing for the existing card and mirror it
+    # at the top level for clients that read the 360 timeline directly.
+    return {**payload, "billing": billing, "timeline": timeline}
 
 
 async def _compose_user_360(

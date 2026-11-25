@@ -10,6 +10,7 @@ import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotific
 import { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 import PersonalDictionarySettings from '@/components/PersonalDictionarySettings'
 import SecuritySettings from '@/components/auth/SecuritySettings'
+import PrivacyDataControls from '@/components/settings/PrivacyDataControls'
 import ReferralPanel from '@/components/ReferralPanel'
 import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
@@ -1505,6 +1506,8 @@ function SettingsContent() {
         </div>}
 
         <SecuritySettings />
+
+        <PrivacyDataControls />
 
         <ReferralPanel />
 

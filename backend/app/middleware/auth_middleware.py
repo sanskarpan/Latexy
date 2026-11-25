@@ -132,6 +132,22 @@ def _extract_token(
     return None
 
 
+def extract_session_token(request: Request) -> Optional[str]:
+    """Return the raw Better Auth session token from a validated request.
+
+    Used by workflows that need a property of the *session* itself (for
+    example the GDPR deletion re-authentication freshness check) after the
+    regular auth dependency has already established the caller's identity.
+    Unlike the dependency, this helper has no parsed HTTPBearer credentials,
+    so it reads the Authorization header itself before cookie fallback.
+    """
+    authorization = request.headers.get("Authorization") or ""
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() == "bearer" and value.strip():
+        return value.strip()
+    return _extract_token(request, None)
+
+
 # ------------------------------------------------------------------ #
 #  FastAPI dependency functions                                        #
 # ------------------------------------------------------------------ #

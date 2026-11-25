@@ -1483,6 +1483,106 @@ export interface AdminCheckoutFunnel {
   notes: string[]
 }
 
+export interface AdminSubscriptionSummary {
+  active_at_start: number
+  active_at_end: number
+  plan_mix_total: number
+  upgrades: number
+  downgrades: number
+  lateral_moves: number
+  movement_total: number
+  cancellations: number
+  cancellation_scheduled: number
+  expired: number
+  payment_failed: number
+  refunded: number
+  churn_count: number
+  churn_rate: number | null
+  new_paid: number
+  reactivations: number
+  mrr_minor: number
+  mrr: number
+}
+
+export interface AdminSubscriptionPlanMix {
+  plan_id: string
+  subscriptions: number
+  users: number
+  share_pct: number
+  mrr_minor: number
+  mrr: number
+  currency: string
+}
+
+export interface AdminSubscriptionMovement {
+  direction: 'upgrade' | 'downgrade' | 'lateral'
+  from_plan: string
+  to_plan: string
+  count: number
+  users: number
+}
+
+export interface AdminSubscriptionChurn {
+  reason: string
+  count: number
+  users: number
+}
+
+export interface AdminSubscriptionCohortPlanMix {
+  plan_id: string
+  subscriptions: number
+  currency: string
+}
+
+export interface AdminSubscriptionCohort extends AdminSubscriptionSummary {
+  cohort: string
+  users: number
+  plan_mix: AdminSubscriptionCohortPlanMix[]
+}
+
+export interface AdminSubscriptionAnalyticsResponse {
+  period_days: number
+  period_start: string
+  period_end: string
+  currency: string
+  minor_unit: string
+  minimum_cohort_size: number
+  filters: {
+    days: number
+    start: string
+    end: string
+    signup_month: string | null
+    signup_from: string | null
+    signup_to: string | null
+    plan: string | null
+    timezone: string
+  }
+  available_signup_months: Array<{ month: string; users: number }>
+  summary: AdminSubscriptionSummary
+  plan_mix: AdminSubscriptionPlanMix[]
+  movements: AdminSubscriptionMovement[]
+  churn: AdminSubscriptionChurn[]
+  cohorts: AdminSubscriptionCohort[]
+  suppressed: boolean
+  suppressed_cohorts: number
+  reconciliation: {
+    history_rows: number
+    backfill_rows: number
+    movement_total_reconciles: boolean
+    churn_reconciles: boolean
+    plan_mix_total_matches_active_at_end: boolean
+    current_active_subscriptions: number
+    plan_mix_matches_current: boolean
+    checks: Array<{
+      key: string
+      label: string
+      ok: boolean
+      detail: string
+    }>
+  }
+  generated_at: string
+}
+
 export interface AdminBillingWebhook {
   id: string
   provider: string
@@ -1544,6 +1644,77 @@ export interface AdminRefundList {
   total: number
   limit: number
   offset: number
+}
+
+export interface AdminUserTimelineItem {
+  id: string
+  kind: 'subscription_history' | 'subscription' | 'payment' | 'refund' | 'webhook' | 'plan_change' | 'entitlement_change'
+  occurred_at: string | null
+  summary: string | null
+  event_type: string | null
+  source: string | null
+  status: string | null
+  previous_status: string | null
+  plan_id: string | null
+  previous_plan_id: string | null
+  current_period_start: string | null
+  current_period_end: string | null
+  reason_code: string | null
+  amount_minor: number | null
+  currency: string | null
+  provider: string | null
+  reference: string | null
+  admin_only: boolean
+  details?: Record<string, unknown>
+  subscription_id?: string | null
+  payment_id?: string | null
+  payment_method?: string | null
+}
+
+export interface AdminUserTimeline {
+  items: AdminUserTimelineItem[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  order: 'desc'
+  viewer_role: string
+  restricted_kinds: string[]
+  counts: Record<string, number>
+  sources: {
+    subscription_history: number
+    subscriptions: number
+    payments: number
+    refunds: number
+    webhooks: number
+    plan_changes: number
+    entitlement_changes: number
+  }
+  totals: {
+    payments: {
+      count: number
+      total_minor: number
+      paid_minor: number
+      by_status: Array<{ status: string; count: number; amount_minor: number }>
+      by_currency: Array<{ currency: string; count: number; amount_minor: number }>
+    }
+    refunds: {
+      count: number
+      total_minor: number
+      succeeded_minor: number
+      by_status: Array<{ status: string; count: number; amount_minor: number }>
+      by_currency: Array<{ currency: string; count: number; amount_minor: number }>
+    }
+    payment_count: number
+    payment_total_minor: number
+    refund_count: number
+    refund_total_minor: number
+    gross_minor: number
+    refunded_minor: number
+    net_minor: number
+    settled_net_minor: number
+  }
 }
 
 export interface AdminUser360 {
@@ -1616,7 +1787,9 @@ export interface AdminUser360 {
       decided_at: string | null
       executed_at: string | null
     }>
+    timeline?: AdminUserTimeline
   }
+  timeline?: AdminUserTimeline
   security: {
     sessions: Array<{
       id: string
@@ -1770,6 +1943,122 @@ export interface AdminChangeHistoryList {
   read_only: true
   target_types: string[]
   filters: AdminChangeHistoryFilters
+}
+
+// ---------------------------------------------------------------- //
+//  GDPR data-subject workflow                                      //
+// ---------------------------------------------------------------- //
+
+export type GdprRequestType = 'export' | 'deletion'
+export type GdprRequestStatus =
+  | 'pending'
+  | 'legal_review'
+  | 'approved'
+  | 'processing'
+  | 'ready'
+  | 'completed'
+  | 'failed'
+  | 'rejected'
+  | 'cancelled'
+  | 'blocked'
+  | 'expired'
+
+export interface GdprRetentionException {
+  category: string
+  tables: string[]
+  reason: string
+  legal_basis: string
+}
+
+export interface GdprTableResult {
+  table: string
+  step: string
+  action: 'delete' | 'update' | 'anonymize' | 'retain'
+  status: 'completed' | 'failed' | 'retained'
+  rows_affected: number
+  description?: string
+  error_code?: string
+  reason?: string
+  category?: string
+}
+
+export interface GdprRequestSummary {
+  id: string
+  request_type: GdprRequestType
+  status: GdprRequestStatus
+  legal_review_status: 'not_required' | 'pending' | 'approved' | 'rejected'
+  identity_verified: boolean
+  reauthenticated_at: string | null
+  confirmed_at: string | null
+  legal_reviewed_at: string | null
+  review_note: string | null
+  legal_hold_blocked: boolean
+  export_expires_at: string | null
+  export_downloaded_at: string | null
+  export_available: boolean
+  failure_code: string | null
+  failure_detail: string | null
+  attempts: number
+  failed_tables: string[]
+  table_results: GdprTableResult[]
+  retention_exceptions: GdprRetentionException[]
+  created_at: string | null
+  updated_at: string | null
+  finished_at: string | null
+  can_cancel: boolean
+  // Admin list fields.
+  user_id?: string | null
+  user_email_masked?: string | null
+  legal_reviewed_by?: string | null
+  legal_hold_active?: boolean
+}
+
+export interface GdprPolicy {
+  deletion_confirmation: string
+  export_ttl_minutes: number
+  reauth_max_age_minutes: number
+  retention_exceptions: GdprRetentionException[]
+  export_scope: { included: string[]; excluded: string[] }
+}
+
+export interface GdprExportResponse {
+  request: GdprRequestSummary
+  download_token: string
+  download_path: string
+  download_token_header: string
+  expires_at: string | null
+  reissued: boolean
+}
+
+export interface GdprDeletionResponse {
+  request: GdprRequestSummary
+  created: boolean
+  retention_exceptions: GdprRetentionException[]
+}
+
+export interface GdprRequestList {
+  items: GdprRequestSummary[]
+  total: number
+  limit?: number
+  offset?: number
+}
+
+export interface GdprLegalHold {
+  id: string
+  user_id: string
+  user_email_masked: string | null
+  active: boolean
+  reason: string
+  placed_by: string
+  placed_at: string | null
+  released_by: string | null
+  released_at: string | null
+  release_reason: string | null
+}
+
+export interface GdprLegalHoldList {
+  items: GdprLegalHold[]
+  total: number
 }
 
 export interface AdminActivationStep {
@@ -1998,6 +2287,77 @@ export interface AdminTrafficSourcesResponse {
   suppressed: Record<string, number>
   truncated: Record<string, number>
   notes?: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminTrialAttributionRow {
+  label: string
+  trial_starts: number
+  signups: number | null
+  paid_users: number | null
+  trial_to_signup_pct: number | null
+  trial_to_paid_pct: number | null
+  signup_to_paid_pct: number | null
+  median_days_to_signup: number | null
+  median_days_to_paid: number | null
+  paid_within_7d: number | null
+  paid_within_30d: number | null
+  paid_within_90d: number | null
+  conversion_within_7d_pct: number | null
+  conversion_within_30d_pct: number | null
+  conversion_within_90d_pct: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminTrialAttributionResponse {
+  period: { start: string; end: string; days: number }
+  minimum_cohort_size: number
+  conversion_windows_days: number[]
+  totals: {
+    trial_starts: number
+    linked_trials: number
+    unlinked_trials: number
+    anonymous_source_trials: number
+    signups: number | null
+    paid_users: number | null
+    trial_to_signup_pct: number | null
+    trial_to_paid_pct: number | null
+    signup_to_paid_pct: number | null
+    median_days_to_signup: number | null
+    median_days_to_paid: number | null
+    paid_within_7d: number | null
+    paid_within_30d: number | null
+    paid_within_90d: number | null
+    conversion_within_7d_pct: number | null
+    conversion_within_30d_pct: number | null
+    conversion_within_90d_pct: number | null
+    source_attributed_trials: number
+    linkage_coverage_pct: number
+    source_coverage_pct: number
+  }
+  reconciliation: {
+    period_trial_starts: number
+    linked_trials: number
+    unlinked_trials: number
+    anonymous_trials: number
+    source_attributed_trials: number
+    unattributed_trials: number
+    cohort_signups: number
+    cohort_paid_users: number
+    subscriptions_linked_to_cohort: number
+    period_signups: number
+    period_paid_subscriptions: number
+    period_paid_users: number
+    unattributed_signups: number
+    unattributed_paid_users: number
+    deleted_user_attributions: number
+  }
+  by_source: AdminTrialAttributionRow[]
+  by_plan: AdminTrialAttributionRow[]
+  by_signup_month: AdminTrialAttributionRow[]
+  suppressed: Record<string, number>
+  truncated: Record<string, number>
+  notes: string[]
   generated_at: string
 }
 
@@ -5632,6 +5992,21 @@ class ApiClient {
     return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
   }
 
+  async getAdminTrialAttribution(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminTrialAttributionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTrialAttributionResponse>(
+      `/admin/analytics/trial-attribution${suffix}`,
+    )
+  }
+
   async getAdminAiCost(params?: {
     days?: number
     plan?: string
@@ -5855,6 +6230,29 @@ class ApiClient {
     return this.request<AdminCheckoutFunnel>(`/admin/billing/checkout-funnel?${qs}`)
   }
 
+  async getAdminSubscriptionAnalytics(params?: {
+    days?: number
+    start?: string
+    end?: string
+    signup_month?: string
+    signup_from?: string
+    signup_to?: string
+    plan?: string
+  }): Promise<AdminSubscriptionAnalyticsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    if (params?.signup_month) qs.set('signup_month', params.signup_month)
+    if (params?.signup_from) qs.set('signup_from', params.signup_from)
+    if (params?.signup_to) qs.set('signup_to', params.signup_to)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSubscriptionAnalyticsResponse>(
+      `/admin/subscriptions/analytics${suffix}`,
+    )
+  }
+
   async getAdminBillingWebhooks(params?: {
     status?: string
     event_type?: string
@@ -6002,8 +6400,15 @@ class ApiClient {
     )
   }
 
-  async getAdminUser360(id: string): Promise<AdminUser360> {
-    return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360`)
+  async getAdminUser360(
+    id: string,
+    params?: { timelineLimit?: number; timelineOffset?: number },
+  ): Promise<AdminUser360> {
+    const query = new URLSearchParams()
+    if (params?.timelineLimit != null) query.set('timeline_limit', String(params.timelineLimit))
+    if (params?.timelineOffset != null) query.set('timeline_offset', String(params.timelineOffset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360${suffix}`)
   }
 
   async revealAdminUserPii(
@@ -6206,6 +6611,125 @@ class ApiClient {
     if (params?.cursor) qs.set('cursor', params.cursor)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminChangeHistoryList>(`/admin/change-history${suffix}`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  GDPR data-subject workflow                                      //
+  // ---------------------------------------------------------------- //
+
+  async getGdprPolicy(): Promise<GdprPolicy> {
+    return this.request<GdprPolicy>('/account/gdpr/policy')
+  }
+
+  async getGdprRequests(limit = 50): Promise<GdprRequestList> {
+    const suffix = limit ? `?limit=${encodeURIComponent(String(limit))}` : ''
+    return this.request<GdprRequestList>(`/account/gdpr/requests${suffix}`)
+  }
+
+  async getGdprRequest(id: string): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/account/gdpr/requests/${encodeURIComponent(id)}`,
+    )
+  }
+
+  async requestGdprExport(): Promise<GdprExportResponse> {
+    return this.request<GdprExportResponse>('/account/gdpr/exports', {
+      method: 'POST',
+    })
+  }
+
+  async requestGdprDeletion(body: {
+    confirmation: string
+    reason?: string
+  }): Promise<GdprDeletionResponse> {
+    return this.request<GdprDeletionResponse>('/account/gdpr/deletion', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async cancelGdprDeletion(id: string): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/account/gdpr/deletion/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' },
+    )
+  }
+
+  async downloadGdprExport(id: string, token: string): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${API_BASE}/account/gdpr/exports/${encodeURIComponent(id)}/download`,
+      { headers: { 'X-GDPR-Export-Token': token } },
+    )
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      throw new Error(`HTTP ${response.status}: ${parseApiErrorMessage(bodyText, response.statusText)}`)
+    }
+    return response.blob()
+  }
+
+  async getAdminGdprRequests(params?: {
+    status?: GdprRequestStatus
+    request_type?: GdprRequestType
+    limit?: number
+    offset?: number
+  }): Promise<GdprRequestList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.request_type) qs.set('request_type', params.request_type)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<GdprRequestList>(`/admin/gdpr/requests${suffix}`)
+  }
+
+  async reviewAdminGdprRequest(
+    id: string,
+    body: { decision: 'approved' | 'rejected'; note: string },
+  ): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/admin/gdpr/requests/${encodeURIComponent(id)}/review`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async executeAdminGdprDeletion(
+    id: string,
+    note?: string,
+  ): Promise<GdprRequestSummary> {
+    return this.request<GdprRequestSummary>(
+      `/admin/gdpr/requests/${encodeURIComponent(id)}/execute`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ note: note || null }),
+      },
+    )
+  }
+
+  async getAdminGdprLegalHolds(
+    activeOnly = true,
+  ): Promise<GdprLegalHoldList> {
+    const suffix = activeOnly ? '?active_only=true' : '?active_only=false'
+    return this.request<GdprLegalHoldList>(`/admin/gdpr/legal-holds${suffix}`)
+  }
+
+  async placeAdminGdprLegalHold(body: {
+    user_id: string
+    reason: string
+  }): Promise<GdprLegalHold> {
+    return this.request<GdprLegalHold>('/admin/gdpr/legal-holds', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async releaseAdminGdprLegalHold(
+    id: string,
+    reason: string,
+  ): Promise<GdprLegalHold> {
+    return this.request<GdprLegalHold>(
+      `/admin/gdpr/legal-holds/${encodeURIComponent(id)}/release`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
   }
 
   // ---------------------------------------------------------------- //

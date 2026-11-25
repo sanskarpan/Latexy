@@ -11,6 +11,7 @@ from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.observability import record_trial_use
 from ..database.models import DeviceTrial, UsageAnalytics
+from .trial_attribution_service import capture_trial_source
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,7 @@ class TrialService:
         device_fingerprint: str,
         ip_address: Optional[str] = None,
         limit: int = TRIAL_LIMIT,
+        visitor_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get trial status for a device."""
         try:
@@ -77,6 +79,12 @@ class TrialService:
                 await db.commit()
                 result = await db.execute(stmt)
                 trial = result.scalar_one()
+
+            # Consent-gated first-touch source is attached to the trial row, not
+            # to the response. It is idempotent and never blocks trial status.
+            if trial is not None and visitor_id:
+                if await capture_trial_source(db, trial=trial, visitor_id=visitor_id):
+                    await db.commit()
 
             # Test users are never considered blocked regardless of usage_count
             is_test = limit > TRIAL_LIMIT
@@ -192,6 +200,7 @@ class TrialService:
         resource_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         limit: int = TRIAL_LIMIT,
+        visitor_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Atomically check trial limit and increment usage in one transaction.
 
@@ -299,6 +308,15 @@ class TrialService:
                 )
                 db.add(analytics)
 
+                # Capture the consented first-touch source on the trial row. This
+                # runs inside the same savepoint as the trial increment so a
+                # source failure can never spend a use without a trial record.
+                if visitor_id:
+                    await db.flush()
+                    await capture_trial_source(
+                        db, trial=trial, visitor_id=visitor_id
+                    )
+
             # Outer commit (caller's transaction boundary)
             await db.commit()
 
@@ -328,7 +346,8 @@ class TrialService:
         user_agent: Optional[str] = None,
         session_id: Optional[str] = None,
         resource_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        visitor_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Track device usage and update trial status."""
         try:
@@ -378,6 +397,10 @@ class TrialService:
                 user_agent=user_agent
             )
             db.add(analytics)
+
+            if visitor_id:
+                await db.flush()
+                await capture_trial_source(db, trial=trial, visitor_id=visitor_id)
 
             await db.commit()
 

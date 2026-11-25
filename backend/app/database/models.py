@@ -859,6 +859,86 @@ class SignupFunnelEvent(Base):
     )
 
 
+class TrialAttribution(Base):
+    """Consented trial acquisition and trial-to-account/subscription link.
+
+    One row per anonymous trial. ``user_id``/``subscription_id`` stay null
+    until the visitor signs in, then the row is linked in place. No raw device
+    fingerprint, IP address, user-agent, email, name or token is stored here;
+    the anonymous trial row remains the only device-scoped record.
+    """
+
+    __tablename__ = "trial_attributions"
+    __table_args__ = (
+        CheckConstraint(
+            "consent_granted OR ("
+            "acquisition_source IS NULL AND acquisition_medium IS NULL AND "
+            "acquisition_campaign IS NULL AND acquisition_content IS NULL AND "
+            "acquisition_term IS NULL AND referrer_host IS NULL AND "
+            "landing_path IS NULL)",
+            name="ck_trial_attributions_consent_source",
+        ),
+        UniqueConstraint("trial_id", name="uq_trial_attributions_trial"),
+        Index(
+            "uq_trial_attributions_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index("idx_trial_attributions_source", "acquisition_source"),
+        Index("idx_trial_attributions_user_created", "user_id", "created_at"),
+        Index("idx_trial_attributions_paid", "paid_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    trial_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("device_trials.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    consent_granted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    acquisition_source: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_medium: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_campaign: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_content: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_term: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    referrer_host: Mapped[Optional[str]] = mapped_column(String(253), nullable=True)
+    landing_path: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    plan_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    trial_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    signup_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class Subscription(Base):
     """Subscription management."""
 
@@ -894,6 +974,70 @@ class Subscription(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="subscriptions")
     payments: Mapped[List["Payment"]] = relationship("Payment", back_populates="subscription")
+
+
+class SubscriptionHistory(Base):
+    """Append-only subscription plan/status transition ledger.
+
+    Rows are written by the billing service inside the subscription mutation
+    transaction. ``previous_*`` columns make upgrades/downgrades and churn
+    reconstructable without parsing logs. The table intentionally stores only a
+    user UUID, plan/status identifiers, period timestamps and allowlisted event
+    metadata: no email, name, document, provider payload, token or free text.
+    """
+
+    __tablename__ = "subscription_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "effective_at",
+            "plan_id",
+            "status",
+            name="uq_subscription_history_transition",
+        ),
+        CheckConstraint(
+            "event_type IN ('subscription_created', 'plan_changed', "
+            "'status_changed', 'activated', 'renewed', 'period_updated', "
+            "'cancellation_scheduled', 'cancelled', 'expired', "
+            "'payment_failed', 'refunded', 'checkout_failed', "
+            "'checkout_unknown', 'admin_override', 'backfill')",
+            name="ck_subscription_history_event_type",
+        ),
+        CheckConstraint(
+            "source IN ('billing', 'checkout', 'reconcile', 'admin', 'backfill')",
+            name="ck_subscription_history_source",
+        ),
+        Index("idx_subscription_history_user_effective", "user_id", "effective_at"),
+        Index("idx_subscription_history_effective_type", "effective_at", "event_type"),
+        Index(
+            "idx_subscription_history_subscription_effective",
+            "subscription_id",
+            "effective_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True
+    )
+    plan_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    previous_plan_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    previous_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    current_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    current_period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="billing", server_default="billing"
+    )
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class Payment(Base):
@@ -975,6 +1119,194 @@ class AdminAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class GdprRequest(Base):
+    """One data-subject export or erasure request.
+
+    Status is mutable so the queue can advance, but every transition is written
+    to the append-only ``gdpr_request_events`` table and request rows cannot be
+    deleted. No document content, export token or admin note beyond the bounded
+    review note is duplicated here.
+    """
+
+    __tablename__ = "gdpr_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "request_type IN ('export', 'deletion')",
+            name="ck_gdpr_requests_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'legal_review', 'approved', 'processing', "
+            "'ready', 'completed', 'failed', 'rejected', 'cancelled', "
+            "'blocked', 'expired')",
+            name="ck_gdpr_requests_status",
+        ),
+        CheckConstraint(
+            "legal_review_status IN ('not_required', 'pending', 'approved', 'rejected')",
+            name="ck_gdpr_requests_legal_review_status",
+        ),
+        CheckConstraint("attempts >= 0", name="ck_gdpr_requests_attempts"),
+        CheckConstraint(
+            "export_size_bytes IS NULL OR export_size_bytes >= 0",
+            name="ck_gdpr_requests_export_size",
+        ),
+        Index("idx_gdpr_requests_user_created", "user_id", "created_at"),
+        Index("idx_gdpr_requests_status_created", "status", "created_at"),
+        Index("idx_gdpr_requests_type_status", "request_type", "status"),
+        Index("idx_gdpr_requests_export_expiry", "export_expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    # SET NULL keeps the request history if a future hard-delete maintenance
+    # pass removes an already anonymized account row.
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    request_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="pending", server_default="pending"
+    )
+    legal_review_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="not_required",
+        server_default="not_required",
+    )
+    identity_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reauthenticated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    legal_reviewed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    legal_reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    legal_review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    legal_hold_blocked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    export_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    export_issued_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    export_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    export_downloaded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    export_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    export_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    failure_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    table_results: Mapped[List[Dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    retention_exceptions: Mapped[List[Dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    finished_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class GdprRequestEvent(Base):
+    """Append-only transition history for a GDPR request."""
+
+    __tablename__ = "gdpr_request_events"
+    __table_args__ = (
+        CheckConstraint(
+            "actor_type IN ('user', 'admin', 'system')",
+            name="ck_gdpr_request_events_actor_type",
+        ),
+        Index("idx_gdpr_request_events_request_created", "request_id", "created_at"),
+        Index("idx_gdpr_request_events_actor_created", "actor_user_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    request_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("gdpr_requests.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    event: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    from_status: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    to_status: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    event_metadata: Mapped[Dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class GdprLegalHold(Base):
+    """Active legal hold that blocks an account erasure job until released."""
+
+    __tablename__ = "gdpr_legal_holds"
+    __table_args__ = (
+        CheckConstraint(
+            "active OR released_at IS NOT NULL",
+            name="ck_gdpr_legal_holds_released",
+        ),
+        Index("idx_gdpr_legal_holds_user_active", "user_id", "active"),
+        Index(
+            "uq_gdpr_legal_holds_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("active"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    placed_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    placed_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    placed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    released_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    released_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    released_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    release_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class AdminRefundRequest(Base):

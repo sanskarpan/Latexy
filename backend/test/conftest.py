@@ -299,6 +299,7 @@ async def test_engine():
             ("users", "dropbox_access_token"),
             ("users", "auth_provider"),
             ("signup_funnel_events", "id"),
+            ("subscription_history", "id"),
             ("resumes", "archived_at"),
             ("resumes", "dropbox_sync_enabled"),
             ("resumes", "portfolio_visible"),

@@ -96,6 +96,13 @@ from .traffic_source_routes import router as traffic_source_router
 router.include_router(traffic_source_router)
 router.include_router(admin_traffic_source_router)
 
+# Consented trial -> account -> subscription linkage and cohort reporting.
+from .trial_attribution_routes import admin_router as admin_trial_attribution_router
+from .trial_attribution_routes import router as trial_attribution_router
+
+router.include_router(trial_attribution_router)
+router.include_router(admin_trial_attribution_router)
+
 # Include Resume routes
 from .pdf_import_routes import router as pdf_import_router
 
@@ -168,9 +175,11 @@ from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_control_routes import router as admin_control_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
+from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
+from .admin_subscription_routes import router as admin_subscription_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
@@ -183,6 +192,15 @@ router.include_router(admin_operations_router)
 router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
+router.include_router(admin_subscription_router)
+router.include_router(admin_gdpr_router)
+
+# Data-subject GDPR rights are intentionally outside the admin capability
+# surface: an account must be able to export or delete itself regardless of
+# plan, feature flags or support status.
+from .account_gdpr_routes import router as account_gdpr_router
+
+router.include_router(account_gdpr_router)
 
 # Include Job Application Tracker routes
 from .email_status_routes import router as email_status_router
@@ -1286,7 +1304,13 @@ async def get_trial_status(
     try:
         ip_address = request.client.host if request.client else None
         limit = await _get_trial_limit(user_id, db)
-        status = await trial_service.get_trial_status(db, fingerprint, ip_address, limit=limit)
+        status = await trial_service.get_trial_status(
+            db,
+            fingerprint,
+            ip_address,
+            limit=limit,
+            visitor_id=request.cookies.get("latexy_traffic_visitor"),
+        )
 
         return TrialStatusResponse(
             usageCount=status["usageCount"],
@@ -1316,6 +1340,7 @@ async def track_usage(request_data: TrackUsageRequest, request: Request, db: Asy
             session_id=request_data.sessionId,
             resource_type=request_data.resourceType,
             metadata=request_data.metadata,
+            visitor_id=request.cookies.get("latexy_traffic_visitor"),
         )
 
         return TrackUsageResponse(
@@ -1395,6 +1420,9 @@ async def compile_latex_anonymous(
             ip_address=ip_address,
             user_agent=request.headers.get("user-agent") if request else None,
             resource_type="resume",
+            visitor_id=(
+                request.cookies.get("latexy_traffic_visitor") if request else None
+            ),
         )
         if not usage_result["success"]:
             error_messages = {

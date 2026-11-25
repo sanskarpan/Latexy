@@ -154,6 +154,29 @@ The evaluator runs from the existing five-minute Modal maintenance fan-out; it
 upserts signals, reopens expired snoozes and auto-resolves cleared conditions.
 It never pages or mutates a payment, job or provider object.
 
+## Subscription history and churn
+
+`0083_subscription_history` creates the append-only `subscription_history`
+ledger. Every checkout/lifecycle change writes a row inside the same
+transaction that mutates `subscriptions`; the natural key
+`(subscription_id, effective_at, plan_id, status)` plus
+`ON CONFLICT DO NOTHING` makes provider retries and admin replays idempotent.
+The row stores only a user UUID, plan/status identifiers, period timestamps,
+an allowlisted event type/reason/source and the effective time. It has no
+email, name, document, provider payload, token or free-form text.
+
+Existing subscriptions cannot be replayed from logs. The migration writes one
+baseline snapshot per existing row from its current plan/status/period with
+`previous_* = NULL`, `event_type/reason/source = backfill`. Backfill rows seed
+the state-at-period-start/end calculation but are deliberately excluded from
+movement, cancellation and churn counters. Re-running the backfill is safe.
+
+The admin endpoint is `GET /admin/subscriptions/analytics` (admin role only).
+It returns plan mix, upgrades/downgrades, cancellation reasons and churn by
+signup month, with `signup_month`/date-range and plan filters. Responses contain
+aggregates only; cohorts below five subscribers are omitted. Currency is
+explicit and amounts use minor units (`paise` for INR).
+
 ## Database role hardening
 
 Migration `0077_admin_control_room` installs the append-only trigger, but table
@@ -203,6 +226,12 @@ serve normal traffic; there is no application delete path or scheduled purge.
   assignment/unknown fallback, start → complete → verified conversion, median
   time-to-verify, OAuth failure counts, cohort suppression below 5, PII/token
   exclusion and admin-only access.
+- `backend/test/test_subscription_history.py` covers exactly-once lifecycle
+  and payment recording, idempotent backfill, live schema allowlists, plan
+  movement/churn reconciliation, cohort filters, five-subscriber suppression
+  and admin-only aggregate responses.
+- `frontend/src/__tests__/subscription-analytics.test.ts` covers minor-unit
+  conversion, movement/churn labels, cohort labels and suppression copy.
 - `frontend/src/__tests__/signup-funnel.test.ts` covers the server-derived OAuth
   callback failure counter and its wiring into the Better Auth route.
 - `frontend/src/__tests__/admin-control-room.test.ts` pins the tab wiring,
@@ -215,8 +244,11 @@ serve normal traffic; there is no application delete path or scheduled purge.
 2. Deploy backend with the migration in the held release path.
 3. Deploy the frontend after the backend health check.
 4. Verify `/health`, `/readyz`, `/admin/billing/summary`, and the Revenue tab.
-5. Apply Alembic `0081_signup_funnel_providers` before the backend rollout;
+5. Apply Alembic `0082_signup_funnel_providers` before the backend rollout;
    it backfills `users.auth_provider` from Better Auth account rows and creates
    the aggregate `signup_funnel_events` table used by the Growth tab.
-6. The five known quarantined Dodo test dead letters may be acknowledged with a
+6. Apply Alembic `0083_subscription_history` before the backend rollout; it
+   creates and backfills the append-only subscription ledger used by the
+   Subscriptions tab. Existing rows receive one baseline snapshot only.
+7. The five known quarantined Dodo test dead letters may be acknowledged with a
    reason after review; acknowledgement does not grant access or move money.

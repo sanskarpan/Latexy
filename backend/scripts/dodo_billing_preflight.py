@@ -1,4 +1,4 @@
-"""Read-only, redacted Dodo deployment diagnostics; never contacts Dodo.
+﻿"""Read-only, redacted Dodo deployment diagnostics; never contacts Dodo.
 
 Run from the backend image: python scripts/dodo_billing_preflight.py
 Exit 0: local readiness checks pass. Exit 1: readable deployment blockers.
@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0083_compile_error_taxonomy"
+EXPECTED_HEAD = "0086_trial_attribution"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -31,6 +31,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0076_spare_authority_handover", "0077_admin_control_room", "0078_admin_alerts",
     "0079_tenant_domain_expiry", "0080_queue_snapshots", "0081_compile_latency_dimensions",
     "0082_signup_funnel_providers", "0083_compile_error_taxonomy",
+    "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -80,7 +81,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
           "plan_quota_overrides", "plan_quota_revisions", "role_features",
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
-          "admin_audit_log", "admin_refund_requests", "admin_alerts")
+          "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
+          "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -196,6 +198,44 @@ CAPABILITY_SCHEMA_COLUMNS = {
     "0082_signup_funnel_providers": {},
     # Adds the allowlisted compile-error class column/index only.
     "0083_compile_error_taxonomy": {},
+    # Adds the append-only subscription-history ledger and baseline rows.
+    "0084_subscription_history": {
+        "subscription_history": {
+            "id", "user_id", "subscription_id", "plan_id", "previous_plan_id",
+            "status", "previous_status", "current_period_start",
+            "current_period_end", "event_type", "reason", "source",
+            "effective_at", "recorded_at",
+        },
+    },
+    # Adds the GDPR request queue, append-only transitions and legal holds.
+    "0085_gdpr_requests": {
+        "gdpr_requests": {
+            "id", "user_id", "request_type", "status", "legal_review_status",
+            "identity_verified_at", "reauthenticated_at", "confirmed_at",
+            "legal_reviewed_by", "legal_reviewed_at", "legal_review_note",
+            "legal_hold_blocked", "export_token_hash", "export_issued_at",
+            "export_expires_at", "export_downloaded_at", "export_sha256",
+            "export_size_bytes", "failure_code", "failure_detail", "table_results",
+            "retention_exceptions", "attempts", "created_at", "updated_at", "finished_at",
+        },
+        "gdpr_request_events": {
+            "id", "request_id", "event", "actor_type", "actor_user_id",
+            "from_status", "to_status", "reason", "event_metadata", "created_at",
+        },
+        "gdpr_legal_holds": {
+            "id", "user_id", "reason", "placed_by", "placed_email", "placed_at",
+            "active", "released_by", "released_email", "released_at", "release_reason",
+        },
+    },
+    # Adds consented trial attribution and trial-to-user/subscription linkage.
+    "0086_trial_attribution": {
+        "trial_attributions": {
+            "id", "trial_id", "user_id", "subscription_id", "consent_granted",
+            "acquisition_source", "acquisition_medium", "acquisition_campaign",
+            "acquisition_content", "acquisition_term", "referrer_host", "landing_path",
+            "plan_id", "trial_started_at", "signup_at", "paid_at", "created_at", "updated_at",
+        },
+    },
 }
 
 
