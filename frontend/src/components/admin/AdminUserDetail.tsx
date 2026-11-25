@@ -2,8 +2,19 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { apiClient, type AdminUser360 } from '@/lib/api-client'
+import { apiClient, type AdminUser360, type AdminUserTimelineItem } from '@/lib/api-client'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
+
+const TIMELINE_LIMIT = 20
+const TIMELINE_KIND_LABELS: Record<AdminUserTimelineItem['kind'], string> = {
+  subscription_history: 'Subscription history',
+  subscription: 'Subscription',
+  payment: 'Payment',
+  refund: 'Refund',
+  webhook: 'Billing webhook',
+  plan_change: 'Plan change',
+  entitlement_change: 'Entitlement change',
+}
 
 const PLAN_OPTIONS = [
   'free', 'basic', 'basic_annual', 'pro', 'pro_annual', 'byok', 'byok_annual',
@@ -66,12 +77,16 @@ export default function AdminUserDetail({
   const [lastResult, setLastResult] = useState<{ label: string; before: string; after: string } | null>(null)
   const [revealed, setRevealed] = useState<{ email?: string | null; name?: string | null }>({})
   const [busy, setBusy] = useState<string | null>(null)
+  const [timelineOffset, setTimelineOffset] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const next = await apiClient.getAdminUser360(userId)
+      const next = await apiClient.getAdminUser360(userId, {
+        timelineLimit: TIMELINE_LIMIT,
+        timelineOffset,
+      })
       setData(next)
       // Preserve the exact current SKU, including weekly/lifetime or a retired
       // SKU. A status-only edit must never silently rewrite the plan, and the
@@ -89,7 +104,7 @@ export default function AdminUserDetail({
     } finally {
       setLoading(false)
     }
-  }, [userId])
+  }, [userId, timelineOffset])
 
   useEffect(() => {
     void load()
@@ -360,6 +375,13 @@ export default function AdminUserDetail({
   const nameRevealed = revealed.name !== undefined
   const activeSubscriptions = data.billing.subscriptions.filter((row) => ['active', 'cancel_scheduled'].includes(text(row.status)))
   const failedCompiles = data.production.failed_compilations
+  const timeline = data.billing.timeline ?? data.timeline
+  const timelineItems = timeline?.items ?? []
+  const timelinePageSize = Math.max(1, timeline?.limit ?? TIMELINE_LIMIT)
+  const timelinePage = timeline ? Math.floor(timeline.offset / timelinePageSize) + 1 : 1
+  const timelinePages = timeline ? Math.max(1, Math.ceil(timeline.total / timelinePageSize)) : 1
+  const timelineStart = timeline && timeline.total > 0 ? timeline.offset + 1 : 0
+  const timelineEnd = timeline ? Math.min(timeline.offset + timelineItems.length, timeline.total) : 0
 
   return (
     <section className="overflow-hidden rounded-[var(--radius-lg)] border-2 border-accent/30 bg-surface">
@@ -405,6 +427,148 @@ export default function AdminUserDetail({
             <p className="mt-0.5 text-xl font-semibold text-fg">{formatNumber(activeSubscriptions.length)}</p>
           </div>
         </div>
+
+        <Section
+          title="Subscription and payment timeline"
+          description="Newest first. Composed from subscription history, subscriptions, payments, refunds and admin billing changes. No document content, prompts, credentials, provider payloads or tokens are included."
+        >
+          <div className="rounded-md border border-line bg-surface-2/40 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Account identity</p>
+                <p className="mt-1 break-all font-mono text-xs text-fg-2">{email || 'No email'} · {name || 'Unnamed user'}</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-fg-3">
+                  PII is masked by default. Reveals are single-field, require a reason and are written to the audit log.
+                </p>
+              </div>
+              {canAdmin && (
+                <div className="w-full max-w-sm">
+                  <label className="block text-[10px] font-medium text-fg-2">
+                    Reason for PII reveal from timeline
+                    <input
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                      maxLength={1000}
+                      placeholder="e.g. Ticket #1234 verify billing contact"
+                      className="mt-1 w-full rounded-md border border-line bg-bg px-2 py-1.5 text-xs text-fg"
+                    />
+                  </label>
+                  <div className="mt-1 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      aria-label="Reveal email in timeline"
+                      onClick={() => void revealPii('email')}
+                      disabled={Boolean(busy) || emailRevealed}
+                      className="w-full rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                    >
+                      {emailRevealed ? 'Email revealed' : 'Reveal email'}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Reveal name in timeline"
+                      onClick={() => void revealPii('name')}
+                      disabled={Boolean(busy) || nameRevealed}
+                      className="w-full rounded border border-line px-2 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                    >
+                      {nameRevealed ? 'Name revealed' : 'Reveal name'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {timeline ? (
+            <>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-md border border-line bg-surface-2/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-fg-3">Events</p>
+                  <p className="mt-0.5 text-lg font-semibold text-fg">{formatNumber(timeline.total)}</p>
+                </div>
+                <div className="rounded-md border border-line bg-surface-2/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-fg-3">Payments</p>
+                  <p className="mt-0.5 text-lg font-semibold text-fg">{formatMoney(timeline.totals.payments.total_minor / 100)}</p>
+                  <p className="text-[10px] text-fg-3">{formatNumber(timeline.totals.payments.count)} recorded</p>
+                </div>
+                <div className="rounded-md border border-line bg-surface-2/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-fg-3">Refunds</p>
+                  <p className="mt-0.5 text-lg font-semibold text-fg">{formatMoney(timeline.totals.refunds.total_minor / 100)}</p>
+                  <p className="text-[10px] text-fg-3">{formatNumber(timeline.totals.refunds.count)} recorded</p>
+                </div>
+                <div className="rounded-md border border-line bg-surface-2/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-fg-3">Net (ledger)</p>
+                  <p className="mt-0.5 text-lg font-semibold text-fg">{formatMoney(timeline.totals.net_minor / 100)}</p>
+                  <p className="text-[10px] text-fg-3">settled {formatMoney(timeline.totals.settled_net_minor / 100)}</p>
+                </div>
+              </div>
+
+              <div className="mt-3 overflow-hidden rounded-md border border-line">
+                <ol className="divide-y divide-line">
+                  {timelineItems.map((item) => (
+                    <li key={item.id} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-2">
+                            {TIMELINE_KIND_LABELS[item.kind] ?? item.kind}
+                          </span>
+                          <span className="text-[10px] text-fg-3">{formatDateTime(item.occurred_at)}</span>
+                          {item.admin_only && (
+                            <span className="rounded-full border border-warn/30 bg-warn/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warn">
+                              admin only
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-fg-2">{item.summary || item.event_type || 'Billing event'}</p>
+                        <p className="mt-0.5 text-[10px] text-fg-3">
+                          {item.status ? `status ${item.status}` : item.event_type || item.source || '—'}
+                          {item.reason_code ? ` · ${item.reason_code}` : ''}
+                          {item.reference ? ` · ${shortId(item.reference, 24)}` : ''}
+                          {item.payment_method ? ` · ${item.payment_method}` : ''}
+                        </p>
+                      </div>
+                      {item.amount_minor != null && (
+                        <span className="shrink-0 font-mono text-xs text-fg">
+                          {formatMoney(item.amount_minor / 100, item.currency)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                  {timelineItems.length === 0 && (
+                    <li className="px-3 py-4 text-center text-xs text-fg-3">No timeline events yet.</li>
+                  )}
+                </ol>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] text-fg-3" aria-live="polite">
+                  Page {timelinePage} of {timelinePages} · {formatNumber(timelineStart)}–{formatNumber(timelineEnd)} of{' '}
+                  {formatNumber(timeline.total)} events
+                  {timeline.restricted_kinds.length > 0 ? ' · admin-only sources hidden' : ''}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTimelineOffset(Math.max(0, timeline.offset - timelinePageSize))}
+                    disabled={loading || timeline.offset <= 0}
+                    className="rounded border border-line px-3 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                  >
+                    Newer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimelineOffset(timeline.next_offset ?? timeline.offset + timelinePageSize)}
+                    disabled={loading || !timeline.has_more}
+                    className="rounded border border-line px-3 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2 disabled:opacity-40"
+                  >
+                    Older
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-xs text-fg-3">Timeline is not available from this backend revision.</p>
+          )}
+        </Section>
 
         {canAdmin ? <Section
           title="Audited support controls"
