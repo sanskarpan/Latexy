@@ -1,4 +1,4 @@
-"""Subscription history: exactly-once writes, backfill and churn analytics."""
+﻿"""Subscription history: exactly-once writes, backfill and churn analytics."""
 
 from __future__ import annotations
 
@@ -624,15 +624,15 @@ class TestMigrationAndBackfill:
     def test_migration_revision_chain_and_documented_backfill(self) -> None:
         path = (
             Path(__file__).parents[1]
-            / "alembic/versions/0083_subscription_history.py"
+            / "alembic/versions/0084_subscription_history.py"
         )
         spec = importlib.util.spec_from_file_location("subscription_history_migration", path)
         migration = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
         spec.loader.exec_module(migration)
 
-        assert migration.revision == "0083_subscription_history"
-        assert migration.down_revision == "0082_signup_funnel_providers"
+        assert migration.revision == "0084_subscription_history"
+        assert migration.down_revision == "0083_compile_error_taxonomy"
         assert "ON CONFLICT" in migration.BACKFILL_SQL
         assert "previous_plan_id" in migration.BACKFILL_SQL
         assert "backfill" in migration.BACKFILL_SQL
@@ -643,7 +643,7 @@ class TestMigrationAndBackfill:
     ) -> None:
         path = (
             Path(__file__).parents[1]
-            / "alembic/versions/0083_subscription_history.py"
+            / "alembic/versions/0084_subscription_history.py"
         )
         spec = importlib.util.spec_from_file_location("subscription_history_migration", path)
         migration = importlib.util.module_from_spec(spec)
