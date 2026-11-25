@@ -85,7 +85,8 @@ async def record_traffic_landing(
 ) -> dict[str, Any]:
     """Persist one first-party landing event before URL query sanitization."""
 
-    visitor_id = _request_visitor_id(request) or new_visitor_id()
+    existing_visitor_id = _request_visitor_id(request)
+    visitor_id = existing_visitor_id or new_visitor_id()
     utm = {
         "utm_source": payload.utm_source,
         "utm_medium": payload.utm_medium,
@@ -105,7 +106,10 @@ async def record_traffic_landing(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
-    _set_visitor_cookie(response, request, visitor_id)
+    # Only a server-generated UUID is ever written back as a cookie. An existing
+    # client cookie is validated for lookup but never echoed into Set-Cookie.
+    if existing_visitor_id is None:
+        _set_visitor_cookie(response, request, visitor_id)
     return result
 
 
