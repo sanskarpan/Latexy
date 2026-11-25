@@ -268,6 +268,7 @@ async def _enforce_anonymous_trial(
         ip_address=ip_address,
         user_agent=http_request.headers.get("user-agent"),
         resource_type="resume",
+        visitor_id=http_request.cookies.get("latexy_traffic_visitor"),
     )
     if usage.get("success"):
         return

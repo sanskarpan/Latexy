@@ -18,6 +18,7 @@ import {
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import AdminTrafficSources from '@/components/admin/AdminTrafficSources'
 import AdminLandingConversion from '@/components/admin/AdminLandingConversion'
+import AdminTrialAttribution from '@/components/admin/AdminTrialAttribution'
 import { formatDateTime, formatMoney, formatNumber, percentage } from './admin-format'
 
 const RANGES = [7, 30, 90] as const
@@ -1348,6 +1349,7 @@ export default function AdminGrowth() {
       {activation?.signup_funnel && <SignupFunnel data={activation.signup_funnel} />}
       <AdminTrafficSources days={days} />
       <AdminLandingConversion days={days} />
+      <AdminTrialAttribution days={days} />
       {retention && <Retention data={retention} />}
       {cost && (
         <Cost

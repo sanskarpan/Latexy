@@ -11,7 +11,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useSession } from '@/lib/auth-client'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, getDeviceFingerprint } from '@/lib/api-client'
 import { wsClient } from '@/lib/ws-client'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
 import { readAnalyticsConsent } from '@/lib/analytics/posthog'
@@ -19,12 +19,14 @@ import {
   claimTrafficAttribution,
   hasPendingTrafficAttribution,
 } from '@/lib/analytics/traffic-source'
+import { claimTrialAttribution } from '@/lib/analytics/trial-attribution'
 
 export function AuthSync() {
   const { data: session, isPending, isRefetching = false, error } = useSession()
   const referralClaimedFor = useRef<string | null>(null)
   const signupMilestonesFor = useRef<string | null>(null)
   const trafficClaimedFor = useRef<string | null>(null)
+  const trialAttributionClaimedFor = useRef<string | null>(null)
   const unauthorized = isConfirmedSessionUnauthorized(error)
 
   useEffect(() => {
@@ -49,6 +51,7 @@ export function AuthSync() {
     if (!token) referralClaimedFor.current = null
     if (!token) signupMilestonesFor.current = null
     if (!token) trafficClaimedFor.current = null
+    if (!token) trialAttributionClaimedFor.current = null
 
     // Server-derived signup funnel milestones: completion and (when the account
     // already has email_verified) verification. The backend ignores any client
@@ -70,6 +73,19 @@ export function AuthSync() {
     ) {
       trafficClaimedFor.current = token
       void claimTrafficAttribution(token)
+    }
+
+    // Link the anonymous trial on this device to the signed-in account only
+    // when analytics consent was granted. The backend reads the campaign from
+    // its own first-touch landing row and attaches the first paid subscription
+    // when one exists. This is best-effort and never blocks sign-in.
+    if (
+      token &&
+      trialAttributionClaimedFor.current !== token &&
+      readAnalyticsConsent() === 'granted'
+    ) {
+      trialAttributionClaimedFor.current = token
+      void claimTrialAttribution(token, getDeviceFingerprint())
     }
 
     // Sign-up and OAuth both preserve the first-party referral cookie. Claim it
