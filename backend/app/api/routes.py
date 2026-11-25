@@ -172,6 +172,7 @@ from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .landing_conversion_routes import router as landing_conversion_router
+from .admin_subscription_routes import router as admin_subscription_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
@@ -183,6 +184,7 @@ router.include_router(admin_operations_router)
 router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
+router.include_router(admin_subscription_router)
 
 # Include Job Application Tracker routes
 from .email_status_routes import router as email_status_router
