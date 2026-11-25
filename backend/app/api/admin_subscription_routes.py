@@ -7,7 +7,7 @@ admin audit rows for financial metrics, and it returns aggregates only.
 
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
