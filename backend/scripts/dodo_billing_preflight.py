@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0083_compile_error_taxonomy"
+EXPECTED_HEAD = "0084_subscription_history"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -31,6 +31,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0076_spare_authority_handover", "0077_admin_control_room", "0078_admin_alerts",
     "0079_tenant_domain_expiry", "0080_queue_snapshots", "0081_compile_latency_dimensions",
     "0082_signup_funnel_providers", "0083_compile_error_taxonomy",
+    "0084_subscription_history",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -80,7 +81,7 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
           "plan_quota_overrides", "plan_quota_revisions", "role_features",
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
-          "admin_audit_log", "admin_refund_requests", "admin_alerts")
+          "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -196,6 +197,15 @@ CAPABILITY_SCHEMA_COLUMNS = {
     "0082_signup_funnel_providers": {},
     # Adds the allowlisted compile-error class column/index only.
     "0083_compile_error_taxonomy": {},
+    # Adds the append-only subscription-history ledger and baseline rows.
+    "0084_subscription_history": {
+        "subscription_history": {
+            "id", "user_id", "subscription_id", "plan_id", "previous_plan_id",
+            "status", "previous_status", "current_period_start",
+            "current_period_end", "event_type", "reason", "source",
+            "effective_at", "recorded_at",
+        },
+    },
 }
 
 
