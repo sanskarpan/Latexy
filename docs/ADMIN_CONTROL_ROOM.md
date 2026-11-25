@@ -30,6 +30,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
 | Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
 | Overview | `GET /admin/operations/queues` | Per-queue sampled depth, oldest pending message age, and enqueue/completion rates with a bounded throughput series |
+| Overview | `GET /admin/operations/stuck-jobs` | Bounded per-job queued/processing/stale diagnosis with age, heartbeat/lease, worker, queue, stage and reason |
+| Overview | `POST /admin/operations/stuck-jobs/{job_id}/retry` | Fence the stuck original and dispatch one linked replacement (recoverable compilation families only); reason, confirmation and audit required |
+| Overview | `POST /admin/operations/stuck-jobs/{job_id}/cancel` | Durable cancellation through the finalization arbiter; reason, confirmation and audit required |
+| Overview | `POST /admin/operations/stuck-jobs/{job_id}/fence` | Durable stale-worker fence and non-revivable tombstone; reason, confirmation and audit required |
 | Overview | `GET /admin/alerts` | Durable, deduplicated alerts with severity, owner, state, occurrence count and runbook |
 | Overview | `PATCH /admin/alerts/{id}` | Acknowledge or snooze an alert with a mandatory reason; every action is audited |
 
@@ -81,6 +85,15 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   expiry inside 30 days is actionable; null metadata is reported as `unknown`
   or `partial`, never as healthy or far-future. Every row links to its filtered
   Revenue, Job queue or Customers view.
+- Stuck-job diagnosis never reads document content, prompts, job descriptions,
+  provider errors or customer PII. It exposes bounded job IDs, owner UUIDs,
+  job type, queue, status/stage, age, heartbeat/lease and a fixed reason code.
+  Retry/cancel/fence require an explicit confirmation and a reason, use the
+  existing finalization/fence primitives, and write exactly one append-only
+  audit row per effective state change. Repeats are idempotent no-ops; terminal
+  jobs are never retried. A retry creates one linked replacement job and links
+  it in the audit row. Non-compilation families are not retried because their
+  prompts and job descriptions are intentionally not persisted.
 - Per-user feature overrides live in `users.user_metadata.entitlement_overrides`
   and are consumed by `entitlement_service`. A grant supplements the plan/SKU
   matrix for one capability; a revoke denies it. Neither bypasses a global kill

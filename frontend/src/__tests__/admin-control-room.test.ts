@@ -13,6 +13,7 @@ describe('admin control room surfaces', () => {
   const audit = read('../components/admin/AdminAudit.tsx')
   const changeHistory = read('../components/admin/AdminChangeHistory.tsx')
   const operations = read('../components/admin/AdminOperations.tsx')
+  const stuckJobs = read('../components/admin/AdminStuckJobs.tsx')
   const apiClient = read('../lib/api-client.ts')
 
   it('wires revenue, growth, customers, audit, and support-only navigation', () => {
@@ -77,6 +78,26 @@ describe('admin control room surfaces', () => {
     expect(apiClient).toContain('AdminQueueThroughputPoint')
     expect(operations).not.toContain('REDIS_PASSWORD')
     expect(operations).not.toContain('CELERY_BROKER_URL')
+  })
+
+  it('adds stuck-job diagnosis with confirmed, reasoned remediation actions', () => {
+    expect(operations).toContain("import AdminStuckJobs from '@/components/admin/AdminStuckJobs'")
+    expect(operations).toContain('<AdminStuckJobs refreshKey={refreshKey} />')
+    expect(stuckJobs).toContain('Stuck job diagnosis')
+    expect(stuckJobs).toContain('getAdminStuckJobs')
+    expect(stuckJobs).toContain('retryAdminStuckJob')
+    expect(stuckJobs).toContain('cancelAdminStuckJob')
+    expect(stuckJobs).toContain('fenceAdminStuckJob')
+    expect(stuckJobs).toContain('Reason (required)')
+    expect(stuckJobs).toContain('I confirm this action is audited')
+    expect(stuckJobs).toContain('idempotency_key')
+    expect(stuckJobs).toContain('lease_expires_at')
+    expect(stuckJobs).toContain('retry_supported')
+    expect(stuckJobs).not.toContain('latex_content')
+    expect(stuckJobs).not.toContain('job_description')
+    expect(stuckJobs).not.toContain('error_message')
+    expect(apiClient).toContain('/admin/operations/stuck-jobs')
+    expect(apiClient).toContain('AdminStuckJobActionResponse')
   })
 
   it('shows activation, retention, cost, and filtered series without document content', () => {

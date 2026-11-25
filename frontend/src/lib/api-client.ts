@@ -854,6 +854,71 @@ export interface AdminQueueMetricsResponse {
   throughput: Record<string, AdminQueueThroughputPoint[]>
 }
 
+export type AdminStuckJobAction = 'retry' | 'cancel' | 'fence'
+
+export interface AdminStuckJobItem {
+  job_id: string
+  job_type: string
+  owner: string | null
+  owner_user_id: string | null
+  owner_kind: 'user' | 'anonymous'
+  resume_id: string | null
+  queue: string
+  status: string
+  stage: string | null
+  finalization_state: string | null
+  compilation_status: string | null
+  created_at: string | null
+  updated_at: string | null
+  age: string
+  age_seconds: number
+  heartbeat_age_seconds: number | null
+  lease_expires_at: string | null
+  lease_expired: boolean | null
+  lease_active: boolean
+  lease_state: 'none' | 'missing' | 'active' | 'expired'
+  worker: string | null
+  worker_epoch: number | null
+  cancel_requested: boolean
+  reason_code: string
+  reason: string
+  terminal: boolean
+  retry_supported: boolean
+  recommended_actions: AdminStuckJobAction[]
+  source: 'finalization' | 'compilation' | 'finalization+compilation'
+}
+
+export interface AdminStuckJobList {
+  generated_at: string
+  min_age_minutes: number
+  stale_after_seconds: number
+  total: number
+  truncated: boolean
+  summary: {
+    total: number
+    queued: number
+    processing: number
+    stale: number
+    oldest_age_seconds: number
+    retry_supported: number
+  }
+  items: AdminStuckJobItem[]
+}
+
+export interface AdminStuckJobActionResponse {
+  success: boolean
+  action: AdminStuckJobAction
+  job_id: string
+  changed: boolean
+  idempotent: boolean
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  reason: string | null
+  audit_id: string | null
+  new_job_id: string | null
+  dispatch_status: string | null
+}
+
 export interface AdminAlert {
   id: string
   kind: string
@@ -5156,6 +5221,51 @@ class ApiClient {
 
   async getAdminOperationsQueues(): Promise<AdminQueueMetricsResponse> {
     return this.request<AdminQueueMetricsResponse>('/admin/operations/queues')
+  }
+
+  async getAdminStuckJobs(params?: {
+    min_age_minutes?: number
+    limit?: number
+    status?: string
+    job_id?: string
+  }): Promise<AdminStuckJobList> {
+    const qs = new URLSearchParams()
+    if (params?.min_age_minutes != null) qs.set('min_age_minutes', String(params.min_age_minutes))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.status) qs.set('status', params.status)
+    if (params?.job_id) qs.set('job_id', params.job_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminStuckJobList>(`/admin/operations/stuck-jobs${suffix}`)
+  }
+
+  async retryAdminStuckJob(
+    id: string,
+    body: { reason: string; confirm: true; idempotency_key?: string },
+  ): Promise<AdminStuckJobActionResponse> {
+    return this.request<AdminStuckJobActionResponse>(
+      `/admin/operations/stuck-jobs/${encodeURIComponent(id)}/retry`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async cancelAdminStuckJob(
+    id: string,
+    body: { reason: string; confirm: true; idempotency_key?: string },
+  ): Promise<AdminStuckJobActionResponse> {
+    return this.request<AdminStuckJobActionResponse>(
+      `/admin/operations/stuck-jobs/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async fenceAdminStuckJob(
+    id: string,
+    body: { reason: string; confirm: true; idempotency_key?: string },
+  ): Promise<AdminStuckJobActionResponse> {
+    return this.request<AdminStuckJobActionResponse>(
+      `/admin/operations/stuck-jobs/${encodeURIComponent(id)}/fence`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
   }
 
   async getAdminBillingSummary(

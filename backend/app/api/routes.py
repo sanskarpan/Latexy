@@ -159,11 +159,13 @@ from .admin_billing_reconciliation_routes import router as admin_billing_reconci
 from .admin_control_routes import router as admin_control_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
+from .admin_stuck_job_routes import router as admin_stuck_job_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
 router.include_router(admin_billing_reconciliation_router)
 router.include_router(admin_operations_router)
+router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 
 # Include Job Application Tracker routes

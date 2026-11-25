@@ -14,6 +14,7 @@ import {
   type AdminQueueStatus,
   type AdminQueueThroughputPoint,
 } from '@/lib/api-client'
+import AdminStuckJobs from '@/components/admin/AdminStuckJobs'
 
 const STATUS_TONE: Record<AdminOperationsStatus, string> = {
   healthy: 'border-ok/30 bg-ok/10 text-ok',
@@ -851,6 +852,7 @@ export default function AdminOperations() {
       </div>
       <AlertStrip refreshKey={refreshKey} onUpdated={() => setRefreshKey((value) => value + 1)} />
       <AttentionStrip refreshKey={refreshKey} />
+      <AdminStuckJobs refreshKey={refreshKey} />
       <QueueStrip refreshKey={refreshKey} />
       <HealthPanel refreshKey={refreshKey} />
     </div>
