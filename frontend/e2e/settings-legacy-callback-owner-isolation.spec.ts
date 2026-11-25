@@ -259,6 +259,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       '/dropbox/status', '/google-drive/status', '/me', '/me/preferences',
       '/config/feature-flags', '/config/entitlements', '/tenants/resolve-host',
       '/analytics/signup/milestones',
+      '/analytics/track/page-view',
     ].includes(pathname) || (options.allowGitHubDisconnect && pathname === '/github/disconnect')
     const sameOriginBackendRequest = apiOrigin === appOrigin
       && (apiPrefixMatches || (!apiPrefix && rootApiPath))
@@ -315,6 +316,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
     if (method === 'OPTIONS') {
       const telemetryPost = apiPath === '/telemetry/frontend'
       const signupMilestonePost = apiPath === '/analytics/signup/milestones'
+      const pageviewPost = apiPath === '/analytics/track/page-view'
       const githubDisconnect = options.allowGitHubDisconnect && apiPath === '/github/disconnect'
       const knownRead = [
         '/settings/notifications', '/github/status', '/zotero/status', '/mendeley/status',
@@ -323,7 +325,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
       ].includes(apiPath)
       const providerStatus = ['github', 'zotero', 'mendeley', 'dropbox', 'google-drive']
         .some((name) => apiPath === `/${name}/status`)
-      if (!knownRead && !providerStatus && !telemetryPost && !signupMilestonePost && !githubDisconnect) {
+      if (!knownRead && !providerStatus && !telemetryPost && !signupMilestonePost && !pageviewPost && !githubDisconnect) {
         await unexpected(route, 'unknown API preflight')
         return
       }
@@ -333,7 +335,7 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
           'access-control-allow-origin': appOrigin,
           'access-control-allow-credentials': 'true',
           'access-control-allow-headers': 'authorization, content-type, x-request-id, traceparent',
-          'access-control-allow-methods': telemetryPost || signupMilestonePost ? 'POST, OPTIONS' : githubDisconnect ? 'DELETE, OPTIONS' : 'GET, OPTIONS',
+          'access-control-allow-methods': telemetryPost || signupMilestonePost || pageviewPost ? 'POST, OPTIONS' : githubDisconnect ? 'DELETE, OPTIONS' : 'GET, OPTIONS',
           vary: 'Origin',
         },
       })
@@ -343,6 +345,15 @@ async function installFixture(context: BrowserContext, page: Page, provider: Pro
     if (apiPath === '/telemetry/frontend' && method === 'POST') {
       // Web-vitals/page-view telemetry is explicitly synthetic and never reaches a real service.
       await route.fulfill({ status: 204, headers: { 'access-control-allow-origin': appOrigin, 'access-control-allow-credentials': 'true' } })
+      return
+    }
+
+    if (apiPath === '/analytics/track/page-view' && method === 'POST') {
+      // First-party landing-conversion pageview is synthetic here.
+      await route.fulfill({
+        status: 204,
+        headers: { 'access-control-allow-origin': appOrigin, 'access-control-allow-credentials': 'true' },
+      })
       return
     }
 

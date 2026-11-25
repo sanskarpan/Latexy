@@ -88,6 +88,14 @@ from .signup_funnel_routes import router as signup_funnel_router
 
 router.include_router(signup_funnel_router)
 
+# First-party UTM/referrer capture and aggregate growth reporting. Kept in a
+# dedicated module so the public capture path cannot reach document models.
+from .traffic_source_routes import admin_router as admin_traffic_source_router
+from .traffic_source_routes import router as traffic_source_router
+
+router.include_router(traffic_source_router)
+router.include_router(admin_traffic_source_router)
+
 # Include Resume routes
 from .pdf_import_routes import router as pdf_import_router
 
@@ -156,15 +164,25 @@ router.include_router(reference_router)
 # Include Admin routes (feature flags + public config)
 from .admin_alert_routes import router as admin_alert_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
+from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
+from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_control_routes import router as admin_control_router
+from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
+from .admin_stuck_job_routes import router as admin_stuck_job_router
+from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
+router.include_router(admin_feature_adoption_router)
 router.include_router(admin_billing_reconciliation_router)
+router.include_router(admin_checkout_funnel_router)
+router.include_router(admin_compile_error_router)
 router.include_router(admin_operations_router)
+router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
+router.include_router(landing_conversion_router)
 
 # Include Job Application Tracker routes
 from .email_status_routes import router as email_status_router

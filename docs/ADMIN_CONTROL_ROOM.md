@@ -15,6 +15,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Revenue | `POST /admin/billing/refunds/{id}/execute` | Submit an approved/retryable refund to Dodo |
 | Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments plus the provider-segmented signup start → complete → verified funnel, median time-to-verify and OAuth-failure counters |
 | Growth & Cost | `GET /analytics/conversion-funnel` | Admin-only landing → trial → registration → subscription funnel; now includes the same server-derived signup/provider report |
+| Growth & Cost | `GET /admin/analytics/landing-conversion` | Landing visits and same-device first-touch trial/registration conversion by page key, experiment/variant, and mobile/tablet/desktop class; overall funnel summary kept as the authoritative sample, missing variants labelled, cells below five visits suppressed |
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
@@ -28,8 +29,12 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Audit | `GET /admin/audit` | Append-only operator audit trail with cursor pagination |
 | Overview | `GET /analytics/admin/overview` | Seven executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds in-process and in Redis |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
-| Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
+| Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing, compile and worker/container health with per-section status, worker CPU/memory/last-seen, stale-worker counts, queue ownership and provider-console links |
 | Overview | `GET /admin/operations/queues` | Per-queue sampled depth, oldest pending message age, and enqueue/completion rates with a bounded throughput series |
+| Overview | `GET /admin/operations/stuck-jobs` | Bounded per-job queued/processing/stale diagnosis with age, heartbeat/lease, worker, queue, stage and reason |
+| Overview | `POST /admin/operations/stuck-jobs/{job_id}/retry` | Fence the stuck original and dispatch one linked replacement (recoverable compilation families only); reason, confirmation and audit required |
+| Overview | `POST /admin/operations/stuck-jobs/{job_id}/cancel` | Durable cancellation through the finalization arbiter; reason, confirmation and audit required |
+| Overview | `POST /admin/operations/stuck-jobs/{job_id}/fence` | Durable stale-worker fence and non-revivable tombstone; reason, confirmation and audit required |
 | Overview | `GET /admin/alerts` | Durable, deduplicated alerts with severity, owner, state, occurrence count and runbook |
 | Overview | `PATCH /admin/alerts/{id}` | Acknowledge or snooze an alert with a mandatory reason; every action is audited |
 
@@ -63,7 +68,11 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   avoid re-identifying a small group. Feature-depth groups below five users are
   omitted and a filtered cohort below five users returns no counts; only
   aggregate counts are returned, never event metadata, document text, or
-  per-user event rows.
+  per-user event rows. Landing-conversion cells below five visits are omitted,
+  missing variant/page data is labelled instead of imputed, and the report
+  credits a registration at most once using the earliest same-device landing
+  view; it never builds a cross-device user funnel. No path, query string,
+  share token, account id, or device fingerprint is returned.
 - KPI comparisons use an equal-length previous window. A zero (or negative)
   baseline returns no percent delta instead of infinity, and the UI uses a
   neutral tone in that case. Snapshot KPIs compare against the count at the
@@ -72,6 +81,12 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   only. Probe failures return fixed details; raw provider errors, connection
   strings, credentials, document content and customer identifiers are never
   returned.
+- Worker/container heartbeats are short-lived Redis keys written by Celery
+  workers and Modal invocations. Only an opaque worker label, worker kind, CPU
+  and memory percentages, last-seen time and logical queue names are stored.
+  Hostnames, PIDs, container IDs, environment variables, credentials and raw
+  provider errors are never written or returned. Keys expire after 15 minutes,
+  stale after two minutes, and the admin endpoint reports the last check time.
 - Queue snapshots are aggregate operational metadata only: depth, oldest-message
   age, and cumulative enqueue/completion totals. They never store job payloads,
   task arguments, document content or broker credentials. Samples are pruned
@@ -81,6 +96,15 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   expiry inside 30 days is actionable; null metadata is reported as `unknown`
   or `partial`, never as healthy or far-future. Every row links to its filtered
   Revenue, Job queue or Customers view.
+- Stuck-job diagnosis never reads document content, prompts, job descriptions,
+  provider errors or customer PII. It exposes bounded job IDs, owner UUIDs,
+  job type, queue, status/stage, age, heartbeat/lease and a fixed reason code.
+  Retry/cancel/fence require an explicit confirmation and a reason, use the
+  existing finalization/fence primitives, and write exactly one append-only
+  audit row per effective state change. Repeats are idempotent no-ops; terminal
+  jobs are never retried. A retry creates one linked replacement job and links
+  it in the audit row. Non-compilation families are not retried because their
+  prompts and job descriptions are intentionally not persisted.
 - Per-user feature overrides live in `users.user_metadata.entitlement_overrides`
   and are consumed by `entitlement_service`. A grant supplements the plan/SKU
   matrix for one capability; a revoke denies it. Neither bypasses a global kill
@@ -164,6 +188,9 @@ serve normal traffic; there is no application delete path or scheduled purge.
 - `backend/test/test_admin_operations_api.py` covers admin-only access, the
   attention aggregate, partial-source visibility, health-cache behavior and
   fixed failure details.
+- `backend/test/test_admin_worker_health_api.py` covers healthy/degraded/
+  unhealthy worker mapping, stale workers, missing metrics, queue ownership,
+  provider outage, sanitized heartbeat payloads and admin-only access.
 - `backend/test/test_admin_kpi_trends.py` covers current/previous/absolute/
   percent deltas (including the clamped conversion rate over the prior UTC
   window), sparkline completeness and bounds, zero-baseline handling, finite

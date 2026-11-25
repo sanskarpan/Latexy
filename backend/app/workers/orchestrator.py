@@ -1355,6 +1355,7 @@ def _run_latex_stage(
             process_timing = ProcessTiming(proc)
 
             page_count: Optional[int] = None
+            first_latex_error: Optional[str] = None
             transcript = BoundedTranscript()
             watchdog = ProcessWatchdog(
                 proc,
@@ -1389,6 +1390,12 @@ def _run_latex_stage(
                         m = _PAGE_COUNT_RE.search(stripped)
                         if m:
                             page_count = int(m.group(1))
+
+                        # Keep the first bounded LaTeX error line so the
+                        # terminal class can distinguish syntax/package errors
+                        # from a generic non-zero engine exit.
+                        if first_latex_error is None and stripped.startswith("!"):
+                            first_latex_error = stripped[:250]
 
                     if cancellation_poll():
                         proc.kill()
@@ -1535,7 +1542,13 @@ def _run_latex_stage(
             return True, compilation_time, "", page_count, cached_pdf
 
         record_compile("error", duration_seconds=_compile_duration)
-        return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None, None
+        return (
+            False,
+            compilation_time,
+            first_latex_error or f"{compiler} exited with code {proc.returncode}",
+            None,
+            None,
+        )
     except ModalEngineUnavailable as exc:
         return False, time.time() - locals().get("start_time", time.time()), str(exc), None, None
     finally:

@@ -128,6 +128,9 @@ async function mockHeaderDependencies(
   await page.route(url => url.origin === backendOrigin && url.pathname === '/telemetry/frontend', route =>
     fulfillQualityJson(route, null, 204),
   )
+  await page.route(url => url.origin === backendOrigin && url.pathname === '/analytics/track/page-view', route =>
+    fulfillQualityJson(route, null, 204),
+  )
   await page.route(url => url.origin === backendOrigin && url.pathname === '/tenants/resolve-host', route =>
     fulfillQualityJson(route, { tenant: null }),
   )

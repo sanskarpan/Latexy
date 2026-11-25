@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   apiClient,
@@ -9,7 +9,9 @@ import {
   type AdminBillingWebhookList,
   type AdminRefundList,
 } from '@/lib/api-client'
+import AdminRevenueBreakdown from './AdminRevenueBreakdown'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
+import AdminCheckoutFunnel from './AdminCheckoutFunnel'
 
 const RANGES = [7, 30, 90] as const
 const PAGE_SIZE = 25
@@ -705,6 +707,7 @@ function ReconciliationQueue({
 
 export default function AdminBilling() {
   const [days, setDays] = useState<number>(30)
+  const [granularity, setGranularity] = useState<'day' | 'month'>('day')
   const [windowStart, setWindowStart] = useState('')
   const [windowEnd, setWindowEnd] = useState('')
   const [summary, setSummary] = useState<AdminBillingSummary | null>(null)
@@ -790,6 +793,7 @@ export default function AdminBilling() {
       apiClient.getAdminBillingSummary(days, {
         start: dateBoundary(windowStart),
         end: dateBoundary(windowEnd, true),
+        granularity,
       }),
       apiClient.getAdminBillingWebhooks({
         status: filters.status === 'all' ? undefined : filters.status,
@@ -826,6 +830,7 @@ export default function AdminBilling() {
     filters.receivedAfter,
     filters.receivedBefore,
     filters.status,
+    granularity,
     reconciliationOffset,
     refundOffset,
     webhookOffset,
@@ -836,8 +841,6 @@ export default function AdminBilling() {
   useEffect(() => {
     void load()
   }, [load, refreshKey])
-
-  const planMix = useMemo(() => summary?.plan_mix ?? [], [summary])
 
   const beginBusy = (id: string): boolean => {
     if (busyRef.current) return false
@@ -1088,20 +1091,30 @@ export default function AdminBilling() {
         </div>
       )}
 
+      <AdminCheckoutFunnel />
+
       {summary && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <Kpi label="MRR" value={formatMoney(summary.mrr)} detail={`ARR ${formatMoney(summary.arr)} · ${formatNumber(summary.mrr_minor)} paise`} />
+          <Kpi
+            label="MRR"
+            value={formatMoney(summary.mrr, summary.currency)}
+            detail={`ARR ${formatMoney(summary.arr, summary.currency)} · ${formatNumber(summary.mrr_minor)} minor`}
+          />
           <Kpi
             label="ARPU"
-            value={formatMoney(summary.arpu)}
-            detail={`${formatNumber(summary.arpu_minor)} paise / ${formatNumber(summary.active_subscriptions)} active`}
+            value={formatMoney(summary.arpu, summary.currency)}
+            detail={`${formatNumber(summary.arpu_minor)} minor / ${formatNumber(summary.active_subscriptions)} active`}
           />
           <Kpi
             label="Active subscriptions"
             value={formatNumber(summary.active_subscriptions)}
             detail={`${formatNumber(summary.past_due_subscriptions)} past due`}
           />
-          <Kpi label="Net revenue" value={formatMoney(summary.net_revenue)} detail={`${formatMoney(summary.refunded)} refunded`} />
+          <Kpi
+            label="Net revenue"
+            value={formatMoney(summary.net_revenue, summary.currency)}
+            detail={`${formatMoney(summary.refunded, summary.currency)} refunded`}
+          />
           <Kpi
             label="Webhook failures"
             value={formatNumber(summary.unacknowledged_webhook_failures)}
@@ -1116,24 +1129,17 @@ export default function AdminBilling() {
           />
           <Kpi
             label="Gross revenue"
-            value={formatMoney(summary.gross_revenue)}
+            value={formatMoney(summary.gross_revenue, summary.currency)}
             detail={`${formatNumber(summary.payments_count)} payments · ${summary.period_days} day window`}
           />
         </div>
       )}
 
-      {planMix.length > 0 && (
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
-          <h3 className="text-sm font-semibold text-fg">Plan mix</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {planMix.map((item) => (
-              <span key={item.plan_id} className="rounded-full border border-line bg-surface-2 px-3 py-1 text-xs text-fg-2">
-                {item.plan_id} · {formatNumber(item.subscriptions)} · {formatMoney(item.mrr)} MRR
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <AdminRevenueBreakdown
+        summary={summary}
+        granularity={granularity}
+        onGranularity={setGranularity}
+      />
 
       <WebhookHealth
         data={webhooks}

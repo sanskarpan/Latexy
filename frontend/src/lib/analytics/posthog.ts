@@ -20,6 +20,7 @@ import {
   type ReplayLinkConfig,
   type ReplayTriageLinks,
 } from './replay-links'
+import { externalReferrerHost, readUtmParams, sanitizeLandingPath, UTM_KEYS, UTM_PATTERN, type UtmKey } from './traffic-source'
 
 export const ANALYTICS_CONSENT_KEY = 'latexy-analytics-consent'
 export const ANALYTICS_CONSENT_EVENT = 'latexy:analytics-consent'
@@ -39,7 +40,22 @@ const POSTHOG_PROJECT_ID = (typeof process === 'undefined' ? '' : process.env.NE
 // when a caller accidentally passes them. A small allowlist keeps genuinely
 // useful low-cardinality fields (for example `feature_key`) addressable.
 const SENSITIVE_KEY = /(email|phone|name|address|resume|latex|content|prompt|text|token|secret|password|auth|cookie|ssn|birth|salary|job.?description|cover.?letter)/i
-const SAFE_KEY_ALLOWLIST = new Set(['feature_key', 'plan_key', 'event_type', 'surface', 'route'])
+const SAFE_KEY_ALLOWLIST = new Set([
+  'feature_key',
+  'plan_key',
+  'event_type',
+  'surface',
+  'route',
+  // Bounded campaign labels. `utm_content` would otherwise match the generic
+  // "content" guard even though it never carries document text.
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'referrer_host',
+  'landing_path',
+])
 const MAX_PROPERTIES = 25
 const MAX_STRING_LENGTH = 200
 
@@ -95,6 +111,26 @@ export function sanitizeAnalyticsProperties(properties?: Record<string, unknown>
     if (count >= MAX_PROPERTIES) break
     const key = rawKey.slice(0, 80)
     if (SENSITIVE_KEY.test(key) && !SAFE_KEY_ALLOWLIST.has(key)) continue
+    if (UTM_KEYS.includes(key as UtmKey)) {
+      if (typeof value !== 'string' || !UTM_PATTERN.test(value)) continue
+      safe[key] = value.slice(0, 64).toLowerCase()
+      count += 1
+      continue
+    }
+    if (key === 'referrer_host') {
+      if (typeof value !== 'string') continue
+      const host = externalReferrerHost(`https://${value}`)
+      if (!host) continue
+      safe[key] = host
+      count += 1
+      continue
+    }
+    if (key === 'landing_path') {
+      if (typeof value !== 'string' || !value.startsWith('/') || value.includes('://')) continue
+      safe[key] = sanitizeLandingPath(value)
+      count += 1
+      continue
+    }
     if (value === null || typeof value === 'boolean') {
       safe[key] = value
     } else if (typeof value === 'number') {
@@ -116,9 +152,9 @@ function sanitizeUrl(value: string): string {
   }
 }
 
-function safeReferrer(): string | undefined {
+function safeReferrerHost(): string | undefined {
   if (typeof document === 'undefined' || !document.referrer) return undefined
-  return sanitizeUrl(document.referrer)
+  return externalReferrerHost(document.referrer, window.location.hostname) ?? undefined
 }
 
 async function loadClient(): Promise<PostHogClient | null> {
@@ -225,15 +261,40 @@ export function captureAnalyticsEvent(event: string, properties?: AnalyticsPrope
   }
 }
 
-export function capturePageview(pathname: string): void {
+export function capturePageview(
+  pathname: string,
+  context?: {
+    pageKey?: string | null
+    experiment?: string | null
+    variant?: string | null
+    deviceClass?: string | null
+  },
+): void {
   if (!client || readAnalyticsConsent() !== 'granted' || typeof window === 'undefined') return
   const path = sanitizeAnalyticsPath(pathname)
+  const utm = readUtmParams(window.location.search)
+  const referrerHost = safeReferrerHost()
+  const hasAttribution = Object.keys(utm).length > 0 || Boolean(referrerHost)
+  const properties: AnalyticsProperties = {
+    // Origin + sanitized path only; UTM values are captured separately below
+    // because sanitizeAnalyticsPath deliberately strips the query string.
+    $current_url: `${window.location.origin}${path}`,
+    // A host is enough for source reporting and cannot carry a query-string
+    // token or an arbitrary external path.
+    ...(referrerHost ? { $referrer: `https://${referrerHost}` } : {}),
+    path,
+    ...utm,
+    ...(referrerHost ? { referrer_host: referrerHost } : {}),
+    ...(hasAttribution ? { landing_path: path } : {}),
+  }
+  // Landing attribution is low-cardinality only. A missing variant is omitted
+  // rather than filled in with an invented control group.
+  if (context?.pageKey) properties.page_key = context.pageKey
+  if (context?.experiment) properties.experiment = context.experiment
+  if (context?.variant) properties.variant = context.variant
+  if (context?.deviceClass) properties.device_class = context.deviceClass
   try {
-    client.capture('$pageview', {
-      $current_url: `${window.location.origin}${path}`,
-      $referrer: safeReferrer(),
-      path,
-    })
+    client.capture('$pageview', properties)
   } catch {
     // Best effort.
   }

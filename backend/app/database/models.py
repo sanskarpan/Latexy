@@ -453,11 +453,24 @@ class Compilation(Base):
 
     __tablename__ = "compilations"
     __table_args__ = (
+        CheckConstraint(
+            "error_class IN ('syntax', 'missing_package', 'timeout', 'engine', "
+            "'storage', 'pdf_limit', 'unknown')",
+            name="ck_compilations_error_class",
+        ),
         # DB-013: composite index supports queries filtering by resume filtered by status
         Index("idx_compilations_resume_status", "resume_id", "status"),
         # Compile-latency analytics scan completed rows by status in a bounded
         # created_at window before grouping by the persisted dimensions.
         Index("idx_compilations_latency_created", "status", "created_at"),
+        # Compile-error analytics group failed rows by the persisted class in a
+        # bounded created_at window. Only the allowlisted class is stored.
+        Index(
+            "idx_compilations_error_class_created",
+            "error_class",
+            "created_at",
+            postgresql_where=text("status = 'failed'"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
@@ -483,6 +496,12 @@ class Compilation(Base):
     template_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), index=True)
     pdf_size: Mapped[Optional[int]] = mapped_column(Integer)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
+    # Normalized compile-error taxonomy (0083). Classified at write time from
+    # bounded parser/finalization signals; raw logs and document text are never
+    # copied into this column or exported to analytics.
+    error_class: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="unknown", default="unknown"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

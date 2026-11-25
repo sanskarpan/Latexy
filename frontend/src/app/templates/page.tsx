@@ -310,6 +310,18 @@ export default function TemplatesPage() {
     if (effectiveSession) handleUseTemplate(useId)
   }, [autoUseHandled, loading, effectiveSession, router, handleUseTemplate, canCreateNewDocument, canAdmitTemplateUse, canAccessTemplate])
 
+  // Deep link from admin compile-error analytics (?preview=<id>) opens the
+  // catalog preview only. It must never create a document for the operator.
+  const [autoPreviewHandled, setAutoPreviewHandled] = useState(false)
+  useEffect(() => {
+    if (autoPreviewHandled || loading) return
+    const previewId = new URLSearchParams(window.location.search).get('preview')
+    if (!previewId || !canAccessTemplate(previewId)) return
+    setAutoPreviewHandled(true)
+    router.replace('/templates')
+    handlePreview(previewId)
+  }, [autoPreviewHandled, loading, canAccessTemplate, handlePreview, router])
+
   const tabClass = (isActive: boolean) =>
     `inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-4 py-1.5 font-ui text-xs uppercase tracking-[0.08em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
       isActive

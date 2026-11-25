@@ -144,6 +144,9 @@ async def get_admin_billing_summary(
     end: Optional[datetime] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    granularity: Literal["day", "month", "daily", "monthly"] = Query("day"),
+    range_: Optional[Literal["day", "month", "daily", "monthly"]] = Query(None, alias="range"),
+    currency: Optional[str] = Query(None, min_length=3, max_length=3, pattern="^[A-Za-z]{3}$"),
     db: AsyncSession = Depends(get_db),
     _: AdminActor = Depends(require_admin_actor),
 ) -> dict[str, Any]:
@@ -153,6 +156,8 @@ async def get_admin_billing_summary(
             days=days,
             start=start or start_date,
             end=end or end_date,
+            granularity=range_ or granularity,
+            currency=currency,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

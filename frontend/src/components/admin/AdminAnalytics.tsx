@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient, type AdminAnalyticsOverviewResponse, type AdminKpiTrend } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import AdminCompileLatency from '@/components/admin/AdminCompileLatency'
+import AdminCompileErrors from '@/components/admin/AdminCompileErrors'
 import AdminOperations from '@/components/admin/AdminOperations'
 import { analyticsDashboardLinks, analyticsReplayTriageLinks } from '@/lib/analytics/posthog'
 
@@ -376,6 +377,8 @@ export default function AdminAnalytics() {
       <OperationsStrip data={operations} />
 
       <AdminCompileLatency days={days} />
+
+      <AdminCompileErrors days={days} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">

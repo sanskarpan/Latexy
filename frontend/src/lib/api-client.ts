@@ -822,10 +822,47 @@ export interface AdminOperationsHealthSection {
   [metric: string]: string | number | boolean | null | undefined
 }
 
+export interface AdminWorkerHealthComponent {
+  worker_id: string
+  kind: 'celery' | 'modal'
+  status: AdminOperationsStatus
+  last_seen: string
+  age_seconds: number
+  cpu_percent: number | null
+  memory_percent: number | null
+  memory_mb: number | null
+  queues: string[]
+  missing_metrics: boolean
+  missing_queue_ownership: boolean
+}
+
+export interface AdminWorkerProviderLink {
+  name: string
+  console_url: string
+}
+
+export interface AdminWorkerHealth {
+  status: AdminOperationsStatus
+  observed_at: string
+  last_check_at: string
+  read_ok: boolean
+  detail?: string | null
+  stale_after_seconds: number
+  ttl_seconds: number
+  active_workers: number
+  stale_workers: number
+  missing_metrics: number
+  components: AdminWorkerHealthComponent[]
+  queue_ownership: Record<string, number>
+  unowned_queues: string[]
+  providers: AdminWorkerProviderLink[]
+}
+
 export interface AdminOperationsHealthResponse {
   generated_at: string
   status: AdminOperationsStatus
   sections: Record<string, AdminOperationsHealthSection>
+  workers?: AdminWorkerHealth
 }
 
 export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
@@ -852,6 +889,71 @@ export interface AdminQueueMetricsResponse {
   generated_at: string
   queues: AdminQueueMetricsEntry[]
   throughput: Record<string, AdminQueueThroughputPoint[]>
+}
+
+export type AdminStuckJobAction = 'retry' | 'cancel' | 'fence'
+
+export interface AdminStuckJobItem {
+  job_id: string
+  job_type: string
+  owner: string | null
+  owner_user_id: string | null
+  owner_kind: 'user' | 'anonymous'
+  resume_id: string | null
+  queue: string
+  status: string
+  stage: string | null
+  finalization_state: string | null
+  compilation_status: string | null
+  created_at: string | null
+  updated_at: string | null
+  age: string
+  age_seconds: number
+  heartbeat_age_seconds: number | null
+  lease_expires_at: string | null
+  lease_expired: boolean | null
+  lease_active: boolean
+  lease_state: 'none' | 'missing' | 'active' | 'expired'
+  worker: string | null
+  worker_epoch: number | null
+  cancel_requested: boolean
+  reason_code: string
+  reason: string
+  terminal: boolean
+  retry_supported: boolean
+  recommended_actions: AdminStuckJobAction[]
+  source: 'finalization' | 'compilation' | 'finalization+compilation'
+}
+
+export interface AdminStuckJobList {
+  generated_at: string
+  min_age_minutes: number
+  stale_after_seconds: number
+  total: number
+  truncated: boolean
+  summary: {
+    total: number
+    queued: number
+    processing: number
+    stale: number
+    oldest_age_seconds: number
+    retry_supported: number
+  }
+  items: AdminStuckJobItem[]
+}
+
+export interface AdminStuckJobActionResponse {
+  success: boolean
+  action: AdminStuckJobAction
+  job_id: string
+  changed: boolean
+  idempotent: boolean
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  reason: string | null
+  audit_id: string | null
+  new_job_id: string | null
+  dispatch_status: string | null
 }
 
 export interface AdminAlert {
@@ -970,6 +1072,76 @@ export interface AdminCompileLatencyResponse {
   generated_at: string
 }
 
+export type AdminCompileErrorClassKey =
+  | 'syntax'
+  | 'missing_package'
+  | 'timeout'
+  | 'engine'
+  | 'storage'
+  | 'pdf_limit'
+  | 'unknown'
+
+export interface AdminCompileErrorTemplate {
+  template_id: string
+  template_name: string | null
+  count: number
+  latest_at: string | null
+  href: string
+  sparse: boolean
+}
+
+export interface AdminCompileErrorBucket {
+  error_class: AdminCompileErrorClassKey
+  label: string
+  count: number
+  share: number
+  latest_at: string | null
+  affected_templates: AdminCompileErrorTemplate[]
+  unattributed_templates: number
+  sparse: boolean
+}
+
+export interface AdminCompileErrorTrendPoint {
+  date: string
+  failed_compilations: number
+  by_class: Partial<Record<AdminCompileErrorClassKey, number>>
+}
+
+export interface AdminCompileErrorsResponse {
+  days: number
+  window: { start: string; end: string }
+  filters: {
+    plan: string | null
+    compiler: string | null
+    template: string | null
+    error_class: AdminCompileErrorClassKey | null
+  }
+  classes: Array<{
+    error_class: AdminCompileErrorClassKey
+    label: string
+    count: number
+    share: number
+    sparse: boolean
+  }>
+  top_errors: AdminCompileErrorBucket[]
+  trend: AdminCompileErrorTrendPoint[]
+  totals: {
+    failed_compilations: number
+    classified_compilations: number
+    unknown_compilations: number
+    class_total: number
+    reconciled: boolean
+    classes_with_errors: number
+    templates_with_errors: number
+  }
+  suppression: {
+    minimum_sample_size: number
+    user_dimension_included: false
+    detail: string
+  }
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  Entitlements / Admin Control Plane                                 //
 // ------------------------------------------------------------------ //
@@ -1029,6 +1201,148 @@ export interface AdminBillingPlanMix {
   plan_id: string
   subscriptions: number
   mrr: number
+  mrr_minor: number
+  interval: string
+  revenue: number
+  revenue_minor: number
+  refunded: number
+  refunded_minor: number
+  net_revenue: number
+  net_revenue_minor: number
+  payments_count: number
+  refunds_count: number
+  share_percent: number
+}
+
+export interface AdminBillingMrrInterval {
+  interval: string
+  subscriptions: number
+  mrr_minor: number
+  mrr: number
+}
+
+export interface AdminBillingMrrNormalization {
+  basis: string
+  annual_divisor: number
+  weekly_weeks_per_month: number
+  lifetime_policy: string
+  active_subscriptions: number
+  recurring_subscriptions: number
+  by_interval: AdminBillingMrrInterval[]
+}
+
+export interface AdminBillingRevenuePoint {
+  bucket: string
+  label: string
+  gross_revenue_minor: number
+  refunds_minor: number
+  chargebacks_minor: number
+  net_revenue_minor: number
+  net_revenue_after_chargebacks_minor: number
+  payments_count: number
+  refunds_count: number
+  chargebacks_count: number
+}
+
+export interface AdminBillingRefundStatus {
+  status: string
+  count: number
+  amount_minor: number
+}
+
+export interface AdminBillingRecentRefund {
+  id: string
+  payment_id: string
+  amount_minor: number
+  currency: string
+  status: string
+  created_at: string | null
+}
+
+export interface AdminBillingRefundView {
+  currency: string
+  total_minor: number
+  total: number
+  count: number
+  succeeded_minor: number
+  succeeded: number
+  succeeded_count: number
+  failed_minor: number
+  failed_count: number
+  pending_minor: number
+  pending_count: number
+  by_status: AdminBillingRefundStatus[]
+  recent: AdminBillingRecentRefund[]
+}
+
+export interface AdminBillingChargebackItem {
+  id: string
+  event_type: string
+  status: string
+  amount_minor: number | null
+  currency: string | null
+  payment_id: string | null
+  payment_linked: boolean
+  bucket: string
+  event_at: string | null
+  received_at: string | null
+}
+
+export interface AdminBillingChargebackStatus {
+  status: string
+  count: number
+  amount_minor: number
+  events: number
+}
+
+export interface AdminBillingChargebackView {
+  currency: string
+  total_minor: number
+  total: number
+  count: number
+  events_count: number
+  open_count: number
+  resolved_count: number
+  lost_count: number
+  won_count: number
+  open_minor: number
+  resolved_minor: number
+  lost_minor: number
+  won_minor: number
+  unlinked_count: number
+  amount_unavailable_count: number
+  by_status: AdminBillingChargebackStatus[]
+  items: AdminBillingChargebackItem[]
+}
+
+export interface AdminBillingReconciliationCheck {
+  key: string
+  label: string
+  ok: boolean
+  expected_minor: number
+  actual_minor: number
+  difference_minor: number
+}
+
+export interface AdminBillingRevenueReconciliation {
+  currency: string
+  gross_from_payments_minor: number
+  refunded_from_payment_refunds_minor: number
+  net_revenue_minor: number
+  expected_net_minor: number
+  difference_minor: number
+  balanced: boolean
+  payments_count: number
+  refunds_count: number
+  chargebacks_from_events_minor: number
+  net_after_chargebacks_minor: number
+  plan_mix_attributed_revenue_minor: number
+  plan_mix_attributed_refunds_minor: number
+  plan_mix_attributed_net_minor: number
+  plan_mix_revenue_difference_minor: number
+  test_mode_excluded: boolean
+  test_mode_policy: string
+  checks: AdminBillingReconciliationCheck[]
 }
 
 export interface AdminRefundRequest {
@@ -1060,6 +1374,7 @@ export interface AdminBillingSummary {
   period_end: string
   generated_at: string
   currency: string
+  granularity: 'day' | 'month'
   mrr: number
   arr: number
   mrr_minor: number
@@ -1067,21 +1382,105 @@ export interface AdminBillingSummary {
   arpu: number
   arpu_minor: number
   active_subscriptions: number
+  active_recurring_subscriptions: number
   past_due_subscriptions: number
   gross_revenue: number
   refunded: number
   net_revenue: number
+  chargebacks: number
+  net_revenue_after_chargebacks: number
   gross_revenue_minor: number
   refunded_minor: number
   net_revenue_minor: number
+  chargebacks_minor: number
+  chargebacks_count: number
+  net_revenue_after_chargebacks_minor: number
   payments_count: number
   refunds_count: number
   open_refund_requests: number
   unacknowledged_webhook_failures: number
   webhooks_24h: number
   webhook_failures_24h: number
+  mrr_normalization: AdminBillingMrrNormalization
+  revenue_series: AdminBillingRevenuePoint[]
+  refund_view: AdminBillingRefundView
+  chargeback_view: AdminBillingChargebackView
+  reconciliation: AdminBillingRevenueReconciliation
   plan_mix: AdminBillingPlanMix[]
   recent_refund_requests: AdminRefundRequest[]
+}
+
+export interface AdminCheckoutFunnelStep {
+  key: 'checkout_started' | 'checkout_completed' | 'checkout_paid'
+  label: string
+  count: number
+  from_previous: number
+  from_start: number
+  drop_off: number
+  drop_off_pct: number
+}
+
+export interface AdminCheckoutFailureBucket {
+  bucket: 'provider_declined' | 'validation' | 'abandoned' | 'unavailable' | 'unknown'
+  label: string
+  description: string
+  count: number
+  share: number
+}
+
+export interface AdminCheckoutFunnelPlan {
+  plan_id: string
+  started: number
+  completed: number
+  paid: number
+  failed: number
+  conversion_pct: number
+}
+
+export interface AdminCheckoutFunnelPaidAmount {
+  currency: string
+  amount_minor: number
+  checkouts: number
+}
+
+export interface AdminCheckoutFunnelReconciliation {
+  started: number
+  completed: number
+  paid: number
+  failed: number
+  completed_not_paid: number
+  failure_bucket_sum: number
+  started_equals_paid_plus_failed: boolean
+  completed_at_least_paid: boolean
+  failure_buckets_match: boolean
+}
+
+export interface AdminCheckoutFunnel {
+  range_days: number
+  period_start: string
+  period_end: string
+  generated_at: string
+  billing_mode: string
+  currency: string
+  minimum_segment_size: number
+  abandonment_hours: number
+  steps: AdminCheckoutFunnelStep[]
+  conversion: {
+    started_to_completed: number
+    completed_to_paid: number
+    started_to_paid: number
+  }
+  failures: {
+    total: number
+    buckets: AdminCheckoutFailureBucket[]
+  }
+  reconciliation: AdminCheckoutFunnelReconciliation
+  paid_amounts: AdminCheckoutFunnelPaidAmount[]
+  by_plan: AdminCheckoutFunnelPlan[]
+  suppressed_segments: number
+  excluded_other_mode_attempts: number
+  definitions: Record<string, string>
+  notes: string[]
 }
 
 export interface AdminBillingWebhook {
@@ -1420,6 +1819,80 @@ export interface AdminActivationResponse {
   generated_at: string
 }
 
+export interface AdminLandingConversionRow {
+  // Grouped rows only carry the labels for the dimensions they group by.
+  page_key?: string | null
+  page_label?: string
+  missing_page_key?: boolean
+  experiment?: string | null
+  experiment_label?: string
+  missing_experiment?: boolean
+  variant?: string | null
+  variant_label?: string
+  missing_variant?: boolean
+  device_class?: 'mobile' | 'tablet' | 'desktop' | 'unknown'
+  device_label?: string
+  visits: number
+  trial_starts: number
+  registrations: number
+  subscriptions: number
+  sample_size: number
+  conversion_rate: number
+  trial_conversion_rate: number
+  subscription_conversion_rate: number
+}
+
+export interface AdminLandingConversionResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_segment_size: number
+  summary: {
+    period_days: number
+    funnel_steps: {
+      landing_visits: number
+      trial_starts: number
+      registrations: number
+      subscriptions: number
+    }
+    conversion_rates: {
+      landing_to_trial: number
+      trial_to_registration: number
+      registration_to_subscription: number
+      overall_conversion: number
+    }
+    sample_sizes: {
+      landing_visits: number
+      trial_starts: number
+      registrations: number
+      subscriptions: number
+    }
+    attribution: {
+      model: string
+      attributed_trial_starts: number
+      attributed_registrations: number
+      unattributed_trial_starts: number
+      unattributed_registrations: number
+      registration_coverage_pct: number
+      description: string
+    }
+  }
+  by_device: AdminLandingConversionRow[]
+  by_page: AdminLandingConversionRow[]
+  by_page_variant: AdminLandingConversionRow[]
+  by_page_variant_device: AdminLandingConversionRow[]
+  suppressed_cells: number
+  truncated_cells: number
+  supported_page_keys: string[]
+  variant_labels: {
+    missing: string
+    missing_experiment: string
+    missing_page: string
+    unknown_device: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -1490,6 +1963,42 @@ export interface SignupMilestonesResponse {
   provider: SignupAuthProvider
   email_verified: boolean
   recorded: string[]
+}
+
+export interface AdminTrafficSourceRow {
+  label: string
+  sessions: number
+  visitors: number
+  signups: number | null
+  paid_users: number | null
+  signup_conversion: number | null
+  paid_conversion: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminTrafficSourceTotals {
+  sessions: number
+  visitors: number
+  signups: number
+  paid_users: number
+  signup_conversion: number
+  paid_conversion: number
+}
+
+export interface AdminTrafficSourcesResponse {
+  period: { start: string; end: string; days: number }
+  minimum_cohort_size: number
+  attribution_window_days: number
+  totals: AdminTrafficSourceTotals
+  unattributed_signups: number
+  by_source: AdminTrafficSourceRow[]
+  by_medium: AdminTrafficSourceRow[]
+  by_campaign: AdminTrafficSourceRow[]
+  by_referrer: AdminTrafficSourceRow[]
+  suppressed: Record<string, number>
+  truncated: Record<string, number>
+  notes?: Record<string, string>
+  generated_at: string
 }
 
 export interface AdminRetentionCell {
@@ -1989,6 +2498,71 @@ export interface AdminFeatureDepthResponse {
     breadth: AdminFeatureDepthBreadthSummary
   }
   features: AdminFeatureDepthRow[]
+  generated_at: string
+}
+
+export type AdminFeatureAdoptionDimension = 'plan' | 'role' | 'cohort'
+
+export interface AdminFeatureAdoptionRow {
+  feature: string
+  key: string
+  label: string
+  category: string
+  description: string | null
+  used_at_least_once: number
+  weekly_active: number
+  penetration: number
+  weekly_active_penetration: number
+  events: number
+  last_used_at: string | null
+}
+
+export interface AdminFeatureAdoptionSegment {
+  dimension: AdminFeatureAdoptionDimension
+  key: string
+  label: string
+  denominator: number
+  suppressed: boolean
+  features: AdminFeatureAdoptionRow[]
+}
+
+export interface AdminFeatureAdoptionResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  date_range: {
+    start: string
+    end: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    role: string[] | null
+    cohort: string[] | null
+    feature: string | null
+    timezone: string
+  }
+  minimum_segment_size: number
+  feature_count: number
+  visible_feature_count: number
+  suppressed: boolean
+  suppressed_segments: Record<AdminFeatureAdoptionDimension, number>
+  segments: AdminFeatureAdoptionSegment[]
+  reconciliation: {
+    source: string
+    audience_users: number
+    usage_events: number
+    matrix_events: number
+    unmatched_events: number
+    features_with_usage: number
+    matched_rate: number
+  }
+  definitions: Record<string, string>
   generated_at: string
 }
 
@@ -5040,6 +5614,24 @@ class ApiClient {
     return this.request<AdminRetentionResponse>(`/admin/analytics/retention?${qs}`)
   }
 
+  async getAdminTrafficSources(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminTrafficSourcesResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTrafficSourcesResponse>(`/admin/analytics/traffic-sources${suffix}`)
+  }
+
+  async getAdminLandingConversion(days = 30): Promise<AdminLandingConversionResponse> {
+    const qs = new URLSearchParams({ days: String(days) })
+    return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
+  }
+
   async getAdminAiCost(params?: {
     days?: number
     plan?: string
@@ -5091,6 +5683,23 @@ class ApiClient {
     return this.request<AdminCompileLatencyResponse>(`/admin/analytics/compile-latency${suffix}`)
   }
 
+  async getAdminCompileErrors(params?: {
+    days?: number
+    plan?: string
+    compiler?: string
+    template?: string
+    error_class?: AdminCompileErrorClassKey
+  }): Promise<AdminCompileErrorsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.compiler) qs.set('compiler', params.compiler)
+    if (params?.template) qs.set('template', params.template)
+    if (params?.error_class) qs.set('error_class', params.error_class)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCompileErrorsResponse>(`/admin/analytics/compile-errors${suffix}`)
+  }
+
   async getAdminFilteredTimeseries(params: {
     days?: number
     metric: AdminTimeseriesMetric
@@ -5115,6 +5724,27 @@ class ApiClient {
     if (params?.cohort) qs.set('cohort', params.cohort)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminFeatureDepthResponse>(`/admin/analytics/feature-depth${suffix}`)
+  }
+
+  async getAdminFeatureAdoption(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    role?: string
+    cohort?: string
+    feature?: string
+  }): Promise<AdminFeatureAdoptionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.role) qs.set('role', params.role)
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    if (params?.feature) qs.set('feature', params.feature)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminFeatureAdoptionResponse>(`/admin/analytics/feature-adoption${suffix}`)
   }
 
   async getAdminAttention(): Promise<AdminAttentionResponse> {
@@ -5158,14 +5788,71 @@ class ApiClient {
     return this.request<AdminQueueMetricsResponse>('/admin/operations/queues')
   }
 
+  async getAdminStuckJobs(params?: {
+    min_age_minutes?: number
+    limit?: number
+    status?: string
+    job_id?: string
+  }): Promise<AdminStuckJobList> {
+    const qs = new URLSearchParams()
+    if (params?.min_age_minutes != null) qs.set('min_age_minutes', String(params.min_age_minutes))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.status) qs.set('status', params.status)
+    if (params?.job_id) qs.set('job_id', params.job_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminStuckJobList>(`/admin/operations/stuck-jobs${suffix}`)
+  }
+
+  async retryAdminStuckJob(
+    id: string,
+    body: { reason: string; confirm: true; idempotency_key?: string },
+  ): Promise<AdminStuckJobActionResponse> {
+    return this.request<AdminStuckJobActionResponse>(
+      `/admin/operations/stuck-jobs/${encodeURIComponent(id)}/retry`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async cancelAdminStuckJob(
+    id: string,
+    body: { reason: string; confirm: true; idempotency_key?: string },
+  ): Promise<AdminStuckJobActionResponse> {
+    return this.request<AdminStuckJobActionResponse>(
+      `/admin/operations/stuck-jobs/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async fenceAdminStuckJob(
+    id: string,
+    body: { reason: string; confirm: true; idempotency_key?: string },
+  ): Promise<AdminStuckJobActionResponse> {
+    return this.request<AdminStuckJobActionResponse>(
+      `/admin/operations/stuck-jobs/${encodeURIComponent(id)}/fence`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
   async getAdminBillingSummary(
     days = 30,
-    params?: { start?: string; end?: string },
+    params?: {
+      start?: string
+      end?: string
+      granularity?: 'day' | 'month'
+      currency?: string
+    },
   ): Promise<AdminBillingSummary> {
     const qs = new URLSearchParams({ days: String(days) })
     if (params?.start) qs.set('start', params.start)
     if (params?.end) qs.set('end', params.end)
+    if (params?.granularity) qs.set('granularity', params.granularity)
+    if (params?.currency) qs.set('currency', params.currency)
     return this.request<AdminBillingSummary>(`/admin/billing/summary?${qs}`)
+  }
+
+  async getAdminCheckoutFunnel(days = 30): Promise<AdminCheckoutFunnel> {
+    const qs = new URLSearchParams({ days: String(days) })
+    return this.request<AdminCheckoutFunnel>(`/admin/billing/checkout-funnel?${qs}`)
   }
 
   async getAdminBillingWebhooks(params?: {

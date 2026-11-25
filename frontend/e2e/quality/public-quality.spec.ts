@@ -65,6 +65,9 @@ async function installPublicPageMocks(page: Page) {
     await page.route(url => url.origin === backendOrigin && url.pathname === '/telemetry/frontend', route =>
         fulfillQualityJson(route, null, 204)
     )
+    await page.route(url => url.origin === backendOrigin && url.pathname === '/analytics/track/page-view', route =>
+        fulfillQualityJson(route, null, 204)
+    )
     await page.route(
         url => url.origin === backendOrigin && (url.pathname === '/templates' || url.pathname.startsWith('/templates/')),
         route => fulfillQualityJson(route, [])

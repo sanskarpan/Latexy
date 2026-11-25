@@ -14,11 +14,17 @@ import { useSession } from '@/lib/auth-client'
 import { apiClient } from '@/lib/api-client'
 import { wsClient } from '@/lib/ws-client'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
+import { readAnalyticsConsent } from '@/lib/analytics/posthog'
+import {
+  claimTrafficAttribution,
+  hasPendingTrafficAttribution,
+} from '@/lib/analytics/traffic-source'
 
 export function AuthSync() {
   const { data: session, isPending, isRefetching = false, error } = useSession()
   const referralClaimedFor = useRef<string | null>(null)
   const signupMilestonesFor = useRef<string | null>(null)
+  const trafficClaimedFor = useRef<string | null>(null)
   const unauthorized = isConfirmedSessionUnauthorized(error)
 
   useEffect(() => {
@@ -42,6 +48,7 @@ export function AuthSync() {
     wsClient.setAuthenticated(Boolean(token))
     if (!token) referralClaimedFor.current = null
     if (!token) signupMilestonesFor.current = null
+    if (!token) trafficClaimedFor.current = null
 
     // Server-derived signup funnel milestones: completion and (when the account
     // already has email_verified) verification. The backend ignores any client
@@ -50,6 +57,19 @@ export function AuthSync() {
     if (token && signupMilestonesFor.current !== token) {
       signupMilestonesFor.current = token
       void apiClient.recordSignupMilestones?.()
+    }
+
+    // First-touch UTM/referrer attribution is claimed from the server-stored
+    // landing row, never from a client-supplied campaign. Only visitors who
+    // granted analytics consent have a pending landing record.
+    if (
+      token &&
+      trafficClaimedFor.current !== token &&
+      hasPendingTrafficAttribution() &&
+      readAnalyticsConsent() === 'granted'
+    ) {
+      trafficClaimedFor.current = token
+      void claimTrafficAttribution(token)
     }
 
     // Sign-up and OAuth both preserve the first-party referral cookie. Claim it

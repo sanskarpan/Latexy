@@ -16,6 +16,7 @@ import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminGrowth from '@/components/admin/AdminGrowth'
+import AdminProduct from '@/components/admin/AdminProduct'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
@@ -29,12 +30,13 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'replays' | 'billing' | 'growth' | 'customers' | 'audit' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'product' | 'replays' | 'billing' | 'growth' | 'customers' | 'audit' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
 const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analytics', label: 'Analytics' },
+  { id: 'product', label: 'Product' },
   { id: 'replays', label: 'Replays' },
   { id: 'billing', label: 'Revenue' },
   { id: 'growth', label: 'Growth & Cost' },
@@ -942,6 +944,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         className="focus:outline-none"
       >
         {tab === 'analytics' && <AdminAnalytics />}
+        {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'billing' && <AdminBilling />}
         {tab === 'growth' && <AdminGrowth />}

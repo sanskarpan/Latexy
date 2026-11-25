@@ -55,6 +55,40 @@ describe('analytics property boundary', () => {
     expect(String(safe.note)).toHaveLength(200)
     expect(Object.keys(safe).length).toBeLessThanOrEqual(25)
   })
+
+  it('preserves bounded campaign attribution without allowing document content', () => {
+    const safe = sanitizeAnalyticsProperties({
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'launch',
+      utm_content: 'hero',
+      utm_term: 'resume-builder',
+      referrer_host: 'news.ycombinator.com',
+      landing_path: '/r/abc123?token=secret',
+      resume_content: 'private document text',
+    })
+    expect(safe).toEqual({
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'launch',
+      utm_content: 'hero',
+      utm_term: 'resume-builder',
+      referrer_host: 'news.ycombinator.com',
+      landing_path: '/r/:token',
+    })
+  })
+
+  it('drops free-form campaign values before they reach PostHog', () => {
+    const safe = sanitizeAnalyticsProperties({
+      utm_source: 'free form',
+      utm_content: 'person@example.com',
+      utm_campaign: 'a'.repeat(65),
+      referrer_host: '127.0.0.1',
+      landing_path: 'https://evil.example/r/secret?token=x',
+      resume_content: 'private document text',
+    })
+    expect(safe).toEqual({})
+  })
 })
 
 describe('analytics configuration', () => {

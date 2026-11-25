@@ -39,6 +39,10 @@ from ..services.auto_fit_service import (
     profile_for_intensity,
     remove_auto_fit,
 )
+from ..services.compile_error_taxonomy import (
+    classify_compile_error,
+    normalize_compile_error_class,
+)
 from ..services.cover_letter_signature_service import materialize_embedded_signature
 from ..services.latex_service import (
     ENGINE_READ_ESCAPE_ERROR,
@@ -944,6 +948,7 @@ def reconcile_compilation_record(
     lifecycle_owner: Optional[str] = None,
     lifecycle_epoch: Optional[int] = None,
     terminal_result: Optional[Dict[str, Any]] = None,
+    error_class: Optional[str] = None,
 ) -> CompilationPersistenceOutcome:
     """
     Move the Compilation row for this job out of "processing" into its terminal state.
@@ -971,6 +976,7 @@ def reconcile_compilation_record(
             lifecycle_owner=lifecycle_owner,
             lifecycle_epoch=lifecycle_epoch,
             terminal_result=terminal_result,
+            error_class=error_class,
         )
     )
 
@@ -1139,6 +1145,7 @@ def commit_latex_finalization(
                         if compilation is not None and compilation.status == "processing":
                             compilation.status = "failed"
                             compilation.error_message = failure_message
+                            compilation.error_class = "storage"
                         await session.commit()
                     else:
                         await session.rollback()
@@ -1285,6 +1292,7 @@ async def _update_compilation_record(
     lifecycle_owner: Optional[str] = None,
     lifecycle_epoch: Optional[int] = None,
     terminal_result: Optional[Dict[str, Any]] = None,
+    error_class: Optional[str] = None,
 ) -> CompilationPersistenceOutcome:
     """
     Persist terminal state and durable PDF storage as one completion contract.
@@ -1406,6 +1414,20 @@ async def _update_compilation_record(
                         await session.rollback()
                         return CompilationPersistenceOutcome.STORAGE_FAILURE
 
+            # Classify only from bounded worker signals. The class is an
+            # allowlisted value; no log line or document text is persisted.
+            resolved_error_class = (
+                normalize_compile_error_class(error_class)
+                if error_class is not None
+                else classify_compile_error(
+                    error_message,
+                    failure_code=(
+                        finalization.failure_code if finalization is not None else None
+                    ),
+                    terminal_result=terminal_result,
+                )
+            )
+
             # Read before uploading so anonymous/preview jobs without a
             # Compilation row never create an unowned object.
             lookup = await session.execute(
@@ -1453,6 +1475,7 @@ async def _update_compilation_record(
                         status=durable_terminal_status,
                         compilation_time=compilation_time,
                         error_message=error_message,
+                        error_class=resolved_error_class,
                     )
                 )
                 await session.commit()
@@ -1530,6 +1553,7 @@ async def _update_compilation_record(
                             status="failed",
                             compilation_time=compilation_time,
                             error_message=failure_message,
+                            error_class="storage",
                         )
                     )
                     await session.commit()
@@ -1570,6 +1594,7 @@ async def _update_compilation_record(
                             status="failed",
                             compilation_time=compilation_time,
                             error_message=failure_message,
+                            error_class="storage",
                         )
                     )
                     await session.commit()
@@ -1631,6 +1656,7 @@ async def _update_compilation_record(
                     status=status,
                     compilation_time=compilation_time,
                     error_message=error_message,
+                    error_class=resolved_error_class,
                 )
             )
             await session.commit()

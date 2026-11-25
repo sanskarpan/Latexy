@@ -4,7 +4,7 @@ Analytics API routes for tracking and retrieving usage data.
 
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, Request, status
@@ -30,10 +30,24 @@ from ..middleware.auth_middleware import (
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.analytics_service import analytics_service
+from ..services.landing_conversion_service import classify_device_class
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+LandingPageKey = Literal[
+    "home",
+    "try",
+    "pricing",
+    "templates",
+    "resources",
+    "platform",
+    "faq",
+    "updates",
+    "developer",
+]
+DeviceClass = Literal["mobile", "tablet", "desktop", "unknown"]
 
 _ADMIN_OVERVIEW_CACHE_SECONDS = 60
 _admin_overview_cache: Dict[int, tuple[float, Dict[str, Any]]] = {}
@@ -487,11 +501,20 @@ async def track_optimization(
 async def track_page_view(
     page: str,
     device_fingerprint: Optional[str] = None,
+    page_key: Optional[LandingPageKey] = None,
+    experiment: Optional[str] = Query(None, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"),
+    variant: Optional[str] = Query(None, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"),
+    device_class: Optional[DeviceClass] = None,
     http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Track page view events. Attribution comes from the session."""
+    """Track page view events. Attribution comes from the session.
+
+    Landing callers may attach a bounded page key and experiment/variant label
+    plus a device class; the server records a coarse device class when the
+    browser omits one. No path, query string, or share token is accepted here.
+    """
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
         user_agent = http_request.headers.get("user-agent") if http_request else None
@@ -502,6 +525,10 @@ async def track_page_view(
             user_id=user_id,
             device_fingerprint=device_fingerprint,
             page=page,
+            page_key=page_key,
+            experiment=experiment,
+            variant=variant,
+            device_class=device_class or classify_device_class(user_agent),
             ip_address=ip_address,
             user_agent=user_agent
         )
