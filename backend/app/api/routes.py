@@ -157,6 +157,7 @@ router.include_router(reference_router)
 from .admin_alert_routes import router as admin_alert_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
 from .admin_control_routes import router as admin_control_router
+from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
 
@@ -165,6 +166,14 @@ router.include_router(admin_control_router)
 router.include_router(admin_billing_reconciliation_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_alert_router)
+router.include_router(admin_gdpr_router)
+
+# Data-subject GDPR rights are intentionally outside the admin capability
+# surface: an account must be able to export or delete itself regardless of
+# plan, feature flags or support status.
+from .account_gdpr_routes import router as account_gdpr_router
+
+router.include_router(account_gdpr_router)
 
 # Include Job Application Tracker routes
 from .email_status_routes import router as email_status_router

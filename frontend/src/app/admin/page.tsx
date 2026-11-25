@@ -18,6 +18,7 @@ import AdminBilling from '@/components/admin/AdminBilling'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
+import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -29,7 +30,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'replays' | 'billing' | 'growth' | 'customers' | 'audit' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'replays' | 'billing' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -40,6 +41,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
@@ -952,6 +954,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminChangeHistory />
           </div>
         )}
+        {tab === 'privacy' && <AdminGdpr />}
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}
