@@ -1646,6 +1646,77 @@ export interface AdminRefundList {
   offset: number
 }
 
+export interface AdminUserTimelineItem {
+  id: string
+  kind: 'subscription_history' | 'subscription' | 'payment' | 'refund' | 'webhook' | 'plan_change' | 'entitlement_change'
+  occurred_at: string | null
+  summary: string | null
+  event_type: string | null
+  source: string | null
+  status: string | null
+  previous_status: string | null
+  plan_id: string | null
+  previous_plan_id: string | null
+  current_period_start: string | null
+  current_period_end: string | null
+  reason_code: string | null
+  amount_minor: number | null
+  currency: string | null
+  provider: string | null
+  reference: string | null
+  admin_only: boolean
+  details?: Record<string, unknown>
+  subscription_id?: string | null
+  payment_id?: string | null
+  payment_method?: string | null
+}
+
+export interface AdminUserTimeline {
+  items: AdminUserTimelineItem[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  order: 'desc'
+  viewer_role: string
+  restricted_kinds: string[]
+  counts: Record<string, number>
+  sources: {
+    subscription_history: number
+    subscriptions: number
+    payments: number
+    refunds: number
+    webhooks: number
+    plan_changes: number
+    entitlement_changes: number
+  }
+  totals: {
+    payments: {
+      count: number
+      total_minor: number
+      paid_minor: number
+      by_status: Array<{ status: string; count: number; amount_minor: number }>
+      by_currency: Array<{ currency: string; count: number; amount_minor: number }>
+    }
+    refunds: {
+      count: number
+      total_minor: number
+      succeeded_minor: number
+      by_status: Array<{ status: string; count: number; amount_minor: number }>
+      by_currency: Array<{ currency: string; count: number; amount_minor: number }>
+    }
+    payment_count: number
+    payment_total_minor: number
+    refund_count: number
+    refund_total_minor: number
+    gross_minor: number
+    refunded_minor: number
+    net_minor: number
+    settled_net_minor: number
+  }
+}
+
 export interface AdminUser360 {
   user: {
     id: string
@@ -1716,7 +1787,9 @@ export interface AdminUser360 {
       decided_at: string | null
       executed_at: string | null
     }>
+    timeline?: AdminUserTimeline
   }
+  timeline?: AdminUserTimeline
   security: {
     sessions: Array<{
       id: string
@@ -6327,8 +6400,15 @@ class ApiClient {
     )
   }
 
-  async getAdminUser360(id: string): Promise<AdminUser360> {
-    return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360`)
+  async getAdminUser360(
+    id: string,
+    params?: { timelineLimit?: number; timelineOffset?: number },
+  ): Promise<AdminUser360> {
+    const query = new URLSearchParams()
+    if (params?.timelineLimit != null) query.set('timeline_limit', String(params.timelineLimit))
+    if (params?.timelineOffset != null) query.set('timeline_offset', String(params.timelineOffset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360${suffix}`)
   }
 
   async revealAdminUserPii(

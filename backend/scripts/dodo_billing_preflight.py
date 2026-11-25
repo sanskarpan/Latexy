@@ -81,7 +81,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "feature_flags", "plan_features", "plan_catalog", "plan_catalog_revisions",
           "plan_quota_overrides", "plan_quota_revisions", "role_features",
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
-          "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history")
+          "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
+          "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",

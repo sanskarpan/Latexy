@@ -192,7 +192,8 @@ def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
     previous_tables = {
         "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
         "admin_audit_log", "admin_refund_requests", "admin_alerts",
-        "subscription_history",
+        "subscription_history", "gdpr_requests", "gdpr_request_events",
+        "gdpr_legal_holds", "trial_attributions",
     }
     assert previous_columns == {table: names for table, names in current_columns().items()
                                 if table not in previous_tables}
