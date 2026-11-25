@@ -23,6 +23,7 @@ from app.api import (
     admin_control_routes,
     admin_operations_routes,
     admin_routes,
+    admin_stuck_job_routes,
     plan_catalog_routes,
 )
 from app.database.models import AdminAuditLog
@@ -38,6 +39,7 @@ AUDITED_SERVICE_CALLS = (
     "admin_user_service.",
     "admin_billing_service.",
     "admin_alert_service.",
+    "admin_stuck_jobs_service.",
     "plan_catalog_service.",
     "entitlement_service.set_",
 )
@@ -60,6 +62,7 @@ ADMIN_ROUTERS = (
     admin_alert_routes.router,
     admin_billing_reconciliation_routes.router,
     admin_operations_routes.router,
+    admin_stuck_job_routes.router,
     plan_catalog_routes.router,
 )
 

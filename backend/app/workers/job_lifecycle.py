@@ -303,6 +303,18 @@ def fence_job(redis_client: Any, job_id: str, reason: str = "timeout") -> bool:
     return result == 1 or result == b"1"
 
 
+async def fence_job_async(redis_client: Any, job_id: str, reason: str = "timeout") -> bool:
+    """Async variant used by admin remediation routes."""
+    result = await redis_client.eval(
+        _FENCE_JOB,
+        1,
+        lifecycle_key(job_id),
+        reason,
+        LIFECYCLE_TTL,
+    )
+    return result == 1 or result == b"1"
+
+
 def fence_orphan_without_lifecycle(
     redis_client: Any,
     job_id: str,

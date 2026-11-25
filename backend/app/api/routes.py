@@ -170,6 +170,7 @@ from .admin_control_routes import router as admin_control_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
+from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
@@ -179,6 +180,7 @@ router.include_router(admin_billing_reconciliation_router)
 router.include_router(admin_checkout_funnel_router)
 router.include_router(admin_compile_error_router)
 router.include_router(admin_operations_router)
+router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
 
