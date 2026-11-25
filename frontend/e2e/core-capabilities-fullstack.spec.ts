@@ -68,6 +68,7 @@ async function toggleGlobalInAdmin(page: Page, key: string, label: string, enabl
   const control = page.getByRole('switch', { name: `${label} global kill-switch`, exact: true })
   await expect(control).toBeVisible()
   if ((await control.getAttribute('aria-checked')) === String(enabled)) return
+  await page.getByLabel('Reason for permission changes').fill('Synthetic capability test change')
   const changed = page.waitForResponse((response) =>
     response.url().endsWith(`/admin/entitlements/kill-switch/${key}`) && response.request().method() === 'PATCH',
   )
