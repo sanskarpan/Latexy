@@ -16,6 +16,12 @@ import {
   type AnalyticsConsent,
 } from '@/lib/analytics/posthog'
 import AnalyticsConsentBanner from './AnalyticsConsentBanner'
+import { apiClient } from '@/lib/api-client'
+import {
+  captureFirstPartyTraffic,
+  claimTrafficAttribution,
+  hasPendingTrafficAttribution,
+} from '@/lib/analytics/traffic-source'
 
 /**
  * Mounts once at the root. It is deliberately inert until the visitor grants
@@ -36,6 +42,14 @@ export default function AnalyticsProvider() {
   }, [pathname])
 
   const activate = (path: string) => {
+    // First-party landing capture must not depend on PostHog being configured;
+    // it still runs only after explicit analytics consent.
+    captureFirstPartyTraffic()
+    if (hasPendingTrafficAttribution()) {
+      // Covers the "grant consent after signing in" path, where AuthSync's
+      // session effect already ran before a landing row existed.
+      void claimTrafficAttribution(apiClient.getAuthToken())
+    }
     void initializeAnalytics().then((ok) => {
       if (!ok) return
       setInitialized(true)
