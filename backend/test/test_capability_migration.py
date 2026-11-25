@@ -79,7 +79,7 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
     config = Config()
     config.set_main_option("script_location", str(backend / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0084_subscription_history"]
+    assert scripts.get_heads() == ["0086_trial_attribution"]
     expected = {
         "0069_capability_catalog": "0068",
         "0070_plan_catalog": "0069_capability_catalog",
@@ -97,6 +97,8 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
         "0082_signup_funnel_providers": "0081_compile_latency_dimensions",
         "0083_compile_error_taxonomy": "0082_signup_funnel_providers",
         "0084_subscription_history": "0083_compile_error_taxonomy",
+        "0085_gdpr_requests": "0084_subscription_history",
+        "0086_trial_attribution": "0085_gdpr_requests",
     }
     for revision, parent in expected.items():
         assert scripts.get_revision(revision).down_revision == parent

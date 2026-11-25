@@ -859,6 +859,86 @@ class SignupFunnelEvent(Base):
     )
 
 
+class TrialAttribution(Base):
+    """Consented trial acquisition and trial-to-account/subscription link.
+
+    One row per anonymous trial. ``user_id``/``subscription_id`` stay null
+    until the visitor signs in, then the row is linked in place. No raw device
+    fingerprint, IP address, user-agent, email, name or token is stored here;
+    the anonymous trial row remains the only device-scoped record.
+    """
+
+    __tablename__ = "trial_attributions"
+    __table_args__ = (
+        CheckConstraint(
+            "consent_granted OR ("
+            "acquisition_source IS NULL AND acquisition_medium IS NULL AND "
+            "acquisition_campaign IS NULL AND acquisition_content IS NULL AND "
+            "acquisition_term IS NULL AND referrer_host IS NULL AND "
+            "landing_path IS NULL)",
+            name="ck_trial_attributions_consent_source",
+        ),
+        UniqueConstraint("trial_id", name="uq_trial_attributions_trial"),
+        Index(
+            "uq_trial_attributions_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index("idx_trial_attributions_source", "acquisition_source"),
+        Index("idx_trial_attributions_user_created", "user_id", "created_at"),
+        Index("idx_trial_attributions_paid", "paid_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    trial_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("device_trials.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    consent_granted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    acquisition_source: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_medium: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_campaign: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_content: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_term: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    referrer_host: Mapped[Optional[str]] = mapped_column(String(253), nullable=True)
+    landing_path: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    plan_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    trial_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    signup_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class Subscription(Base):
     """Subscription management."""
 

@@ -24,7 +24,10 @@ from typing import Any, Iterable
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+<<<<<<< HEAD
 from ..core.log_sanitize import sanitize_for_log
+=======
+>>>>>>> origin/t3/trial-to-paid-cohort-attribution
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..database import models
@@ -626,7 +629,11 @@ async def _mark_redis_cancelled(job_id: str) -> bool:
         )
         return True
     except Exception:
+<<<<<<< HEAD
         logger.warning("Admin cancel queue signal failed for %s", sanitize_for_log(job_id))
+=======
+        logger.warning("Admin cancel queue signal failed for %s", job_id)
+>>>>>>> origin/t3/trial-to-paid-cohort-attribution
         return False
 
 
@@ -667,7 +674,11 @@ async def _mark_redis_fenced(job_id: str) -> bool:
         )
         return bool(fenced)
     except Exception:
+<<<<<<< HEAD
         logger.warning("Admin fence queue signal failed for %s", sanitize_for_log(job_id))
+=======
+        logger.warning("Admin fence queue signal failed for %s", job_id)
+>>>>>>> origin/t3/trial-to-paid-cohort-attribution
         return False
 
 

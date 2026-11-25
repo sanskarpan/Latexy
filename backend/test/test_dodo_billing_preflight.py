@@ -109,7 +109,9 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
     ("0081_compile_latency_dimensions", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0082_signup_funnel_providers", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0083_compile_error_taxonomy", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0084_subscription_history", current_columns(), "current_dodo_head"),
+    ("0084_subscription_history", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0085_gdpr_requests", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0086_trial_attribution", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -176,7 +178,7 @@ def test_stamped_capability_revision_rejects_partial_columns(revision, table, co
 
 
 def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
-    assert preflight.EXPECTED_HEAD == "0084_subscription_history"
+    assert preflight.EXPECTED_HEAD == "0086_trial_attribution"
     assert preflight.CAPABILITY_SCHEMA_COLUMNS["0073_d14_subfeatures"] == {}
     previous_columns = {
         **{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
@@ -184,7 +186,7 @@ def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
         **{table: set(names) for revision, tables in preflight.CAPABILITY_SCHEMA_COLUMNS.items()
            if revision not in {"0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
                                "0076_spare_authority_handover", "0077_admin_control_room",
-                               "0078_admin_alerts", "0084_subscription_history"}
+                               "0078_admin_alerts", "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution"}
            for table, names in tables.items()},
     }
     previous_tables = {
@@ -727,7 +729,9 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0081_compile_latency_dimensions", "known_mainline_dodo_upgrade_required"),
     ("0082_signup_funnel_providers", "known_mainline_dodo_upgrade_required"),
     ("0083_compile_error_taxonomy", "known_mainline_dodo_upgrade_required"),
-    ("0084_subscription_history", "current_dodo_head"),
+    ("0084_subscription_history", "known_mainline_dodo_upgrade_required"),
+    ("0085_gdpr_requests", "known_mainline_dodo_upgrade_required"),
+    ("0086_trial_attribution", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
@@ -736,7 +740,7 @@ def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, s
 @pytest.mark.parametrize("revision,schema", [
     ("0072_capability_roles", "current_dodo_head"),
     ("0080_queue_snapshots", "current_dodo_head"),
-    ("0084_subscription_history", "known_mainline_dodo_upgrade_required"),
+    ("0086_trial_attribution", "known_mainline_dodo_upgrade_required"),
     ("0073_d14_subfeatures", "current_dodo_head"),
 ])
 def test_rollout_rejects_head_revision_classification_mismatch(revision, schema):

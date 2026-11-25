@@ -15,6 +15,12 @@ import {
 } from '@/lib/api-client'
 import AdminStuckJobs from '@/components/admin/AdminStuckJobs'
 
+const STATUS_TONE: Record<AdminOperationsStatus, string> = {
+  healthy: 'border-ok/30 bg-ok/10 text-ok',
+  degraded: 'border-warn/30 bg-warn/10 text-warn',
+  unhealthy: 'border-err/30 bg-err/10 text-err',
+}
+
 const SEVERITY_TONE: Record<AdminAttentionItem['severity'], string> = {
   critical: 'text-err',
   high: 'text-warn',
