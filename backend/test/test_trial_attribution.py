@@ -1,4 +1,4 @@
-"""Trial-to-paid cohort attribution regressions (issue #2108)."""
+﻿"""Trial-to-paid cohort attribution regressions (issue #2108)."""
 
 from __future__ import annotations
 
@@ -702,7 +702,7 @@ def test_trial_attribution_migration_declares_isolated_revision():
         Path(__file__).parents[1]
         / "alembic"
         / "versions"
-        / "0084_trial_attribution.py"
+        / "0086_trial_attribution.py"
     )
     spec = importlib.util.spec_from_file_location(
         "trial_attribution_migration", path
@@ -710,5 +710,5 @@ def test_trial_attribution_migration_declares_isolated_revision():
     migration = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(migration)
-    assert migration.revision == "0084_trial_attribution"
-    assert migration.down_revision == "0082_signup_funnel_providers"
+    assert migration.revision == "0086_trial_attribution"
+    assert migration.down_revision == "0085_gdpr_requests"

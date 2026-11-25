@@ -1,4 +1,4 @@
-"""GDPR export and deletion workflow (#2130).
+﻿"""GDPR export and deletion workflow (#2130).
 
 Covers signed/expired exports, identity verification, least-privilege ownership,
 re-authentication, legal review, legal-hold blocking, partial per-table failure,
@@ -584,10 +584,10 @@ def test_migration_is_chained_to_the_0082_head_without_hardcoding_repo_head():
     import importlib.util
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "alembic/versions/0083_gdpr_requests.py"
+    path = Path(__file__).resolve().parents[1] / "alembic/versions/0085_gdpr_requests.py"
     spec = importlib.util.spec_from_file_location("gdpr_migration", path)
     migration = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(migration)
-    assert migration.revision == "0083_gdpr_requests"
-    assert migration.down_revision == "0082_signup_funnel_providers"
+    assert migration.revision == "0085_gdpr_requests"
+    assert migration.down_revision == "0084_subscription_history"
