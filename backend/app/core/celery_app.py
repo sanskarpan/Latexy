@@ -24,6 +24,8 @@ from celery.signals import (
     worker_init,
     worker_process_init,
     worker_process_shutdown,
+    worker_ready,
+    worker_shutdown,
 )
 
 from ..core.config import settings
@@ -744,6 +746,35 @@ def prepare_beat(sender=None, **kwargs):
     except Exception as exc:
         logger.error("Celery beat authority check failed", extra={"error_type": type(exc).__name__})
         raise WorkerTerminate(1) from exc
+
+
+@worker_ready.connect
+def start_worker_heartbeat(sender=None, **kwargs):
+    """Publish sanitized worker/container heartbeats while this worker runs."""
+    try:
+        from ..services.worker_health_service import start_celery_worker_heartbeat
+
+        start_celery_worker_heartbeat(sender)
+    except Exception as exc:
+        # Heartbeats are advisory: a monitoring failure must not stop work.
+        logger.warning(
+            "Worker heartbeat could not start",
+            extra={"error_type": type(exc).__name__},
+        )
+
+
+@worker_shutdown.connect
+def stop_worker_heartbeat(sender=None, **kwargs):
+    """Stop the heartbeat thread before the worker process exits."""
+    try:
+        from ..services.worker_health_service import stop_celery_worker_heartbeat
+
+        stop_celery_worker_heartbeat()
+    except Exception as exc:
+        logger.warning(
+            "Worker heartbeat could not stop cleanly",
+            extra={"error_type": type(exc).__name__},
+        )
 
 
 @worker_process_shutdown.connect

@@ -28,7 +28,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Audit | `GET /admin/audit` | Append-only operator audit trail with cursor pagination |
 | Overview | `GET /analytics/admin/overview` | Seven executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds in-process and in Redis |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
-| Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing and compile health with per-section status |
+| Overview | `GET /admin/operations/health` | Cached aggregate of dependency, storage, capacity, queue, billing, compile and worker/container health with per-section status, worker CPU/memory/last-seen, stale-worker counts, queue ownership and provider-console links |
 | Overview | `GET /admin/operations/queues` | Per-queue sampled depth, oldest pending message age, and enqueue/completion rates with a bounded throughput series |
 | Overview | `GET /admin/alerts` | Durable, deduplicated alerts with severity, owner, state, occurrence count and runbook |
 | Overview | `PATCH /admin/alerts/{id}` | Acknowledge or snooze an alert with a mandatory reason; every action is audited |
@@ -72,6 +72,12 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   only. Probe failures return fixed details; raw provider errors, connection
   strings, credentials, document content and customer identifiers are never
   returned.
+- Worker/container heartbeats are short-lived Redis keys written by Celery
+  workers and Modal invocations. Only an opaque worker label, worker kind, CPU
+  and memory percentages, last-seen time and logical queue names are stored.
+  Hostnames, PIDs, container IDs, environment variables, credentials and raw
+  provider errors are never written or returned. Keys expire after 15 minutes,
+  stale after two minutes, and the admin endpoint reports the last check time.
 - Queue snapshots are aggregate operational metadata only: depth, oldest-message
   age, and cumulative enqueue/completion totals. They never store job payloads,
   task arguments, document content or broker credentials. Samples are pruned
@@ -164,6 +170,9 @@ serve normal traffic; there is no application delete path or scheduled purge.
 - `backend/test/test_admin_operations_api.py` covers admin-only access, the
   attention aggregate, partial-source visibility, health-cache behavior and
   fixed failure details.
+- `backend/test/test_admin_worker_health_api.py` covers healthy/degraded/
+  unhealthy worker mapping, stale workers, missing metrics, queue ownership,
+  provider outage, sanitized heartbeat payloads and admin-only access.
 - `backend/test/test_admin_kpi_trends.py` covers current/previous/absolute/
   percent deltas (including the clamped conversion rate over the prior UTC
   window), sparkline completeness and bounds, zero-baseline handling, finite
