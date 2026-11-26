@@ -1828,6 +1828,15 @@ export interface AdminTemplatePerformanceRow {
   compile_failed: number
   compile_attempts: number
   success_rate: number
+  failure_rate: number
+  p50_compile_seconds: number | null
+  p95_compile_seconds: number | null
+  latency_samples: number
+  latency_sparse: boolean
+  regression: boolean
+  regression_reason: string | null
+  recent_failure_rate: number | null
+  previous_failure_rate: number | null
   last_used_at: string | null
 }
 
@@ -1872,6 +1881,9 @@ export interface AdminTemplatePerformanceResponse {
     compile_success: number
     compile_failed: number
     compile_attempts: number
+    failure_rate: number
+    latency_samples: number
+    regressions: number
   }
   reconciliation: {
     source: 'compilations'
@@ -1888,6 +1900,86 @@ export interface AdminTemplatePerformanceResponse {
     reconciled: boolean
   }
   generated_at: string
+}
+
+export type AdminTemplateHealthStatus = 'pass' | 'fail' | 'unknown'
+
+export interface AdminTemplateHealthEvidence {
+  ci_url: string
+  log_url: string | null
+  commit_url: string | null
+  runbook_url: string
+}
+
+export interface AdminTemplateHealthRow {
+  template_id: string
+  template_name: string
+  category: string
+  active: boolean
+  template_url: string
+  status: AdminTemplateHealthStatus
+  recorded_status: AdminTemplateHealthStatus | null
+  stale: boolean
+  status_reason: string
+  status_detail: string | null
+  error_class: string | null
+  visual_test: AdminTemplateHealthStatus
+  commit_sha: string | null
+  ci_run_id: string | null
+  source: string | null
+  evidence_present: boolean
+  last_verified_at: string | null
+  evidence: AdminTemplateHealthEvidence
+  recent_compile_success: number
+  recent_compile_failed: number
+  recent_compile_samples: number
+  recent_failure_rate: number
+  last_compile_at: string | null
+}
+
+export interface AdminTemplateHealthResponse {
+  timezone: 'UTC'
+  stale_after_hours: number
+  recent_compile_days: number
+  minimum_compile_samples: number
+  filters: {
+    status: AdminTemplateHealthStatus | null
+    template: string | null
+    include_inactive: boolean
+  }
+  summary: {
+    templates: number
+    pass: number
+    fail: number
+    unknown: number
+    stale: number
+    without_evidence: number
+  }
+  templates: AdminTemplateHealthRow[]
+  evidence_contract: {
+    ci_workflow_url: string
+    runbook_url: string
+    repository: string
+  }
+  generated_at: string
+}
+
+export interface AdminTemplateHealthRetryResponse {
+  id: string
+  template_id: string
+  status: AdminTemplateHealthStatus
+  error_class: string | null
+  visual_test: AdminTemplateHealthStatus
+  commit_sha: string | null
+  ci_run_id: string | null
+  source: string
+  assets_present: boolean | null
+  compile_samples: number | null
+  compile_failures: number | null
+  status_detail: string | null
+  checked_at: string | null
+  evidence: AdminTemplateHealthEvidence
+  duplicate: boolean
 }
 
 export interface AdminContentLibraryRow {
@@ -9936,6 +10028,38 @@ class ApiClient {
       throw new Error(`Template performance CSV failed (${response.status})`)
     }
     return response.blob()
+  }
+
+  async getAdminTemplateHealth(params?: {
+    stale_after_hours?: number
+    include_inactive?: boolean
+    status?: AdminTemplateHealthStatus
+    template?: string
+  }): Promise<AdminTemplateHealthResponse> {
+    const qs = new URLSearchParams()
+    if (params?.stale_after_hours != null) qs.set('stale_after_hours', String(params.stale_after_hours))
+    if (params?.include_inactive) qs.set('include_inactive', 'true')
+    if (params?.status) qs.set('status', params.status)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTemplateHealthResponse>(`/admin/templates/health${suffix}`)
+  }
+
+  async retryAdminTemplateHealth(
+    templateId: string,
+    body: {
+      reason: string
+      confirm: true
+      request_id: string
+      visual_test?: AdminTemplateHealthStatus
+      commit_sha?: string
+      ci_run_id?: string
+    },
+  ): Promise<AdminTemplateHealthRetryResponse> {
+    return this.request<AdminTemplateHealthRetryResponse>(
+      `/admin/templates/${encodeURIComponent(templateId)}/health/retry`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
   }
 
   async getAdminContentLibraryAdoption(params?: {

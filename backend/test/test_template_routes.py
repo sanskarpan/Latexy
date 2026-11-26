@@ -11,6 +11,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 
@@ -19,7 +20,6 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 
 from app.api.template_routes import _reject_non_taggable_resume_template
-from app.core.config import settings
 from app.database.models import ResumeTemplate
 
 # ---------------------------------------------------------------------------
@@ -242,7 +242,7 @@ class TestGetTemplate:
 # POST /templates/{id}/use
 # ---------------------------------------------------------------------------
 
-async def _create_auth_headers(db_session) -> dict:
+async def _create_auth_headers(db_session, *, role: str = "user") -> dict:
     """Insert a user + Better Auth session row; return Authorization headers."""
     from datetime import datetime, timedelta, timezone
 
@@ -251,12 +251,12 @@ async def _create_auth_headers(db_session) -> dict:
     user_id = str(uuid.uuid4())
     await db_session.execute(
         text(
-            "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+            "INSERT INTO users (id, email, name, role, email_verified, subscription_plan, "
             "subscription_status, trial_used) "
-            "VALUES (:id, :email, 'Test User', true, 'free', 'active', false) "
+            "VALUES (:id, :email, 'Test User', :role, true, 'free', 'active', false) "
             "ON CONFLICT DO NOTHING"
         ),
-        {"id": user_id, "email": f"test_{user_id[:8]}@example.com"},
+        {"id": user_id, "email": f"test_{user_id[:8]}@example.com", "role": role},
     )
     await db_session.commit()
 
@@ -274,7 +274,12 @@ async def _create_auth_headers(db_session) -> dict:
 
 
 def _admin_headers() -> dict:
+    """Legacy header helper kept only to prove it no longer grants access."""
     return {"X-Admin-Secret": "test-template-admin-secret"}
+
+
+async def _create_admin_headers(db_session) -> dict:
+    return await _create_auth_headers(db_session, role="admin")
 
 
 def test_document_class_guard_handles_adversarial_whitespace() -> None:
@@ -445,89 +450,67 @@ class TestUseTemplate:
 
 @pytest.mark.asyncio
 class TestTemplateAdminEndpoints:
-    async def test_create_template_requires_admin_secret(self, client: AsyncClient):
-        previous_secret = settings.ADMIN_SECRET_KEY
-        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
-        try:
-            resp = await client.post(
-                "/templates",
-                json={
-                    "name": "Admin Created Template",
-                    "description": "Created through admin route",
-                    "category": "finance",
-                    "tags": ["finance", "admin"],
-                    "latex_content": _VALID_LATEX,
-                    "sort_order": 12,
-                },
-            )
-        finally:
-            settings.ADMIN_SECRET_KEY = previous_secret
-        assert resp.status_code == 403
+    async def test_template_admin_endpoints_require_admin_session(self, client: AsyncClient, db_session):
+        template_name = f"Admin Created Template {uuid.uuid4().hex[:8]}"
+        payload = {
+            "name": template_name,
+            "description": "Created through admin route",
+            "category": "finance",
+            "tags": ["finance", "admin"],
+            "latex_content": _VALID_LATEX,
+            "sort_order": 12,
+        }
+        anonymous = await client.post("/templates", json=payload)
+        assert anonymous.status_code == 401
 
-    async def test_create_template_rejects_wrong_admin_secret(self, client: AsyncClient):
-        """A non-empty but incorrect secret is rejected (constant-time compare)."""
-        previous_secret = settings.ADMIN_SECRET_KEY
-        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
-        try:
-            resp = await client.post(
-                "/templates",
-                headers={"X-Admin-Secret": "wrong-secret"},
-                json={
-                    "name": "Bad Secret Template",
-                    "category": "finance",
-                    "tags": ["finance"],
-                    "latex_content": _VALID_LATEX,
-                },
-            )
-        finally:
-            settings.ADMIN_SECRET_KEY = previous_secret
-        assert resp.status_code == 403
+        # The old shared header no longer authenticates template writes.
+        legacy_header = await client.post("/templates", headers=_admin_headers(), json=payload)
+        assert legacy_header.status_code == 401
+
+        user_headers = await _create_auth_headers(db_session, role="user")
+        forbidden = await client.post("/templates", headers=user_headers, json=payload)
+        assert forbidden.status_code == 403
+
+        admin_headers = await _create_admin_headers(db_session)
+        allowed = await client.post("/templates", headers=admin_headers, json=payload)
+        assert allowed.status_code == 201, allowed.text
 
     @pytest.mark.parametrize("document_class", ["beamer", "beamerarticle"])
     async def test_rejects_presentation_classes_in_resume_categories(
         self,
         client: AsyncClient,
+        db_session,
         document_class: str,
     ):
-        previous_secret = settings.ADMIN_SECRET_KEY
-        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
-        try:
-            resp = await client.post(
-                "/templates",
-                headers=_admin_headers(),
-                json={
-                    "name": "Misclassified Presentation",
-                    "category": "finance",
-                    "tags": ["finance"],
-                    "latex_content": (
-                        f"\\documentclass{{{document_class}}}\n"
-                        "\\begin{document}Test\\end{document}"
-                    ),
-                },
-            )
-        finally:
-            settings.ADMIN_SECRET_KEY = previous_secret
+        resp = await client.post(
+            "/templates",
+            headers=await _create_admin_headers(db_session),
+            json={
+                "name": "Misclassified Presentation",
+                "category": "finance",
+                "tags": ["finance"],
+                "latex_content": (
+                    f"\\documentclass{{{document_class}}}\n"
+                    "\\begin{document}Test\\end{document}"
+                ),
+            },
+        )
 
         assert resp.status_code == 422
         assert "presentation-only" in resp.json()["detail"]
 
-    async def test_allows_beamer_in_presentation_category(self, client: AsyncClient):
+    async def test_allows_beamer_in_presentation_category(self, client: AsyncClient, db_session):
         template_name = f"Admin Presentation Template {uuid.uuid4().hex[:8]}"
-        previous_secret = settings.ADMIN_SECRET_KEY
-        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
-        try:
-            resp = await client.post(
-                "/templates",
-                headers=_admin_headers(),
-                json={
-                    "name": template_name,
-                    "category": "presentation",
-                    "tags": ["presentation"],
-                    "latex_content": _BEAMER_LATEX,
-                },
-            )
-        finally:
-            settings.ADMIN_SECRET_KEY = previous_secret
+        resp = await client.post(
+            "/templates",
+            headers=await _create_admin_headers(db_session),
+            json={
+                "name": template_name,
+                "category": "presentation",
+                "tags": ["presentation"],
+                "latex_content": _BEAMER_LATEX,
+            },
+        )
 
         assert resp.status_code == 201
         assert resp.json()["document_type"] == "presentation"
@@ -539,21 +522,16 @@ class TestTemplateAdminEndpoints:
     ):
         template = await _insert_template(db_session, name="test_tmpl_Update Guard")
         template_id = template.id
-        previous_secret = settings.ADMIN_SECRET_KEY
-        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
-        try:
-            resp = await client.put(
-                f"/templates/{template_id}",
-                headers=_admin_headers(),
-                json={
-                    "name": "Invalid Update",
-                    "category": "finance",
-                    "tags": ["finance"],
-                    "latex_content": _BEAMER_LATEX,
-                },
-            )
-        finally:
-            settings.ADMIN_SECRET_KEY = previous_secret
+        resp = await client.put(
+            f"/templates/{template_id}",
+            headers=await _create_admin_headers(db_session),
+            json={
+                "name": "Invalid Update",
+                "category": "finance",
+                "tags": ["finance"],
+                "latex_content": _BEAMER_LATEX,
+            },
+        )
 
         assert resp.status_code == 422
         db_session.expire_all()
@@ -563,72 +541,100 @@ class TestTemplateAdminEndpoints:
         assert unchanged.latex_content == _VALID_LATEX
 
     async def test_create_update_activate_deactivate_and_delete_template(self, client: AsyncClient, db_session):
-        previous_secret = settings.ADMIN_SECRET_KEY
-        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
-        try:
-            create_resp = await client.post(
-                "/templates",
-                headers=_admin_headers(),
-                json={
-                    "name": "Admin Lifecycle Template",
-                    "description": "Lifecycle test",
-                    "category": "finance",
-                    "tags": ["finance", "lifecycle"],
-                    "latex_content": _VALID_LATEX,
-                    "sort_order": 4,
-                },
-            )
-            assert create_resp.status_code == 201
-            created = create_resp.json()
-            assert created["name"] == "Admin Lifecycle Template"
-            template_id = created["id"]
+        headers = await _create_admin_headers(db_session)
+        create_resp = await client.post(
+            "/templates",
+            headers=headers,
+            json={
+                "name": "Admin Lifecycle Template",
+                "description": "Lifecycle test",
+                "category": "finance",
+                "tags": ["finance", "lifecycle"],
+                "latex_content": _VALID_LATEX,
+                "sort_order": 4,
+            },
+        )
+        assert create_resp.status_code == 201
+        created = create_resp.json()
+        assert created["name"] == "Admin Lifecycle Template"
+        template_id = created["id"]
 
-            update_resp = await client.put(
-                f"/templates/{template_id}",
-                headers=_admin_headers(),
-                json={
-                    "name": "Admin Lifecycle Template Updated",
-                    "description": "Updated",
-                    "category": "marketing",
-                    "tags": ["marketing"],
-                    "latex_content": _VALID_LATEX_2,
-                    "thumbnail_url": "https://example.com/template.png",
-                    "sort_order": 8,
-                    "is_active": True,
-                },
-            )
-            assert update_resp.status_code == 200
-            updated = update_resp.json()
-            assert updated["name"] == "Admin Lifecycle Template Updated"
-            assert updated["category"] == "marketing"
+        update_resp = await client.put(
+            f"/templates/{template_id}",
+            headers=headers,
+            json={
+                "name": "Admin Lifecycle Template Updated",
+                "description": "Updated",
+                "category": "marketing",
+                "tags": ["marketing"],
+                "latex_content": _VALID_LATEX_2,
+                "thumbnail_url": "https://example.com/template.png",
+                "sort_order": 8,
+                "is_active": True,
+            },
+        )
+        assert update_resp.status_code == 200
+        updated = update_resp.json()
+        assert updated["name"] == "Admin Lifecycle Template Updated"
+        assert updated["category"] == "marketing"
 
-            deactivate_resp = await client.patch(
-                f"/templates/{template_id}/deactivate",
-                headers=_admin_headers(),
-            )
-            assert deactivate_resp.status_code == 200
-            template = await db_session.get(ResumeTemplate, template_id)
-            assert template is not None
-            assert template.is_active is False
+        deactivate_resp = await client.patch(
+            f"/templates/{template_id}/deactivate",
+            headers=headers,
+        )
+        assert deactivate_resp.status_code == 200
+        template = await db_session.get(ResumeTemplate, template_id)
+        assert template is not None
+        assert template.is_active is False
 
-            activate_resp = await client.patch(
-                f"/templates/{template_id}/activate",
-                headers=_admin_headers(),
-            )
-            assert activate_resp.status_code == 200
-            await db_session.refresh(template)
-            assert template.is_active is True
+        activate_resp = await client.patch(
+            f"/templates/{template_id}/activate",
+            headers=headers,
+        )
+        assert activate_resp.status_code == 200
+        await db_session.refresh(template)
+        assert template.is_active is True
 
-            delete_resp = await client.delete(
-                f"/templates/{template_id}",
-                headers=_admin_headers(),
-            )
-            assert delete_resp.status_code == 204
+        delete_resp = await client.delete(
+            f"/templates/{template_id}",
+            headers=headers,
+        )
+        assert delete_resp.status_code == 204
 
-            gone = await db_session.get(ResumeTemplate, template_id)
-            assert gone is None
-        finally:
-            settings.ADMIN_SECRET_KEY = previous_secret
+        gone = await db_session.get(ResumeTemplate, template_id)
+        assert gone is None
+
+        from sqlalchemy import text
+
+        actions = (
+            await db_session.execute(
+                text(
+                    "SELECT action FROM admin_audit_log "
+                    "WHERE target_type = 'resume_template' AND target_id = :id "
+                    "ORDER BY created_at, action"
+                ),
+                {"id": template_id},
+            )
+        ).scalars().all()
+        assert set(actions) == {
+            "template.create",
+            "template.update",
+            "template.deactivate",
+            "template.activate",
+            "template.delete",
+        }
+        assert len(actions) == 5
+        audit_rows = (
+            await db_session.execute(
+                text(
+                    "SELECT before, after FROM admin_audit_log "
+                    "WHERE target_type = 'resume_template' AND target_id = :id"
+                ),
+                {"id": template_id},
+            )
+        ).all()
+        assert all("latex" not in json.dumps(state or {}) for _before, _after in audit_rows for state in (_before, _after))
+
 
 
 # ---------------------------------------------------------------------------

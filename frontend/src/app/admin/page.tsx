@@ -26,6 +26,7 @@ import AdminCollaboration from '@/components/admin/AdminCollaboration'
 import AdminCareerAdoption from '@/components/admin/AdminCareerAdoption'
 import AdminIntegrations from '@/components/admin/AdminIntegrations'
 import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
+import AdminTemplateHealth from '@/components/admin/AdminTemplateHealth'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
@@ -1089,11 +1090,12 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         )}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'quality' && (
-          <div className="mb-6">
+          <div className="space-y-6">
             <AdminQualityTriage />
+            <AdminTemplateHealth />
+            <AdminTemplatePerformance />
           </div>
         )}
-        {tab === 'quality' && <AdminTemplatePerformance />}
         {tab === 'quality' && (
           <div className="mt-6">
             <AdminContentLibraryQuality />

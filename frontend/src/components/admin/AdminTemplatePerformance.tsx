@@ -29,6 +29,10 @@ function formatShare(value: number): string {
     return `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`
 }
 
+function formatSeconds(value: number | null): string {
+    return value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(2)}s`
+}
+
 function templateLabel(row: AdminTemplatePerformanceRow): string {
     if (row.template_name) return row.template_name
     return `Deleted template ${row.template_id.slice(0, 8)}`
@@ -302,9 +306,9 @@ export default function AdminTemplatePerformance() {
                                 detail: `${formatNumber(data.totals.compile_failed)} failed`,
                             },
                             {
-                                label: 'Compile success rate',
-                                value: formatShare(successRate),
-                                detail: data.reconciliation.reconciled ? 'Reconciled to compilations' : 'Reconciliation pending',
+                                label: 'Compile failure rate',
+                                value: formatShare(data.totals.failure_rate),
+                                detail: `${formatShare(successRate)} success · ${formatNumber(data.totals.latency_samples)} timed`,
                             },
                         ].map(card => (
                             <div
@@ -347,11 +351,13 @@ export default function AdminTemplatePerformance() {
                                     <th scope="col" className="px-2 py-2">Template</th>
                                     <th scope="col" className="px-2 py-2 text-right">Users</th>
                                     <th scope="col" className="px-2 py-2 text-right">Views</th>
+                                    <th scope="col" className="px-2 py-2 text-right">Selects</th>
                                     <th scope="col" className="px-2 py-2 text-right">Uses</th>
                                     <th scope="col" className="px-2 py-2 text-right">Exports</th>
                                     <th scope="col" className="px-2 py-2 text-right">Compile success</th>
                                     <th scope="col" className="px-2 py-2 text-right">Compile fail</th>
-                                    <th scope="col" className="px-2 py-2 text-right">Success rate</th>
+                                    <th scope="col" className="px-2 py-2 text-right">Failure rate</th>
+                                    <th scope="col" className="px-2 py-2 text-right">p50 / p95</th>
                                     <th scope="col" className="px-2 py-2">Last activity</th>
                                 </tr>
                             </thead>
@@ -383,21 +389,36 @@ export default function AdminTemplatePerformance() {
                                                         {row.category.replace(/_/g, ' ')}
                                                     </span>
                                                 )}
+                                                {row.regression && (
+                                                    <span
+                                                        className="rounded-full border border-err/30 bg-err/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-err"
+                                                        title={`Failure rate ${formatShare(row.previous_failure_rate ?? 0)} → ${formatShare(row.recent_failure_rate ?? 0)}`}
+                                                    >
+                                                        Regression
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-2 py-2.5 text-right text-xs text-fg-2">{formatNumber(row.users)}</td>
                                         <td className="px-2 py-2.5 text-right text-xs text-fg-2">{formatNumber(row.views)}</td>
+                                        <td className="px-2 py-2.5 text-right text-xs text-fg-2">{formatNumber(row.selects)}</td>
                                         <td className="px-2 py-2.5 text-right text-xs text-fg-2">{formatNumber(row.uses)}</td>
                                         <td className="px-2 py-2.5 text-right text-xs font-semibold text-fg">{formatNumber(row.exports)}</td>
                                         <td className="px-2 py-2.5 text-right text-xs text-ok">{formatNumber(row.compile_success)}</td>
                                         <td className="px-2 py-2.5 text-right text-xs text-err">{formatNumber(row.compile_failed)}</td>
-                                        <td className="px-2 py-2.5 text-right text-xs text-fg-2">{formatShare(row.success_rate)}</td>
+                                        <td className="px-2 py-2.5 text-right text-xs text-fg-2">{formatShare(row.failure_rate)}</td>
+                                        <td className="px-2 py-2.5 text-right text-xs text-fg-3">
+                                            {formatSeconds(row.p50_compile_seconds)} / {formatSeconds(row.p95_compile_seconds)}
+                                            {row.latency_sparse && (
+                                                <span className="ml-1 text-[10px] uppercase tracking-wider text-fg-3">sparse</span>
+                                            )}
+                                        </td>
                                         <td className="px-2 py-2.5 text-xs text-fg-3">{formatDateTime(row.last_used_at)}</td>
                                     </tr>
                                 ))}
                                 {data.ranking.length === 0 && (
                                     <tr>
-                                        <td colSpan={10} className="px-2 py-8 text-center text-xs text-fg-3">
+                                        <td colSpan={12} className="px-2 py-8 text-center text-xs text-fg-3">
                                             No template aggregates are visible for this range.
                                         </td>
                                     </tr>
