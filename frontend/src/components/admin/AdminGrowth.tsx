@@ -19,6 +19,7 @@ import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/Metr
 import AdminTrafficSources from '@/components/admin/AdminTrafficSources'
 import AdminLandingConversion from '@/components/admin/AdminLandingConversion'
 import AdminTrialAttribution from '@/components/admin/AdminTrialAttribution'
+import AdminCredentialMix from '@/components/admin/AdminCredentialMix'
 import { formatDateTime, formatMoney, formatNumber, percentage } from './admin-format'
 
 const RANGES = [7, 30, 90] as const
@@ -1388,6 +1389,8 @@ export default function AdminGrowth() {
           loading={loading}
         />
       )}
+
+      <AdminCredentialMix days={days} />
 
       <Explorer
         data={series}

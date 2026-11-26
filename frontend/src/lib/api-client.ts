@@ -2757,6 +2757,130 @@ export interface AdminAiUsageResponse {
   notes: string[]
 }
 
+export type AdminCredentialSource = 'byok' | 'platform' | 'unknown'
+
+export interface AdminCredentialMixMetrics {
+  calls: number
+  tokens: number
+  cost_usd: number
+  cost_usd_minor: number
+  users: number
+  estimated_calls: number
+  unknown_pricing_calls: number
+  call_share_pct: number
+  token_share_pct: number
+  cost_share_pct: number
+}
+
+export interface AdminCredentialMixRow extends AdminCredentialMixMetrics {
+  credential_source: AdminCredentialSource
+  feature?: string
+  plan?: string
+  provider?: string
+  model?: string
+  persona?: string
+  date?: string
+}
+
+export interface AdminCredentialMixResponse {
+  period_days: number
+  start_date: string
+  end_date: string
+  generated_at: string
+  filters: {
+    plan: string | null
+    feature: string | null
+    provider: string | null
+    model: string | null
+    persona: string | null
+  }
+  minimum_group_size: number
+  currency: string
+  minor_unit: string
+  totals: {
+    calls: number
+    tokens: number
+    cost_usd: number
+    cost_usd_minor: number
+    users: number
+    classified_calls: number
+    unclassified_calls: number
+    classified_share_pct: number
+    mix: Record<AdminCredentialSource, AdminCredentialMixMetrics>
+  }
+  sources: Array<AdminCredentialMixMetrics & { credential_source: AdminCredentialSource }>
+  by_feature: AdminCredentialMixRow[]
+  by_plan: AdminCredentialMixRow[]
+  by_provider: AdminCredentialMixRow[]
+  by_model: AdminCredentialMixRow[]
+  by_persona: AdminCredentialMixRow[]
+  by_day: AdminCredentialMixRow[]
+  key_ownership: {
+    active_keys: number
+    inactive_keys: number
+    users_with_active_keys: number
+    users_with_any_keys: number
+    minimum_group_size: number
+    suppressed_groups: number
+    by_provider: Array<{
+      provider: string
+      active_keys: number
+      inactive_keys: number
+      users: number
+    }>
+    by_plan: Array<{
+      plan: string
+      active_keys: number
+      inactive_keys: number
+      users: number
+    }>
+    note: string
+  }
+  suppressed_groups: number
+  suppression: {
+    minimum_group_size: number
+    rule: string
+    suppressed_groups: number
+    by_dimension: Record<string, number>
+  }
+  reconciliation: {
+    ledgers: Array<{
+      source: string
+      table: string
+      calls: number
+      tokens: number
+      cost_usd: number
+      cost_usd_minor: number
+      users: number
+      estimated_calls: number
+      unknown_pricing_calls: number
+    }>
+    total_calls: number
+    total_tokens: number
+    total_cost_usd: number
+    total_cost_usd_minor: number
+    classified_calls: number
+    unknown_calls: number
+    call_share_total_pct: number
+    checks: Array<{
+      key: string
+      label: string
+      expected: number
+      actual: number
+      ok: boolean
+    }>
+    unknown_policy: string
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  credential_source_note: string
+  notes: string[]
+}
+
 export type AdminTimeseriesMetric =
   | 'events'
   | 'compilations'
@@ -6041,6 +6165,24 @@ class ApiClient {
     if (params?.model) qs.set('model', params.model)
     if (params?.persona) qs.set('persona', params.persona)
     return this.request<AdminAiUsageResponse>(`/admin/analytics/ai-usage?${qs}`)
+  }
+
+  async getAdminCredentialMix(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    provider?: string
+    model?: string
+    persona?: string
+  }): Promise<AdminCredentialMixResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.model) qs.set('model', params.model)
+    if (params?.persona) qs.set('persona', params.persona)
+    return this.request<AdminCredentialMixResponse>(`/admin/analytics/credential-mix?${qs}`)
   }
 
   async getAdminCompileLatency(params?: {
