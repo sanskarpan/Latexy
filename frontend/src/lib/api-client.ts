@@ -766,6 +766,26 @@ export interface AdminRecentEvent {
   created_at: string | null
 }
 
+export type AdminActivityCategory = 'signup' | 'payment' | 'compile' | 'optimize' | 'error'
+
+export interface AdminActivityEvent {
+  id: string
+  category: AdminActivityCategory
+  event: string
+  created_at: string
+  href: string | null
+}
+
+export interface AdminActivityFeedResponse {
+  items: AdminActivityEvent[]
+  next_cursor: string | null
+  has_more: boolean
+  mode: 'live' | 'fallback'
+  degraded: boolean
+  detail: string | null
+  generated_at: string
+}
+
 export interface AdminOperationsSummary {
   queued_jobs: number
   processing_jobs: number
@@ -4445,6 +4465,17 @@ class ApiClient {
 
   async getAdminAnalyticsOverview(days: number = 30): Promise<AdminAnalyticsOverviewResponse> {
     return this.request<AdminAnalyticsOverviewResponse>(`/analytics/admin/overview?days=${days}`)
+  }
+
+  async getAdminActivityFeed(params?: {
+    cursor?: string | null
+    limit?: number
+  }): Promise<AdminActivityFeedResponse> {
+    const qs = new URLSearchParams()
+    if (params?.cursor) qs.set('cursor', params.cursor)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminActivityFeedResponse>(`/admin/analytics/activity${suffix}`)
   }
 
   // ---------------------------------------------------------------- //

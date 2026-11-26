@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient, type AdminAnalyticsOverviewResponse, type AdminKpiTrend } from '@/lib/api-client'
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
+import AdminActivityFeed from '@/components/admin/AdminActivityFeed'
 import AdminCompileLatency from '@/components/admin/AdminCompileLatency'
 import AdminCompileErrors from '@/components/admin/AdminCompileErrors'
 import AdminOperations from '@/components/admin/AdminOperations'
@@ -407,6 +408,8 @@ export default function AdminAnalytics() {
           </div>
         </div>
       </div>
+
+      <AdminActivityFeed />
 
       <RecentEvents events={data.recent_events} />
 
