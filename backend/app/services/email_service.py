@@ -11,6 +11,7 @@ import asyncio
 import base64
 import smtplib
 import ssl
+from contextvars import ContextVar
 from dataclasses import dataclass
 from email import encoders
 from email.mime.base import MIMEBase
@@ -37,6 +38,28 @@ class EmailAttachment:
     content_type: str = "application/octet-stream"
 
 
+@dataclass(frozen=True)
+class EmailSendResult:
+    """Provider outcome with the metadata needed for delivery mapping.
+
+    ``transient`` is true only for retryable transport/limit responses. Invalid
+    recipients, validation failures and permanent provider errors must not be
+    retried. ``provider_message_id`` is the provider's opaque email id.
+    """
+
+    accepted: bool
+    transient: bool = False
+    provider_message_id: Optional[str] = None
+    status_code: Optional[int] = None
+
+
+# A task-local slot lets the existing boolean ``send_email`` contract stay
+# compatible while the durable document-delivery path asks for the receipt.
+_SEND_RECEIPT: ContextVar[Optional[EmailSendResult]] = ContextVar(
+    "latexy_email_send_receipt", default=None
+)
+
+
 class EmailService:
     """Send transactional emails via Resend or SMTP."""
 
@@ -50,16 +73,70 @@ class EmailService:
         attachments: Optional[Sequence[EmailAttachment]] = None,
     ) -> bool:
         """Send an email. Returns True if sent, False if skipped or failed."""
+        result = await self._deliver_email(
+            to,
+            subject,
+            html_body,
+            text_body,
+            idempotency_key,
+            attachments,
+        )
+        _SEND_RECEIPT.set(result)
+        return result.accepted
+
+    async def send_email_with_receipt(
+        self,
+        to: str,
+        subject: str,
+        html_body: str,
+        text_body: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        attachments: Optional[Sequence[EmailAttachment]] = None,
+    ) -> EmailSendResult:
+        """Send once and return acceptance, retryability and provider id.
+
+        It intentionally delegates to ``send_email`` so existing callers/tests
+        that patch the boolean method keep working; an unpatched production
+        call publishes a receipt through the task-local slot above.
+        """
+        token = _SEND_RECEIPT.set(None)
+        try:
+            accepted = bool(
+                await self.send_email(
+                    to=to,
+                    subject=subject,
+                    html_body=html_body,
+                    text_body=text_body,
+                    idempotency_key=idempotency_key,
+                    attachments=attachments,
+                )
+            )
+            result = _SEND_RECEIPT.get()
+            if result is None or result.accepted != accepted:
+                return EmailSendResult(accepted=accepted, transient=not accepted)
+            return result
+        finally:
+            _SEND_RECEIPT.reset(token)
+
+    async def _deliver_email(
+        self,
+        to: str,
+        subject: str,
+        html_body: str,
+        text_body: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        attachments: Optional[Sequence[EmailAttachment]] = None,
+    ) -> EmailSendResult:
         if not settings.EMAIL_ENABLED:
             logger.debug("Email disabled — skipping send")
-            return False
+            return EmailSendResult(accepted=False)
 
         safe_attachments = tuple(attachments or ())
         try:
             self._validate_attachments(safe_attachments)
         except (TypeError, ValueError):
             logger.warning("Email attachment validation failed")
-            return False
+            return EmailSendResult(accepted=False)
 
         try:
             if settings.EMAIL_PROVIDER == "resend":
@@ -73,28 +150,34 @@ class EmailService:
                 if idempotency_key:
                     logger.debug("SMTP transport idempotency depends on relay support")
                 smtp_args = (to, subject, html_body, text_body)
+                accepted: bool
                 if idempotency_key:
                     if safe_attachments:
-                        return await asyncio.to_thread(
+                        accepted = await asyncio.to_thread(
                             self._send_via_smtp,
                             *smtp_args,
                             idempotency_key,
                             safe_attachments,
                         )
-                    return await asyncio.to_thread(self._send_via_smtp, *smtp_args, idempotency_key)
-                if safe_attachments:
-                    return await asyncio.to_thread(
+                    else:
+                        accepted = await asyncio.to_thread(
+                            self._send_via_smtp, *smtp_args, idempotency_key
+                        )
+                elif safe_attachments:
+                    accepted = await asyncio.to_thread(
                         self._send_via_smtp, *smtp_args, None, safe_attachments
                     )
-                return await asyncio.to_thread(self._send_via_smtp, *smtp_args)
+                else:
+                    accepted = await asyncio.to_thread(self._send_via_smtp, *smtp_args)
+                return EmailSendResult(accepted=accepted, transient=not accepted)
             else:
                 logger.warning(f"Unknown EMAIL_PROVIDER: {settings.EMAIL_PROVIDER!r}")
-                return False
+                return EmailSendResult(accepted=False)
         except Exception as exc:
             # Provider/network errors and recipient/subject values may contain
             # credentials or personal data. Keep operational logs metadata-only.
             logger.error("Email send failed (%s)", type(exc).__name__)
-            return False
+            return EmailSendResult(accepted=False, transient=True)
 
     async def _send_via_resend(
         self,
@@ -104,10 +187,10 @@ class EmailService:
         text_body: Optional[str],
         idempotency_key: Optional[str] = None,
         attachments: Sequence[EmailAttachment] = (),
-    ) -> bool:
+    ) -> EmailSendResult:
         if not settings.RESEND_API_KEY:
             logger.warning("RESEND_API_KEY not set — cannot send email")
-            return False
+            return EmailSendResult(accepted=False)
 
         import httpx
 
@@ -138,11 +221,29 @@ class EmailService:
                 json=payload,
             )
             if resp.status_code in (200, 201):
+                message_id: Optional[str] = None
+                try:
+                    body = resp.json()
+                except (AttributeError, TypeError, ValueError):
+                    body = None
+                if isinstance(body, dict):
+                    candidate = body.get("id")
+                    if isinstance(candidate, str) and 0 < len(candidate) <= 255:
+                        message_id = candidate
                 logger.info("Email sent via Resend")
-                return True
+                return EmailSendResult(
+                    accepted=True,
+                    provider_message_id=message_id,
+                    status_code=int(resp.status_code),
+                )
             else:
                 logger.error("Resend returned HTTP %s", resp.status_code)
-                return False
+                status_code = int(resp.status_code)
+                return EmailSendResult(
+                    accepted=False,
+                    transient=status_code == 429 or status_code >= 500,
+                    status_code=status_code,
+                )
 
     def _send_via_smtp(
         self,

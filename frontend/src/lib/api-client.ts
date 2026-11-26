@@ -2440,6 +2440,68 @@ export interface AdminTrialAttributionResponse {
   generated_at: string
 }
 
+export type AdminEmailHealthStatus = 'ok' | 'watch' | 'review' | 'unconfigured'
+
+export interface AdminEmailHealthFailure {
+  event_type: string
+  occurred_at: string
+  bounce_type: string | null
+  bounce_subtype: string | null
+  retryable: boolean
+  delivery_mapped: boolean
+  delivery_status: string | null
+}
+
+export interface AdminEmailHealthResponse {
+  provider: string
+  configured_provider: string
+  period: { days: number; start: string; end: string }
+  minimum_rate_sample: number
+  signature_verification: {
+    configured: boolean
+    scheme: string
+    tolerance_seconds: number
+  }
+  summary: {
+    outbound: { total: number; accepted: number; failed: number; pending: number }
+    events: {
+      sent: number
+      delivered: number
+      bounced: number
+      complained: number
+      delayed: number
+      failed: number
+      suppressed: number
+      suppression_added: number
+      suppression_removed: number
+      unknown: number
+    }
+    attempted: number
+    bounce_rate_pct: number | null
+    complaint_rate_pct: number | null
+    delivery_rate_pct: number | null
+    bounce_rate: number | null
+    complaint_rate: number | null
+    delivery_rate: number | null
+    rates_withheld: boolean
+    sample_size: number
+  }
+  event_types: Array<{ event_type: string; count: number }>
+  recent_failures: AdminEmailHealthFailure[]
+  suppression: {
+    status: AdminEmailHealthStatus
+    active_recipients: number
+    added_in_period: number
+    removed_in_period: number
+    provider_side_suppression: boolean
+    local_enforcement: boolean
+    review_thresholds: { complaint_rate_pct: number; bounce_rate_pct: number }
+    policy: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminRetentionCell {
   count: number
   eligible: number
@@ -6551,6 +6613,12 @@ class ApiClient {
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminSubscriptionAnalyticsResponse>(
       `/admin/subscriptions/analytics${suffix}`,
+    )
+  }
+
+  async getAdminEmailHealth(days = 30): Promise<AdminEmailHealthResponse> {
+    return this.request<AdminEmailHealthResponse>(
+      `/admin/email/health?days=${encodeURIComponent(String(days))}`,
     )
   }
 

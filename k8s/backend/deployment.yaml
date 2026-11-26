@@ -131,6 +131,12 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: resend-api-key
+        - name: RESEND_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: resend-webhook-secret
+              optional: true
         - name: EMAIL_FROM
           valueFrom:
             configMapKeyRef:

@@ -126,8 +126,19 @@ async def mark_accepted(
     delivery: DocumentEmailDelivery,
     *,
     claim_token: str | None = None,
+    provider_message_id: str | None = None,
 ) -> bool:
+    safe_message_id = (provider_message_id or "")[:255] or None
     if claim_token is not None:
+        values: dict[str, object] = {
+            "status": "accepted",
+            "accepted_at": datetime.now(timezone.utc),
+            "claimed_at": None,
+            "claim_token": None,
+            "last_error": None,
+        }
+        if safe_message_id:
+            values["provider_message_id"] = safe_message_id
         result = await db.execute(
             update(DocumentEmailDelivery)
             .where(
@@ -135,13 +146,7 @@ async def mark_accepted(
                 DocumentEmailDelivery.claim_token == claim_token,
                 DocumentEmailDelivery.status == "processing",
             )
-            .values(
-                status="accepted",
-                accepted_at=datetime.now(timezone.utc),
-                claimed_at=None,
-                claim_token=None,
-                last_error=None,
-            )
+            .values(**values)
         )
         if getattr(result, "rowcount", 0) != 1:
             await db.rollback()
@@ -153,6 +158,8 @@ async def mark_accepted(
     delivery.claimed_at = None
     delivery.claim_token = None
     delivery.last_error = None
+    if safe_message_id:
+        delivery.provider_message_id = safe_message_id
     await db.commit()
     return True
 

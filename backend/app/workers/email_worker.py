@@ -57,6 +57,7 @@ async def _async_send_document_email_delivery(delivery_id: str) -> None:
         mark_failed,
         mark_permanent_failure,
     )
+    from ..services.email_health_service import is_recipient_suppressed
     from ..services.email_service import EmailAttachment, email_service, render_document_delivery_email
     from ..utils.db_url import normalize_database_url
 
@@ -76,6 +77,11 @@ async def _async_send_document_email_delivery(delivery_id: str) -> None:
             if user is None or not user.email_verified or user.email.strip().lower() != delivery.recipient_email:
                 await mark_permanent_failure(
                     session, delivery, "recipient_unverified", claim_token=claim_token
+                )
+                return
+            if await is_recipient_suppressed(session, delivery.recipient_email):
+                await mark_permanent_failure(
+                    session, delivery, "recipient_suppressed", claim_token=claim_token
                 )
                 return
             # Importing this helper keeps all storage/path validation in one
@@ -103,7 +109,7 @@ async def _async_send_document_email_delivery(delivery_id: str) -> None:
                 )
                 return
             html_body, text_body = render_document_delivery_email(user.name or "there", resume.title)
-            sent = await email_service.send_email(
+            receipt = await email_service.send_email_with_receipt(
                 to=delivery.recipient_email,
                 subject="Your compiled resume from Latexy",
                 html_body=html_body,
@@ -111,10 +117,19 @@ async def _async_send_document_email_delivery(delivery_id: str) -> None:
                 idempotency_key=delivery.idempotency_key,
                 attachments=(EmailAttachment("resume.pdf", pdf_bytes, "application/pdf"),),
             )
-            if sent:
-                await mark_accepted(session, delivery, claim_token=claim_token)
+            if receipt.accepted:
+                await mark_accepted(
+                    session,
+                    delivery,
+                    claim_token=claim_token,
+                    provider_message_id=receipt.provider_message_id,
+                )
+            elif receipt.transient:
+                await mark_failed(session, delivery, "provider_transient", claim_token=claim_token)
             else:
-                await mark_failed(session, delivery, "provider_rejected", claim_token=claim_token)
+                await mark_permanent_failure(
+                    session, delivery, "provider_rejected", claim_token=claim_token
+                )
     finally:
         await engine.dispose()
 

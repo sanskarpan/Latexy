@@ -177,6 +177,7 @@ from .admin_billing_reconciliation_routes import router as admin_billing_reconci
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_control_routes import router as admin_control_router
+from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_operations_routes import router as admin_operations_router
@@ -200,6 +201,14 @@ router.include_router(landing_conversion_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
+router.include_router(admin_email_health_router)
+
+# Signed Resend delivery/bounce/complaint evidence. Kept outside the admin
+# surface: the provider must reach it without an account session, and the Svix
+# signature is the authentication boundary.
+from .email_webhook_routes import router as email_webhook_router
+
+router.include_router(email_webhook_router)
 
 # Data-subject GDPR rights are intentionally outside the admin capability
 # surface: an account must be able to export or delete itself regardless of
