@@ -19,6 +19,20 @@ const LINE_ITEM_STATE_COPY: Record<AdminPaymentReceipt['line_items_state'], stri
   unconfigured: 'The payment processor is not configured; the receipt will use the Latexy ledger total.',
 }
 
+const INVOICE_STATE_COPY: Record<AdminPaymentReceipt['invoice_state'], string> = {
+  available: 'A provider invoice PDF is available and will be attached when the receipt is sent.',
+  not_exposed: 'The payment processor did not expose an invoice; the receipt will use the ledger total.',
+  not_linked: 'This payment has no processor reference; no provider invoice can be attached.',
+  unconfigured: 'The payment processor is not configured; no provider invoice can be attached.',
+}
+
+function newReceiptKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `receipt-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+}
+
 function StatePill({ label, ok }: { label: string; ok: boolean }) {
   return (
     <span
@@ -80,9 +94,21 @@ export default function AdminSupportActions({
   }
 
   const recordResult = (result: AdminSupportActionResult) => {
-    const stateNote =
+    if (result.duplicate) {
+      setLastResult(
+        'This idempotency key already completed. The earlier receipt was not sent again.',
+      )
+      return
+    }
+    const lineNote =
       result.action === 'payment_receipt' && result.line_items_source === 'local'
         ? ' Sent with the ledger total; no provider line items were available.'
+        : ''
+    const invoiceNote =
+      result.action === 'payment_receipt'
+        ? result.invoice_attached
+          ? ' The provider invoice PDF was attached.'
+          : ` No provider invoice PDF was attached (${result.invoice_state ?? 'not available'}).`
         : ''
     setLastResult(
       `${
@@ -91,7 +117,7 @@ export default function AdminSupportActions({
           : result.action === 'password_reset'
             ? 'Password reset email'
             : 'Payment receipt'
-      } accepted by the provider.${stateNote}`,
+      } accepted by the provider.${lineNote}${invoiceNote}`,
     )
   }
 
@@ -163,9 +189,14 @@ export default function AdminSupportActions({
         userId,
         selectedPaymentId,
         cleaned,
+        newReceiptKey(),
       )
       recordResult(result)
-      toast.success('Payment receipt accepted for delivery')
+      toast.success(
+        result.duplicate
+          ? 'Receipt already sent for this idempotency key'
+          : 'Payment receipt accepted for delivery',
+      )
       await onChanged()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Payment receipt failed')
@@ -291,6 +322,10 @@ export default function AdminSupportActions({
               <p className="mt-1 text-[10px] text-fg-3">
                 {LINE_ITEM_STATE_COPY[receipt.line_items_state] ??
                   'Receipt source state is unavailable.'}
+              </p>
+              <p className="mt-1 text-[10px] text-fg-3">
+                {INVOICE_STATE_COPY[receipt.invoice_state] ??
+                  'Provider invoice state is unavailable.'}
               </p>
               {receipt.line_items.length > 0 && (
                 <ul className="mt-2 space-y-1">

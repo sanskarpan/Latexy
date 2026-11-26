@@ -389,6 +389,60 @@ async def test_line_items_use_documented_fixed_origin_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_payment_invoice_uses_documented_fixed_origin_endpoint() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        route = router.get("https://test.dodopayments.com/invoices/payments/pay_123").mock(
+            return_value=httpx.Response(
+                200,
+                content=b"%PDF-1.7\ninvoice fixture",
+                headers={"content-type": "application/pdf"},
+            )
+        )
+        content = await DodoProvider(api_key="test-adapter-key").get_payment_invoice("pay_123")
+        assert content.startswith(b"%PDF-")
+        assert route.call_count == 1
+        assert route.calls.last.request.url.host == "test.dodopayments.com"
+
+
+@pytest.mark.asyncio
+async def test_payment_invoice_rejects_non_pdf_payload_and_redirects() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://test.dodopayments.com/invoices/payments/pay_123").mock(
+            return_value=httpx.Response(
+                200,
+                content=b"<html>not an invoice</html>",
+                headers={"content-type": "text/html"},
+            )
+        )
+        with pytest.raises(DodoAPIError) as error:
+            await DodoProvider(api_key="test-adapter-key").get_payment_invoice("pay_123")
+        assert error.value.code == "invalid_provider_response"
+
+    with respx.mock(assert_all_called=False) as router:
+        original = router.get("https://test.dodopayments.com/invoices/payments/pay_123").mock(
+            return_value=httpx.Response(302, headers={"Location": "https://attacker.invalid/collect"})
+        )
+        attacker = router.get("https://attacker.invalid/collect").mock(
+            return_value=httpx.Response(200, content=b"%PDF-1.7 stolen")
+        )
+        with pytest.raises(DodoAPIError) as error:
+            await DodoProvider(api_key="test-adapter-key").get_payment_invoice("pay_123")
+        assert error.value.code == "unexpected_provider_redirect"
+        assert original.call_count == 1
+        assert attacker.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_payment_invoice_rejects_untrusted_identifier_before_http() -> None:
+    with respx.mock(assert_all_called=False) as router:
+        with pytest.raises(ValueError, match="Invalid Dodo payment identifier"):
+            await DodoProvider(api_key="test-adapter-key").get_payment_invoice(
+                "../payments"
+            )
+        assert not router.calls
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("environment", ["production", "staging"])
 @pytest.mark.parametrize("operation", ["create", "cancel", "read"])
 async def test_production_test_mode_is_blocked_at_provider_boundary(monkeypatch, environment, operation):

@@ -14,10 +14,11 @@ to send what, for which target, and why.
 
 from __future__ import annotations
 
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from urllib.parse import quote
 
 import jwt
@@ -31,7 +32,9 @@ from ..database import models
 from .admin_audit_service import AdminActor, record_admin_audit
 from .admin_user_service import invalidate_user_360_cache
 from .dodo_provider import DodoAPIError
+from .email_health_service import recipient_digest
 from .email_service import (
+    EmailAttachment,
     EmailSendResult,
     email_service,
     render_account_password_reset_email,
@@ -44,6 +47,8 @@ logger = get_logger(__name__)
 
 User = models.User
 Payment = models.Payment
+Subscription = models.Subscription
+AdminAuditLog = models.AdminAuditLog
 
 # One send per actor+target per action window. Verification and receipts are
 # routine support actions; a reset invalidates the target's previous reset
@@ -57,6 +62,11 @@ SUPPORT_ACTION_WINDOWS: dict[str, int] = {
 _VERIFICATION_TOKEN_TTL_SECONDS = 3600
 _PASSWORD_RESET_TOKEN_TTL_SECONDS = 3600
 _MAX_REASON = 1000
+_RECEIPT_ACTION = "user.payment_receipt.send"
+_RECEIPT_IN_PROGRESS_SECONDS = 120
+_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,64}$")
+_RECEIPT_SETTLED_STATUSES = frozenset({"paid", "partially_refunded"})
+_MAX_INVOICE_ATTACHMENT_BYTES = 4 * 1024 * 1024
 
 # Atomic fixed-window counter. TTL is only attached on the first increment so
 # a burst cannot extend the window indefinitely.
@@ -95,6 +105,15 @@ class SupportActionUnavailable(RuntimeError):
     """Server-side prerequisite (auth secret or email transport) is missing."""
 
 
+class SupportActionConflict(RuntimeError):
+    """An idempotency key is already in flight or belongs to another target.
+
+    A conflict is deliberately distinct from a cooldown: the operator must not
+    retry with a fresh key for the same logical send, and a key can never be
+    reused for a different payment.
+    """
+
+
 def _clean_reason(reason: str) -> str:
     cleaned = " ".join((reason or "").split())[:_MAX_REASON]
     if len(cleaned) < 3:
@@ -107,6 +126,160 @@ def _canonical_uuid(value: str) -> str | None:
         return str(uuid.UUID(str(value)))
     except (TypeError, ValueError, AttributeError):
         return None
+
+
+def _normalize_idempotency_key(value: str | None) -> str:
+    """Accept a caller key or mint one; never persist a free-form value."""
+    if value is None:
+        return uuid.uuid4().hex
+    key = (value or "").strip()
+    if not _IDEMPOTENCY_KEY_RE.fullmatch(key):
+        raise ValueError(
+            "idempotency_key must be 8-64 characters of letters, digits, dot, "
+            "underscore, colon or hyphen"
+        )
+    return key
+
+
+def _metadata_value(row: AdminAuditLog, key: str) -> Any:
+    metadata = row.event_metadata if isinstance(row.event_metadata, Mapping) else {}
+    return metadata.get(key)
+
+
+def _seconds_since(value: datetime | None) -> float:
+    if not isinstance(value, datetime):
+        return float("inf")
+    moment = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - moment).total_seconds())
+
+
+def _receipt_replay_response(row: AdminAuditLog, idempotency_key: str) -> dict[str, Any]:
+    """Rebuild a completed response from its immutable audit metadata."""
+    line_items_count = _metadata_value(row, "line_items_count")
+    return {
+        "action": "payment_receipt",
+        "status": "already_sent",
+        "delivery": "accepted",
+        "duplicate": True,
+        "idempotency_key": idempotency_key,
+        "target_user_id": row.target_id,
+        "payment_id": _metadata_value(row, "payment_id"),
+        "line_items_count": line_items_count if type(line_items_count) is int else 0,
+        "line_items_source": _metadata_value(row, "line_items_source") or "local",
+        "line_items_state": _metadata_value(row, "line_items_state") or "not_linked",
+        "invoice_state": _metadata_value(row, "invoice_state") or "not_linked",
+        "invoice_attached": bool(_metadata_value(row, "invoice_attached")),
+        "retry_after_seconds": 0,
+    }
+
+
+async def _completed_receipt_for_key(
+    db: AsyncSession, *, idempotency_key: str, payment_id: str
+) -> AdminAuditLog | None:
+    """Return a completed send for this key, or reject unsafe reuse.
+
+    The append-only audit log is the durable idempotency store. A key is bound
+    to one payment for its lifetime; a recent ``started`` row without a terminal
+    row is treated as in flight so a crash or Redis outage cannot immediately
+    turn into a second email.
+    """
+    rows = list(
+        (
+            await db.execute(
+                select(AdminAuditLog)
+                .where(
+                    AdminAuditLog.target_type == "user",
+                    AdminAuditLog.action.in_(
+                        [
+                            f"{_RECEIPT_ACTION}.started",
+                            f"{_RECEIPT_ACTION}.completed",
+                            f"{_RECEIPT_ACTION}.failed",
+                        ]
+                    ),
+                    AdminAuditLog.event_metadata["idempotency_key"].astext
+                    == idempotency_key,
+                )
+                .order_by(AdminAuditLog.created_at.desc(), AdminAuditLog.id.desc())
+                .limit(20)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return None
+    for row in rows:
+        stored_payment_id = _metadata_value(row, "payment_id")
+        if stored_payment_id is not None and str(stored_payment_id) != str(payment_id):
+            raise SupportActionConflict(
+                "This idempotency key was already used for another receipt"
+            )
+    completed = next(
+        (row for row in rows if row.action == f"{_RECEIPT_ACTION}.completed"),
+        None,
+    )
+    if completed is not None:
+        return completed
+    latest = rows[0]
+    if (
+        latest.action == f"{_RECEIPT_ACTION}.started"
+        and _seconds_since(latest.created_at) < _RECEIPT_IN_PROGRESS_SECONDS
+    ):
+        raise SupportActionConflict(
+            "A receipt send with this idempotency key is already in progress"
+        )
+    return None
+
+
+_RECEIPT_LOCK_RELEASE_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+
+async def _acquire_receipt_lock(idempotency_key: str) -> tuple[bool, str | None]:
+    """Best-effort Redis guard against concurrent duplicate sends.
+
+    The audit log remains the durable duplicate check; Redis only shortens the
+    race window. A cache outage fails open because blocking a support send on a
+    cache incident is worse than the already-audited retry risk.
+    """
+    try:
+        redis = await get_redis_client()
+        token = secrets.token_urlsafe(18)
+        acquired = await redis.set(
+            f"latexy:admin:receipt-send:{idempotency_key}",
+            token,
+            nx=True,
+            ex=_RECEIPT_IN_PROGRESS_SECONDS + 60,
+        )
+        return (True, token) if acquired else (False, None)
+    except Exception as exc:
+        logger.warning(
+            "Receipt idempotency lock unavailable; relying on audit state",
+            extra={"error_type": type(exc).__name__},
+        )
+        return True, None
+
+
+async def _release_receipt_lock(idempotency_key: str, token: str | None) -> None:
+    if not token:
+        return
+    try:
+        redis = await get_redis_client()
+        await redis.eval(
+            _RECEIPT_LOCK_RELEASE_LUA,
+            1,
+            f"latexy:admin:receipt-send:{idempotency_key}",
+            token,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Receipt idempotency lock release failed",
+            extra={"error_type": type(exc).__name__},
+        )
 
 
 async def _user_for_action(db: AsyncSession, user_id: str) -> User:
@@ -190,6 +363,10 @@ async def _issue_password_reset_token(db: AsyncSession, user: User) -> tuple[str
     return verification_id, link
 
 
+def _support_action_key(action: str, actor_user_id: str, target_key: str) -> str:
+    return f"latexy:admin:support:{action}:{actor_user_id}:{target_key}"
+
+
 async def _consume_support_action_budget(
     *,
     action: str,
@@ -203,7 +380,7 @@ async def _consume_support_action_budget(
     append-only audit log still records every attempt that proceeds.
     """
     window = SUPPORT_ACTION_WINDOWS[action]
-    key = f"latexy:admin:support:{action}:{actor_user_id}:{target_key}"
+    key = _support_action_key(action, actor_user_id, target_key)
     try:
         redis = await get_redis_client()
         result = await redis.eval(_SUPPORT_ACTION_LUA, 1, key, window)
@@ -217,6 +394,24 @@ async def _consume_support_action_budget(
     if count > 1:
         raise SupportActionCooldown(ttl or window)
     return window
+
+
+async def _release_support_action_budget(
+    *, action: str, actor_user_id: str, target_key: str
+) -> None:
+    """Undo a cooldown reservation when no email was handed to the provider.
+
+    This keeps a provider outage or rejection from poisoning the window while
+    still bounding successful sends. Failures here are best-effort.
+    """
+    try:
+        redis = await get_redis_client()
+        await redis.delete(_support_action_key(action, actor_user_id, target_key))
+    except Exception as exc:
+        logger.warning(
+            "Support action cooldown release failed",
+            extra={"error_type": type(exc).__name__, "action": action},
+        )
 
 
 async def _audit_result(
@@ -291,6 +486,8 @@ async def _send_or_fail(
     text_body: str,
     request=None,
     extra_result: Mapping[str, Any] | None = None,
+    idempotency_key: str | None = None,
+    attachments: Sequence[EmailAttachment] = (),
 ) -> EmailSendResult:
     try:
         result = await email_service.send_email_with_receipt(
@@ -298,7 +495,8 @@ async def _send_or_fail(
             subject=subject,
             html_body=html_body,
             text_body=text_body,
-            idempotency_key=f"admin-support-{intent.id}",
+            idempotency_key=idempotency_key or f"admin-support-{intent.id}",
+            attachments=attachments,
         )
     except Exception as exc:
         logger.error(
@@ -599,6 +797,62 @@ async def _provider_line_items(payment: Payment) -> tuple[list[dict[str, Any]], 
     return items, "available" if items else "not_exposed"
 
 
+async def _provider_invoice(payment: Payment) -> tuple[bytes | None, str]:
+    """Fetch a bounded provider invoice PDF, or report an honest absence.
+
+    A missing invoice (404) is distinct from a transport/5xx failure. The
+    former can fall back to a ledger-only receipt; the latter must fail
+    visibly rather than silently attach nothing or claim an invoice was sent.
+    """
+    if payment.provider != "dodo":
+        return None, "not_linked"
+    if not payment.provider_payment_id:
+        return None, "not_linked"
+    provider = payment_service.provider
+    if not getattr(provider, "available", False):
+        return None, "unconfigured"
+    fetch_invoice = getattr(provider, "get_payment_invoice", None)
+    if not callable(fetch_invoice):
+        return None, "not_exposed"
+    try:
+        content = await fetch_invoice(payment.provider_payment_id)
+    except DodoAPIError as exc:
+        if exc.status_code == 404:
+            return None, "not_exposed"
+        logger.warning(
+            "Payment receipt invoice lookup failed",
+            extra={"status": exc.status_code, "code": exc.code},
+        )
+        raise SupportActionProviderError(
+            "The payment provider could not provide this invoice; nothing was sent.",
+            status_code=503 if exc.status_code >= 500 else 502,
+            retryable=exc.status_code >= 500,
+        ) from None
+    except Exception as exc:
+        logger.error(
+            "Payment receipt invoice lookup failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        raise SupportActionProviderError(
+            "The payment provider could not provide this invoice; nothing was sent.",
+            status_code=502,
+            retryable=False,
+        ) from None
+    if (
+        not isinstance(content, (bytes, bytearray))
+        or not content
+        or not bytes(content).startswith(b"%PDF-")
+        or len(content) > _MAX_INVOICE_ATTACHMENT_BYTES
+    ):
+        logger.warning("Payment receipt invoice payload was rejected")
+        raise SupportActionProviderError(
+            "The payment provider returned an unreadable invoice; nothing was sent.",
+            status_code=502,
+            retryable=False,
+        )
+    return bytes(content), "available"
+
+
 async def _payment_for_target(db: AsyncSession, *, user_id: str, payment_id: str) -> Payment:
     canonical = _canonical_uuid(payment_id)
     payment = await db.get(Payment, canonical) if canonical else None
@@ -618,6 +872,148 @@ async def _payment_for_target(db: AsyncSession, *, user_id: str, payment_id: str
     return payment
 
 
+def _receipt_search_item(payment: Payment) -> dict[str, Any]:
+    """Expose only ledger identifiers needed to choose a receipt."""
+    settled = payment.status in _RECEIPT_SETTLED_STATUSES
+    return {
+        "payment_id": payment.id,
+        "user_id": payment.user_id,
+        "provider": payment.provider,
+        "provider_payment_id": payment.provider_payment_id,
+        "subscription_id": payment.subscription_id,
+        "amount_minor": int(payment.amount or 0),
+        "currency": (payment.currency or "").upper() or None,
+        "status": payment.status,
+        "payment_method": _bounded_text(payment.payment_method, limit=50),
+        "created_at": _iso(payment.created_at),
+        "settled": settled,
+        "receipt_eligible": settled,
+        "provider_linked": payment.provider == "dodo" and bool(payment.provider_payment_id),
+    }
+
+
+async def _limited_payments(
+    db: AsyncSession, stmt, *, limit: int
+) -> tuple[list[Payment], bool]:
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
+    return rows[:limit], len(rows) > limit
+
+
+async def search_receipts(
+    db: AsyncSession,
+    *,
+    payment_id: str | None = None,
+    subscription_id: str | None = None,
+    user_id: str | None = None,
+    email_hash: str | None = None,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Find receipt-eligible payments by one exact, privacy-safe selector.
+
+    Email is accepted only as the same one-way digest used by email health, so
+    the request never carries an address. Responses contain ledger identifiers
+    and money metadata only: no email, name, card fields or provider payload.
+    """
+    bounded_limit = max(1, min(int(limit), 50))
+    selectors = [
+        value.strip()
+        for value in (payment_id, subscription_id, user_id, email_hash)
+        if isinstance(value, str) and value.strip()
+    ]
+    if len(selectors) != 1:
+        raise ValueError(
+            "Provide exactly one of payment_id, subscription_id, user_id or email_hash"
+        )
+
+    payments: list[Payment] = []
+    truncated = False
+    if payment_id and payment_id.strip():
+        raw = payment_id.strip()
+        canonical = _canonical_uuid(raw)
+        match_type = "payment_id"
+        if canonical:
+            payment = await db.get(Payment, canonical)
+            payments = [payment] if payment is not None else []
+        else:
+            payments, truncated = await _limited_payments(
+                db,
+                select(Payment)
+                .where(Payment.provider_payment_id == raw)
+                .order_by(Payment.created_at.desc()),
+                limit=bounded_limit,
+            )
+    elif subscription_id and subscription_id.strip():
+        raw = subscription_id.strip()
+        canonical = _canonical_uuid(raw)
+        match_type = "subscription_id"
+        subscription = await db.get(Subscription, canonical) if canonical else None
+        if subscription is None:
+            subscription = (
+                await db.execute(
+                    select(Subscription)
+                    .where(
+                        (Subscription.provider_subscription_id == raw)
+                        | (Subscription.provider_checkout_session_id == raw)
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        if subscription is not None:
+            payments, truncated = await _limited_payments(
+                db,
+                select(Payment)
+                .where(Payment.subscription_id == subscription.id)
+                .order_by(Payment.created_at.desc()),
+                limit=bounded_limit,
+            )
+    elif user_id and user_id.strip():
+        canonical = _canonical_uuid(user_id.strip())
+        if canonical is None:
+            raise ValueError("user_id must be a UUID")
+        match_type = "user_id"
+        user = await db.get(User, canonical)
+        if user is not None:
+            payments, truncated = await _limited_payments(
+                db,
+                select(Payment)
+                .where(Payment.user_id == user.id)
+                .order_by(Payment.created_at.desc()),
+                limit=bounded_limit,
+            )
+    else:
+        raw = (email_hash or "").strip().lower()
+        if re.fullmatch(r"[0-9a-f]{64}", raw) is None:
+            raise ValueError("email_hash must be a 64-character SHA-256 hex digest")
+        match_type = "email_hash"
+        rows = (
+            await db.execute(
+                text(
+                    "SELECT id FROM users WHERE email IS NOT NULL AND "
+                    "encode(sha256(convert_to(btrim(lower(email)), 'UTF8')), 'hex') = :digest "
+                    "LIMIT 20"
+                ),
+                {"digest": raw},
+            )
+        ).all()
+        matched_ids = [row[0] for row in rows]
+        if matched_ids:
+            payments, truncated = await _limited_payments(
+                db,
+                select(Payment)
+                .where(Payment.user_id.in_(matched_ids))
+                .order_by(Payment.created_at.desc()),
+                limit=bounded_limit,
+            )
+
+    return {
+        "match_type": match_type,
+        "items": [_receipt_search_item(payment) for payment in payments],
+        "total": len(payments),
+        "limit": bounded_limit,
+        "truncated": truncated,
+    }
+
+
 async def get_payment_receipt(
     db: AsyncSession,
     *,
@@ -627,11 +1023,13 @@ async def get_payment_receipt(
     """Admin-only receipt lookup. No customer identity or provider secret."""
     user = await _user_for_action(db, user_id)
     payment = await _payment_for_target(db, user_id=user.id, payment_id=payment_id)
-    if payment.status not in {"paid", "partially_refunded"}:
+    if payment.status not in _RECEIPT_SETTLED_STATUSES:
         raise SupportActionNotEligible("Only settled payments have a receipt")
+    invoice_pdf, invoice_state = await _provider_invoice(payment)
     line_items, state = await _provider_line_items(payment)
     return {
         "payment_id": payment.id,
+        "user_id": payment.user_id,
         "provider_payment_id": payment.provider_payment_id,
         "amount_minor": int(payment.amount),
         "currency": (payment.currency or "").upper() or None,
@@ -641,6 +1039,9 @@ async def get_payment_receipt(
         "line_items_available": bool(line_items),
         "line_items_state": state,
         "line_items_source": "provider" if line_items else "local",
+        "invoice_available": invoice_pdf is not None,
+        "invoice_state": invoice_state,
+        "invoice_size_bytes": len(invoice_pdf) if invoice_pdf else None,
     }
 
 
@@ -652,84 +1053,183 @@ async def resend_payment_receipt(
     actor: AdminActor,
     reason: str,
     request=None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
-    """Send a receipt for one settled payment owned by the target account."""
+    """Send a receipt for one settled payment owned by the target account.
+
+    ``idempotency_key`` is optional for older callers; when omitted a unique key
+    is minted and still persisted. A repeated key returns the completed send
+    from the append-only audit log instead of delivering a second email. The
+    provider also receives a stable idempotency header derived from this key.
+    """
     cleaned_reason = _clean_reason(reason)
+    key = _normalize_idempotency_key(idempotency_key)
     user = await _user_for_action(db, user_id)
     payment = await _payment_for_target(db, user_id=user.id, payment_id=payment_id)
-    if payment.status not in {"paid", "partially_refunded"}:
+    if payment.status not in _RECEIPT_SETTLED_STATUSES:
         raise SupportActionNotEligible("Only settled payments have a receipt")
 
-    retry_after = await _consume_support_action_budget(
-        action="payment_receipt",
-        actor_user_id=actor.user_id,
-        target_key=f"{user.id}:{payment.id}",
+    replay = await _completed_receipt_for_key(
+        db, idempotency_key=key, payment_id=payment.id
     )
-    intent = await _begin_audit(
-        db,
-        actor=actor,
-        action="user.payment_receipt.send",
-        target_id=user.id,
-        reason=cleaned_reason,
-        metadata={"channel": "email", "payment_id": payment.id},
-        request=request,
-    )
+    if replay is not None:
+        return _receipt_replay_response(replay, key)
+
+    acquired, lock_token = await _acquire_receipt_lock(key)
+    if not acquired:
+        raise SupportActionConflict(
+            "A receipt send with this idempotency key is already in progress"
+        )
     try:
-        line_items, state = await _provider_line_items(payment)
-    except SupportActionProviderError as exc:
-        await _audit_result(
+        # Recheck under the lock so two concurrent requests cannot both pass
+        # the audit-state check and send.
+        replay = await _completed_receipt_for_key(
+            db, idempotency_key=key, payment_id=payment.id
+        )
+        if replay is not None:
+            return _receipt_replay_response(replay, key)
+
+        retry_after = await _consume_support_action_budget(
+            action="payment_receipt",
+            actor_user_id=actor.user_id,
+            target_key=f"{user.id}:{payment.id}",
+        )
+        audit_metadata = {
+            "channel": "email",
+            "payment_id": payment.id,
+            "recipient_id": user.id,
+            "recipient_digest": recipient_digest(user.email),
+            "idempotency_key": key,
+        }
+        intent = await _begin_audit(
             db,
             actor=actor,
-            action="user.payment_receipt.send.failed",
+            action=_RECEIPT_ACTION,
             target_id=user.id,
             reason=cleaned_reason,
-            operation_id=str(intent.id),
-            outcome="provider_error",
-            metadata={
-                "payment_id": payment.id,
-                "retryable": exc.retryable,
-                "line_items_state": "provider_error",
-            },
+            metadata=audit_metadata,
             request=request,
         )
-        raise
+        try:
+            invoice_pdf, invoice_state = await _provider_invoice(payment)
+        except SupportActionProviderError as exc:
+            await _audit_result(
+                db,
+                actor=actor,
+                action=f"{_RECEIPT_ACTION}.failed",
+                target_id=user.id,
+                reason=cleaned_reason,
+                operation_id=str(intent.id),
+                outcome="provider_error",
+                metadata={
+                    **audit_metadata,
+                    "retryable": exc.retryable,
+                    "invoice_state": "provider_error",
+                    "line_items_state": "not_checked",
+                },
+                request=request,
+            )
+            await _release_support_action_budget(
+                action="payment_receipt",
+                actor_user_id=actor.user_id,
+                target_key=f"{user.id}:{payment.id}",
+            )
+            raise
+        try:
+            line_items, line_items_state = await _provider_line_items(payment)
+        except SupportActionProviderError as exc:
+            await _audit_result(
+                db,
+                actor=actor,
+                action=f"{_RECEIPT_ACTION}.failed",
+                target_id=user.id,
+                reason=cleaned_reason,
+                operation_id=str(intent.id),
+                outcome="provider_error",
+                metadata={
+                    **audit_metadata,
+                    "retryable": exc.retryable,
+                    "invoice_state": invoice_state,
+                    "line_items_state": "provider_error",
+                },
+                request=request,
+            )
+            await _release_support_action_budget(
+                action="payment_receipt",
+                actor_user_id=actor.user_id,
+                target_key=f"{user.id}:{payment.id}",
+            )
+            raise
 
-    html_body, text_body = render_payment_receipt_email(
-        user.name,
-        payment_reference=payment.id,
-        amount_minor=int(payment.amount),
-        currency=(payment.currency or "").upper(),
-        paid_at=payment.created_at,
-        line_items=line_items,
-        line_items_state=state,
-    )
-    await _send_or_fail(
-        db,
-        actor=actor,
-        action="user.payment_receipt.send",
-        target_id=user.id,
-        reason=cleaned_reason,
-        intent=intent,
-        to=user.email,
-        subject="Your Latexy payment receipt",
-        html_body=html_body,
-        text_body=text_body,
-        request=request,
-        extra_result={
+        attachments: tuple[EmailAttachment, ...] = ()
+        if invoice_pdf is not None:
+            attachments = (
+                EmailAttachment(
+                    filename=f"invoice-{payment.id[:8]}.pdf",
+                    content=invoice_pdf,
+                    content_type="application/pdf",
+                ),
+            )
+        html_body, text_body = render_payment_receipt_email(
+            user.name,
+            payment_reference=payment.id,
+            amount_minor=int(payment.amount),
+            currency=(payment.currency or "").upper(),
+            paid_at=payment.created_at,
+            line_items=line_items,
+            line_items_state=line_items_state,
+            invoice_attached=invoice_pdf is not None,
+        )
+        try:
+            await _send_or_fail(
+                db,
+                actor=actor,
+                action=_RECEIPT_ACTION,
+                target_id=user.id,
+                reason=cleaned_reason,
+                intent=intent,
+                to=user.email,
+                subject="Your Latexy payment receipt",
+                html_body=html_body,
+                text_body=text_body,
+                request=request,
+                idempotency_key=f"admin-receipt-{key}",
+                attachments=attachments,
+                extra_result={
+                    **audit_metadata,
+                    "payment_id": payment.id,
+                    "line_items_count": len(line_items),
+                    "line_items_source": "provider" if line_items else "local",
+                    "line_items_state": line_items_state,
+                    "invoice_state": invoice_state,
+                    "invoice_attached": invoice_pdf is not None,
+                },
+            )
+        except Exception:
+            # A failed handoff sent nothing, so release the actor+target window
+            # and let the same idempotency key be retried immediately. The
+            # provider still receives a stable key for ambiguous timeouts.
+            await _release_support_action_budget(
+                action="payment_receipt",
+                actor_user_id=actor.user_id,
+                target_key=f"{user.id}:{payment.id}",
+            )
+            raise
+        await invalidate_user_360_cache(user.id)
+        return {
+            "action": "payment_receipt",
+            "status": "sent",
+            "delivery": "accepted",
+            "duplicate": False,
+            "idempotency_key": key,
+            "target_user_id": user.id,
             "payment_id": payment.id,
             "line_items_count": len(line_items),
-            "line_items_state": state,
-        },
-    )
-    await invalidate_user_360_cache(user.id)
-    return {
-        "action": "payment_receipt",
-        "status": "sent",
-        "delivery": "accepted",
-        "target_user_id": user.id,
-        "payment_id": payment.id,
-        "line_items_count": len(line_items),
-        "line_items_source": "provider" if line_items else "local",
-        "line_items_state": state,
-        "retry_after_seconds": retry_after,
-    }
+            "line_items_source": "provider" if line_items else "local",
+            "line_items_state": line_items_state,
+            "invoice_state": invoice_state,
+            "invoice_attached": invoice_pdf is not None,
+            "retry_after_seconds": retry_after,
+        }
+    finally:
+        await _release_receipt_lock(key, lock_token)

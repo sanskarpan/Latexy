@@ -727,6 +727,7 @@ def render_payment_receipt_email(
     paid_at: Optional[datetime],
     line_items: Sequence[dict] = (),
     line_items_state: str = "not_linked",
+    invoice_attached: bool = False,
 ) -> tuple[str, str]:
     """Return a receipt from the local ledger plus optional provider items.
 
@@ -778,6 +779,15 @@ def render_payment_receipt_email(
         if item_rows
         else "The payment processor did not expose itemised lines for this payment; the total below comes from the Latexy billing ledger."
     )
+    invoice_note_html = (
+        '<p style="font-size:12px;color:#a1a1aa;margin-top:12px">'
+        "The payment processor invoice PDF is attached.</p>"
+        if invoice_attached
+        else ""
+    )
+    invoice_note_text = (
+        "\nThe payment processor invoice PDF is attached.\n" if invoice_attached else ""
+    )
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
@@ -791,6 +801,7 @@ def render_payment_receipt_email(
     </p>
     {items_html}
     <p style="font-size:18px;font-weight:700;margin-top:18px">Total: {total}</p>
+    {invoice_note_html}
     <p style="color:#71717a;font-size:12px;margin-top:24px">
       {source_note}<br>
       This receipt was sent because you asked Latexy support for a copy.
@@ -807,6 +818,7 @@ def render_payment_receipt_email(
         f"Paid: {paid_label}",
         *item_text_lines,
         f"Total: {total}",
+        *([invoice_note_text.strip()] if invoice_attached else []),
         "",
         source_note,
         "This receipt was sent because you asked Latexy support for a copy.",
