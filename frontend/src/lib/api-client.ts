@@ -2716,6 +2716,115 @@ export interface AdminCouponStudentPerformance {
   notes: string[]
 }
 
+export interface AdminSharePortfolioShareSummary {
+  active_share_links: number
+  viewed_share_links: number | null
+  views: number | null
+  unique_viewers: number | null
+  repeat_views: number | null
+  repeat_view_rate_pct: number | null
+  share_link_view_rate_pct: number | null
+  views_per_viewed_link: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminSharePortfolioSharePayload {
+  summary: AdminSharePortfolioShareSummary
+  conversion: {
+    definition: string
+    numerator: number | null
+    denominator: number
+    rate_pct: number | null
+    suppressed: boolean
+  }
+  by_referrer: Array<{ referrer: string; views: number; unique_viewers: number }>
+  by_country: Array<{ country_code: string; views: number; unique_viewers: number }>
+  by_resume: Array<{ resume_id: string; views: number; unique_viewers: number }>
+  suppressed_groups: { referrer: number; country: number; resume: number }
+  truncated_groups: { referrer: number; country: number; resume: number }
+  truncated_events: boolean
+}
+
+export interface AdminSharePortfolioFunnelStep {
+  step: 'portfolio_views' | 'contact' | 'signup'
+  label: string
+  count: number | null
+  unique_viewers: number | null
+  denominator: string
+  denominator_value: number | null
+  conversion_from_previous_pct: number | null
+  conversion_from_start_pct: number | null
+  suppressed: boolean
+}
+
+export interface AdminSharePortfolioPortfolioSummary {
+  views: number | null
+  unique_viewers: number | null
+  contact_events: number | null
+  unique_contact_viewers: number | null
+  signups: number | null
+  unique_signup_viewers: number | null
+  contact_rate_pct: number | null
+  signup_rate_pct: number | null
+  view_to_signup_rate_pct: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminSharePortfolioPortfolioRow {
+  portfolio_username: string
+  views: number
+  unique_viewers: number
+  contact_events: number | null
+  unique_contact_viewers: number | null
+  signups: number | null
+  unique_signup_viewers: number | null
+  contact_rate_pct: number | null
+  signup_rate_pct: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminSharePortfolioPortfolioPayload {
+  summary: AdminSharePortfolioPortfolioSummary
+  funnel: {
+    steps: AdminSharePortfolioFunnelStep[]
+    denominators: Record<string, { label: string; value: number | null }>
+    definition: string
+  }
+  by_referrer: Array<{ referrer: string; views: number; unique_viewers: number }>
+  by_country: Array<{ country_code: string; views: number; unique_viewers: number }>
+  by_portfolio: AdminSharePortfolioPortfolioRow[]
+  suppressed_groups: { referrer: number; country: number; portfolio: number }
+  truncated_groups: { referrer: number; country: number; portfolio: number }
+  truncated_events: boolean
+}
+
+export interface AdminSharePortfolioResponse {
+  period: { start: string; end: string; days: number; timezone: string }
+  filters: { plan: string | null; portfolio: string | null; resume_id: string | null }
+  minimum_cohort_size: number
+  share: AdminSharePortfolioSharePayload
+  portfolio: AdminSharePortfolioPortfolioPayload | null
+  notes: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminSharePortfolioResumeResponse {
+  period: { start: string; end: string; days: number; timezone: string }
+  filters: { plan: string | null; portfolio: string | null; resume_id: string | null }
+  minimum_cohort_size: number
+  resume_id: string
+  share: AdminSharePortfolioSharePayload
+  notes: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminSharePortfolioPortfolioResponse
+  extends Omit<AdminSharePortfolioResponse, 'portfolio'> {
+  portfolio_username: string
+  portfolio: AdminSharePortfolioPortfolioPayload
+}
 export interface AdminSubscriptionSummary {
   active_at_start: number
   active_at_end: number
@@ -9337,6 +9446,56 @@ class ApiClient {
     )
   }
 
+  async getAdminSharePortfolio(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    portfolio?: string
+    resume_id?: string
+  }): Promise<AdminSharePortfolioResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.portfolio) qs.set('portfolio', params.portfolio)
+    if (params?.resume_id) qs.set('resume_id', params.resume_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSharePortfolioResponse>(
+      `/admin/analytics/share-portfolio${suffix}`,
+    )
+  }
+
+  async getAdminSharePortfolioResume(
+    resumeId: string,
+    params?: { days?: number; start_date?: string; end_date?: string; plan?: string },
+  ): Promise<AdminSharePortfolioResumeResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSharePortfolioResumeResponse>(
+      `/admin/analytics/share-portfolio/resumes/${encodeURIComponent(resumeId)}${suffix}`,
+    )
+  }
+
+  async getAdminSharePortfolioPortfolio(
+    username: string,
+    params?: { days?: number; start_date?: string; end_date?: string; plan?: string },
+  ): Promise<AdminSharePortfolioPortfolioResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSharePortfolioPortfolioResponse>(
+      `/admin/analytics/share-portfolio/portfolios/${encodeURIComponent(username)}${suffix}`,
+    )
+  }
   async getAdminSubscriptionAnalytics(params?: {
     days?: number
     start?: string

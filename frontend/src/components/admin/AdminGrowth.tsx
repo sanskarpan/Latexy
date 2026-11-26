@@ -24,6 +24,7 @@ import AdminReferralAnalytics from '@/components/admin/AdminReferralAnalytics'
 import AdminTrialAttribution from '@/components/admin/AdminTrialAttribution'
 import AdminTrialHealth from '@/components/admin/AdminTrialHealth'
 import AdminCredentialMix from '@/components/admin/AdminCredentialMix'
+import AdminSharePortfolio from '@/components/admin/AdminSharePortfolio'
 import { formatDateTime, formatMoney, formatNumber, percentage } from './admin-format'
 
 const RANGES = [7, 30, 90] as const
@@ -1357,6 +1358,7 @@ export default function AdminGrowth() {
       <AdminOnboardingAnalytics days={days} />
       <AdminPrivacyBreakdowns days={days} />
       <AdminTrialAttribution days={days} />
+      <AdminSharePortfolio />
       <AdminTrialHealth />
       <AdminReferralAnalytics days={days} />
       {retention && <Retention data={retention} />}

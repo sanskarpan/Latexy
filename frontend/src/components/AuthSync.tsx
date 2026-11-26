@@ -20,6 +20,7 @@ import {
   hasPendingTrafficAttribution,
 } from '@/lib/analytics/traffic-source'
 import { claimTrialAttribution } from '@/lib/analytics/trial-attribution'
+import { claimPortfolioSignup } from '@/lib/analytics/portfolio'
 
 export function AuthSync() {
   const { data: session, isPending, isRefetching = false, error } = useSession()
@@ -27,6 +28,7 @@ export function AuthSync() {
   const signupMilestonesFor = useRef<string | null>(null)
   const trafficClaimedFor = useRef<string | null>(null)
   const trialAttributionClaimedFor = useRef<string | null>(null)
+  const portfolioSignupClaimedFor = useRef<string | null>(null)
   const unauthorized = isConfirmedSessionUnauthorized(error)
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export function AuthSync() {
     if (!token) signupMilestonesFor.current = null
     if (!token) trafficClaimedFor.current = null
     if (!token) trialAttributionClaimedFor.current = null
+    if (!token) portfolioSignupClaimedFor.current = null
 
     // Server-derived signup funnel milestones: completion and (when the account
     // already has email_verified) verification. The backend ignores any client
@@ -86,6 +89,19 @@ export function AuthSync() {
     ) {
       trialAttributionClaimedFor.current = token
       void claimTrialAttribution(token, getDeviceFingerprint())
+    }
+
+    // Link a new account to a consented portfolio visit using the same
+    // server-derived viewer key. No client identifier or campaign value is
+    // accepted; the backend performs the match and stores only the public
+    // portfolio owner label. Best-effort and never blocks sign-in.
+    if (
+      token &&
+      portfolioSignupClaimedFor.current !== token &&
+      readAnalyticsConsent() === 'granted'
+    ) {
+      portfolioSignupClaimedFor.current = token
+      void claimPortfolioSignup(token)
     }
 
     // Sign-up and OAuth both preserve the first-party referral cookie. Claim it
