@@ -7,6 +7,8 @@
  * query string, a share token, or a document identifier.
  */
 
+import { sanitizeLandingPath } from './traffic-source'
+
 export type LandingDeviceClass = 'mobile' | 'tablet' | 'desktop'
 export type LandingPageKey =
     | 'home'
@@ -76,6 +78,30 @@ export function isTrackablePath(pathname: string | null | undefined): boolean {
     )
 }
 
+/**
+ * Authenticated application routes eligible for aggregate path analysis.
+ *
+ * Unlike the landing tracker this admits workspace routes, because the route is
+ * canonicalised before it leaves the browser and the server re-sanitises it.
+ * Public documents, share pages, portfolios, tenant invites and API paths stay
+ * excluded at the source.
+ */
+const PATH_ANALYSIS_EXCLUDED_PREFIXES = [
+    '/r/',
+    '/u/',
+    '/share/',
+    '/portfolio/',
+    '/tenant-invite/',
+    '/api/',
+]
+
+export function isPathAnalysisPath(pathname: string | null | undefined): boolean {
+    if (!pathname || !pathname.startsWith('/')) return false
+    return !PATH_ANALYSIS_EXCLUDED_PREFIXES.some(
+        prefix => pathname === prefix.slice(0, -1) || pathname.startsWith(prefix)
+    )
+}
+
 export function landingPageKey(pathname: string | null | undefined): LandingPageKey | null {
     if (!pathname || !isTrackablePath(pathname)) return null
     // Compare only the pathname; callers must not pass location.search/hash.
@@ -122,11 +148,13 @@ export function resolveLandingContext(
 }
 
 /**
- * Send the first-party page_view used by the admin landing-conversion report.
+ * Send the first-party page_view used by the admin landing-conversion and path
+ * reports.
  *
  * Only the page kind, allowlisted page key, bounded experiment/variant labels,
  * coarse device class, and the anonymous device-local trial fingerprint are
- * sent. The request URL contains no page path or query string.
+ * sent. The route is canonicalised before transmission; the request never
+ * carries a raw pathname, query string, share token or document identifier.
  */
 export function trackFirstPartyPageview(options: {
     page: 'landing' | 'app'
@@ -145,6 +173,7 @@ export function trackFirstPartyPageview(options: {
     if (pageKey) params.set('page_key', pageKey)
     if (context.experiment) params.set('experiment', context.experiment)
     if (context.variant) params.set('variant', context.variant)
+    if (options.pathname) params.set('route', sanitizeLandingPath(options.pathname))
     if (options.fingerprint) params.set('device_fingerprint', options.fingerprint)
 
     const base =

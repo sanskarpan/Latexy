@@ -46,13 +46,24 @@ const initialLanding =
     : null
 
 const OPAQUE_PATH_SEGMENTS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\/workspace\/builder\/[^/]+/g, '/workspace/builder/:resumeId'],
+  [/\/workspace\/variant\/[^/]+/g, '/workspace/variant/:resumeId'],
   [/\/r\/[^/]+/g, '/r/:token'],
   [/\/u\/[^/]+/g, '/u/:username'],
   [/\/share\/[^/]+/g, '/share/:token'],
   [/\/portfolio\/[^/]+/g, '/portfolio/:username'],
-  [/\/workspace\/[^/]+/g, '/workspace/:resumeId'],
+  [/\/workspace\/(?!builder(?:\/|$)|variant(?:\/|$))[^/]+/g, '/workspace/:resumeId'],
   [/\/workspaces\/[^/]+/g, '/workspaces/:workspaceId'],
 ]
+
+// Exact static app routes must not be mistaken for a dynamic workspace id.
+const STATIC_PATH_EXCEPTIONS = new Set([
+  '/workspace/builder/new',
+  '/workspace/cover-letters',
+  '/workspace/history',
+  '/workspace/merge',
+  '/workspace/new',
+])
 
 const HOST_PATTERN =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
@@ -84,7 +95,9 @@ export function readUtmParams(search: string): UtmParams {
 /** Return a sanitized pathname; never a full URL or query string. */
 export function sanitizeLandingPath(pathname: string): string {
   const clean = (pathname || '/').split('?')[0].split('#')[0] || '/'
-  let path = clean
+  const normalized = clean.length > 1 ? clean.replace(/\/+$/, '') : clean
+  if (STATIC_PATH_EXCEPTIONS.has(normalized)) return normalized
+  let path = normalized
   for (const [pattern, replacement] of OPAQUE_PATH_SEGMENTS) {
     path = path.replace(pattern, replacement)
   }
