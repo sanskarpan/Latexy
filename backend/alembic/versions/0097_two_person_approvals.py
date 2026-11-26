@@ -20,7 +20,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "0097_two_person_approvals"
-down_revision = "0092_document_complexity"
+down_revision = "0096_retention_controls"
 branch_labels = None
 depends_on = None
 
