@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { apiClient, type AdminUser360, type AdminUserTimelineItem } from '@/lib/api-client'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
+import AdminSupportActions from './AdminSupportActions'
 
 const TIMELINE_LIMIT = 20
 const TIMELINE_KIND_LABELS: Record<AdminUserTimelineItem['kind'], string> = {
@@ -570,10 +571,12 @@ export default function AdminUserDetail({
           )}
         </Section>
 
-        {canAdmin ? <Section
-          title="Audited support controls"
-          description="Every action requires a reason and is written to the immutable audit log. PII reveal is limited to admins."
-        >
+        {canAdmin ? (
+          <>
+            <Section
+              title="Audited support controls"
+              description="Every action requires a reason and is written to the immutable audit log. PII reveal is limited to admins."
+            >
           <label className="block text-[11px] font-medium text-fg-2">
             Reason for this session of actions
             <input
@@ -766,7 +769,16 @@ export default function AdminUserDetail({
               <p className="mt-1 break-words">{lastResult.before} → {lastResult.after}</p>
             </div>
           )}
-        </Section> : (
+          </Section>
+            <AdminSupportActions
+              userId={userId}
+              emailVerified={data.user.email_verified}
+              emailLabel={email ?? 'this user'}
+              payments={data.billing.payments}
+              onChanged={load}
+            />
+          </>
+        ) : (
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2/50 px-4 py-3 text-xs text-fg-3">
             Support access is read-only. PII stays masked and support actions require an admin.
           </div>
