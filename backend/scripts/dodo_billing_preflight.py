@@ -58,6 +58,7 @@ BILLING_COLUMNS_ADDED_BY_REVISION = {
             "applied", "recorded_at",
         },
     },
+    "0092_document_complexity": {},
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -292,6 +293,7 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "applied", "recorded_at",
         },
     },
+    "0092_document_complexity": {},
 }
 
 
