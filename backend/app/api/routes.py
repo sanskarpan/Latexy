@@ -219,6 +219,7 @@ from .admin_export_routes import router as admin_export_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_incident_routes import router as admin_incident_router
+from .admin_integration_routes import router as admin_integration_router
 from .admin_linter_routes import router as admin_linter_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
@@ -269,6 +270,7 @@ router.include_router(admin_support_action_router)
 router.include_router(admin_team_seat_router)
 router.include_router(admin_dunning_router)
 router.include_router(admin_editor_mode_router)
+router.include_router(admin_integration_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
