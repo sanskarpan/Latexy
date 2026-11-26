@@ -186,6 +186,7 @@ from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
 from .admin_template_performance_routes import router as admin_template_performance_router
+from .admin_trial_health_routes import router as admin_trial_health_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
@@ -204,6 +205,7 @@ router.include_router(admin_subscription_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
+router.include_router(admin_trial_health_router)
 
 # Signed Resend delivery/bounce/complaint evidence. Kept outside the admin
 # surface: the provider must reach it without an account session, and the Svix

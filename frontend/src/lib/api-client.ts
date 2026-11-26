@@ -2522,6 +2522,97 @@ export interface AdminTrialAttributionResponse {
   generated_at: string
 }
 
+export interface AdminTrialHealthBucket {
+  label: string
+  min: number
+  max: number | null
+  devices?: number | null
+  clusters?: number | null
+  suppressed: boolean
+}
+
+export interface AdminTrialHealthReason {
+  key: string
+  label: string
+  definition: string
+  devices: number | null
+  suppressed: boolean
+}
+
+export interface AdminTrialHealthWindow {
+  days: number
+  start: string
+  end: string
+  trial_starts: number
+  unique_devices: number
+  blocked_devices: number
+  blocked_pct: number
+  devices_with_usage: number
+  devices_at_or_above_limit: number
+  conversion: {
+    basis: string
+    attributed_trials: number | null
+    paid_trials: number | null
+    trial_to_paid_pct: number | null
+    suppressed: boolean
+  }
+  usage_distribution: {
+    total_devices: number
+    hidden: boolean
+    buckets: AdminTrialHealthBucket[]
+    suppressed_buckets: number
+  }
+  repeat_device_distribution: {
+    basis: string
+    devices_with_ip: number
+    devices_without_ip: number
+    clusters: number | null
+    repeat_clusters: number | null
+    devices_in_repeat_clusters: number | null
+    abuse_threshold_devices: number
+    abuse_clusters: number | null
+    abuse_devices: number | null
+    hidden: boolean
+    buckets: AdminTrialHealthBucket[]
+    suppressed_buckets: number
+  }
+  rejection_reasons: {
+    items: AdminTrialHealthReason[]
+    suppressed: number
+    truncated: boolean
+    overlap: boolean
+  }
+}
+
+export interface AdminTrialHealthResponse {
+  generated_at: string
+  windows_days: number[]
+  minimum_cohort_size: number
+  trial_limit: number
+  deep_analysis_trial_limit: number
+  repeat_device_cluster_threshold: number
+  max_scanned_rows: number
+  windows: AdminTrialHealthWindow[]
+  reconciliation: {
+    trial_starts_7d: number
+    trial_starts_30d: number
+    trial_starts_90d: number
+    trial_starts_8_to_30d: number
+    trial_starts_31_to_90d: number
+    window_sum_equals_90d: boolean
+    scanned_rows: number
+    rows_truncated: boolean
+    deep_analysis_rows_scanned: number
+    deep_analysis_rows_truncated: boolean
+    devices_with_ip_90d: number
+    devices_without_ip_90d: number
+    attributed_trials_90d: number | null
+    paid_trials_90d: number | null
+    unattributed_trials_90d: number | null
+  }
+  notes: string[]
+}
+
 export type AdminEmailHealthStatus = 'ok' | 'watch' | 'review' | 'unconfigured'
 
 export interface AdminEmailHealthFailure {
@@ -6390,6 +6481,10 @@ class ApiClient {
     return this.request<AdminTrialAttributionResponse>(
       `/admin/analytics/trial-attribution${suffix}`,
     )
+  }
+
+  async getAdminTrialHealth(): Promise<AdminTrialHealthResponse> {
+    return this.request<AdminTrialHealthResponse>('/admin/analytics/trial-health')
   }
 
   async getAdminAiCost(params?: {
