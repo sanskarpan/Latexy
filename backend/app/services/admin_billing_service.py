@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import get_redis_client
 from ..database import models
+from . import admin_approval_service
 from .admin_audit_service import AdminActor, record_admin_audit
 from .admin_revenue_service import live_provider_clause, monthly_amount, revenue_analytics
 from .payment_service import payment_service
@@ -933,6 +934,23 @@ class AdminBillingService:
         except IntegrityError:
             await db.rollback()
             raise ValueError("An open refund request already exists for this payment") from None
+        await admin_approval_service.create_request(
+            db,
+            request_type="refund",
+            payload={
+                "refund_request_id": row.id,
+                "payment_id": row.payment_id,
+                "amount": row.amount,
+                "currency": row.currency,
+            },
+            reason=cleaned_reason,
+            actor=actor,
+            resource_type="refund_request",
+            resource_id=row.id,
+            expires_in=timedelta(days=7),
+            request=request,
+            commit=False,
+        )
         await record_admin_audit(
             db,
             actor=actor,
@@ -974,6 +992,17 @@ class AdminBillingService:
         if row.requested_by == actor.user_id:
             raise PermissionError("A different admin must approve or reject this refund request")
         cleaned_note = " ".join((note or "").split())[:1000]
+        # Mirror the decision into the shared two-person queue. The approval
+        # row enforces expiry and separation of duties before the refund moves.
+        await admin_approval_service.sync_decision(
+            db,
+            request_type="refund",
+            resource_id=row.id,
+            decision=decision,
+            note=cleaned_note,
+            actor=actor,
+            request=request,
+        )
         before = {"status": row.status, "approved_by": row.approved_by}
         if decision == "approve":
             row.status = "approved"
@@ -1049,6 +1078,16 @@ class AdminBillingService:
         if not payment_service.provider.available:
             raise ValueError("The payment provider is not configured; no refund was attempted")
 
+        # Bind the provider side effect to an unexpired, approved request. A
+        # replayed or stale approval fails before anything reaches Dodo.
+        await admin_approval_service.sync_execution_start(
+            db,
+            request_type="refund",
+            resource_id=row.id,
+            actor=actor,
+            note=note,
+            request=request,
+        )
         before = {"status": row.status, "provider_refund_id": row.provider_refund_id}
         row.status = "executing"
         row.executed_by = actor.user_id[:36]
@@ -1157,6 +1196,26 @@ class AdminBillingService:
             metadata={"payment_id": row.payment_id, "amount": row.amount},
             request=request,
         )
+        if row.status == "executed":
+            await admin_approval_service.sync_execution(
+                db,
+                request_type="refund",
+                resource_id=row.id,
+                actor=actor,
+                result={"status": "executed", "provider_refund_id": row.provider_refund_id},
+                note=note,
+                request=request,
+            )
+        elif row.status == "failed":
+            await admin_approval_service.sync_execution(
+                db,
+                request_type="refund",
+                resource_id=row.id,
+                actor=actor,
+                failed=True,
+                note=note,
+                request=request,
+            )
         await db.commit()
         await db.refresh(row)
         return _refund_row(row)
@@ -1303,6 +1362,26 @@ class AdminBillingService:
             },
             request=request,
         )
+        if row.status == "executed":
+            await admin_approval_service.sync_execution(
+                db,
+                request_type="refund",
+                resource_id=row.id,
+                actor=actor,
+                result={"status": "executed", "provider_refund_id": row.provider_refund_id},
+                note=note,
+                request=request,
+            )
+        elif row.status == "failed":
+            await admin_approval_service.sync_execution(
+                db,
+                request_type="refund",
+                resource_id=row.id,
+                actor=actor,
+                failed=True,
+                note=note,
+                request=request,
+            )
         await db.commit()
         await db.refresh(row)
         return _refund_row(row)

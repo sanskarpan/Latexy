@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..middleware.auth_middleware import require_admin_actor
 from ..services import gdpr_service
+from ..services.admin_approval_service import ApprovalError
 from ..services.admin_audit_service import AdminActor
 
 router = APIRouter(prefix="/admin/gdpr", tags=["admin", "gdpr"])
@@ -60,6 +61,17 @@ def _http_error(exc: gdpr_service.GdprError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=detail)
 
 
+def _workflow_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ApprovalError):
+        detail: dict[str, Any] = {"code": exc.code, "message": str(exc)}
+        if exc.details:
+            detail.update(exc.details)
+        return HTTPException(status_code=exc.status_code, detail=detail)
+    if isinstance(exc, gdpr_service.GdprError):
+        return _http_error(exc)
+    raise exc
+
+
 @router.get("/requests")
 async def list_gdpr_requests(
     status: str | None = Query(default=None, max_length=24),
@@ -95,8 +107,8 @@ async def review_gdpr_request(
             actor=actor,
             request=request,
         )
-    except gdpr_service.GdprError as exc:
-        raise _http_error(exc) from None
+    except (gdpr_service.GdprError, ApprovalError) as exc:
+        raise _workflow_error(exc) from None
 
 
 @router.post("/requests/{request_id}/execute")
@@ -115,8 +127,8 @@ async def execute_gdpr_deletion(
             note=body.note if body else None,
             request=request,
         )
-    except gdpr_service.GdprError as exc:
-        raise _http_error(exc) from None
+    except (gdpr_service.GdprError, ApprovalError) as exc:
+        raise _workflow_error(exc) from None
 
 
 @router.get("/legal-holds")
@@ -145,8 +157,8 @@ async def place_gdpr_legal_hold(
             actor=actor,
             request=request,
         )
-    except gdpr_service.GdprError as exc:
-        raise _http_error(exc) from None
+    except (gdpr_service.GdprError, ApprovalError) as exc:
+        raise _workflow_error(exc) from None
 
 
 @router.post("/legal-holds/{hold_id}/release")
@@ -165,5 +177,5 @@ async def release_gdpr_legal_hold(
             actor=actor,
             request=request,
         )
-    except gdpr_service.GdprError as exc:
-        raise _http_error(exc) from None
+    except (gdpr_service.GdprError, ApprovalError) as exc:
+        raise _workflow_error(exc) from None

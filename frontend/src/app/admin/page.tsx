@@ -28,6 +28,7 @@ import AdminLinterRules from '@/components/admin/AdminLinterRules'
 import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
 import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminAudit from '@/components/admin/AdminAudit'
+import AdminApprovals from '@/components/admin/AdminApprovals'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
 import AdminGdpr from '@/components/admin/AdminGdpr'
@@ -44,7 +45,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'approvals' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -60,6 +61,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'approvals', label: 'Approvals' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
@@ -663,18 +665,32 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
 
   const changeRole = async (user: AdminUser, role: UserRole) => {
     if (role === user.role) return
+    const promotingToAdmin = role === 'admin' && user.role !== 'admin'
+    let approvalId: string | undefined
+    if (promotingToAdmin) {
+      const input = window.prompt(
+        'Promoting a user to admin requires a second admin approval. Paste the approval ID from the Approvals tab:',
+      )
+      if (!input?.trim()) return
+      approvalId = input.trim()
+    }
     if (!window.confirm(`Change ${user.email} from ${user.role} to ${role}?`)) return
     setSavingId(user.id)
     try {
-      const updated = await apiClient.updateUserRole(user.id, role)
+      const updated = await apiClient.updateUserRole(user.id, role, {
+        approvalId,
+        reason: promotingToAdmin ? 'Promotion approved by a second admin' : undefined,
+      })
       setUsers((prev) => prev?.map((u) => (u.id === user.id ? updated : u)) ?? null)
       toast.success(`${updated.email} is now ${updated.role}`)
       window.dispatchEvent(new Event('latexy:account-role-updated'))
       window.dispatchEvent(new Event('latexy:entitlements-updated'))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('409') || msg.includes('last_admin')) {
+      if (msg.includes('last_admin') || msg.toLowerCase().includes('last remaining admin')) {
         toast.error('Cannot demote the last remaining admin.')
+      } else if (msg.toLowerCase().includes('approval')) {
+        toast.error(msg)
       } else {
         toast.error('Failed to update role')
       }
@@ -1015,6 +1031,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminChangeHistory />
           </div>
         )}
+        {tab === 'approvals' && <AdminApprovals />}
         {tab === 'privacy' && <AdminGdpr />}
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}

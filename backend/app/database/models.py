@@ -1325,6 +1325,109 @@ class AdminAuditLog(Base):
     )
 
 
+class AdminApproval(Base):
+    """Two-person approval for one sensitive admin action.
+
+    The canonical payload is hashed at request time and cannot be changed. A
+    different admin must approve it before a mutation may consume it, and a
+    consumed approval can never be replayed. Direct identifiers in the payload
+    are bounded to target UUIDs, roles, feature keys and booleans; documents,
+    prompts, emails, tokens and provider payloads are never stored here.
+    """
+
+    __tablename__ = "admin_approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "request_type IN ('refund', 'account_deletion', 'impersonation', "
+            "'role_escalation', 'bulk_entitlement_change')",
+            name="ck_admin_approvals_request_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'executing', "
+            "'executed', 'failed', 'expired', 'cancelled')",
+            name="ck_admin_approvals_status",
+        ),
+        CheckConstraint(
+            "payload_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_approvals_payload_hash",
+        ),
+        CheckConstraint(
+            "expires_at > requested_at",
+            name="ck_admin_approvals_expiry",
+        ),
+        CheckConstraint(
+            "approved_by IS NULL OR approved_by <> requested_by",
+            name="ck_admin_approvals_separation_of_duties",
+        ),
+        CheckConstraint(
+            "status NOT IN ('approved', 'executing', 'executed') OR approved_by IS NOT NULL",
+            name="ck_admin_approvals_approved_actor",
+        ),
+        CheckConstraint(
+            "status <> 'executed' OR executed_at IS NOT NULL",
+            name="ck_admin_approvals_executed_at",
+        ),
+        CheckConstraint(
+            "status <> 'rejected' OR decided_at IS NOT NULL",
+            name="ck_admin_approvals_rejected_at",
+        ),
+        Index("idx_admin_approvals_status_requested", "status", "requested_at"),
+        Index("idx_admin_approvals_request_type_requested", "request_type", "requested_at"),
+        Index("idx_admin_approvals_requester_requested", "requested_by", "requested_at"),
+        Index("idx_admin_approvals_expires", "expires_at"),
+        Index("idx_admin_approvals_resource", "resource_type", "resource_id"),
+        Index(
+            "uq_admin_approvals_open_payload",
+            "request_type",
+            "payload_hash",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'approved', 'executing')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    request_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    resource_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    resource_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    requested_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    execution_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    executed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    result: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    audit_request_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    audit_decision_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    audit_execution_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class GdprRequest(Base):
     """One data-subject export or erasure request.
 

@@ -3091,6 +3091,67 @@ export interface AdminRefundList {
   offset: number
 }
 
+export type AdminApprovalStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'executing'
+  | 'executed'
+  | 'failed'
+  | 'expired'
+  | 'cancelled'
+
+export type AdminApprovalRequestType =
+  | 'refund'
+  | 'account_deletion'
+  | 'impersonation'
+  | 'role_escalation'
+  | 'bulk_entitlement_change'
+
+export interface AdminApproval {
+  id: string
+  request_type: AdminApprovalRequestType
+  resource_type: string | null
+  resource_id: string | null
+  payload_hash: string
+  payload: Record<string, unknown>
+  reason: string
+  status: AdminApprovalStatus
+  requested_by: string
+  approved_by: string | null
+  executed_by: string | null
+  decision_note: string | null
+  execution_note: string | null
+  result: Record<string, unknown> | null
+  requested_at: string | null
+  expires_at: string
+  decided_at: string | null
+  executed_at: string | null
+  is_expired: boolean
+  can_approve: boolean
+  can_execute: boolean
+  audit_request_id: string | null
+  audit_decision_id: string | null
+  audit_execution_id: string | null
+}
+
+export interface AdminApprovalList {
+  items: AdminApproval[]
+  total: number
+  limit: number
+  offset: number
+  counts: Record<AdminApprovalStatus, number>
+  pending_by_type: Record<string, number>
+}
+
+export interface AdminBulkEntitlementChange {
+  scope: 'plan' | 'role' | 'kill_switch'
+  plan_family?: string
+  role?: string
+  feature_key: string
+  enabled: boolean
+}
+
 export interface AdminUserTimelineItem {
   id: string
   kind: 'subscription_history' | 'subscription' | 'payment' | 'refund' | 'webhook' | 'plan_change' | 'entitlement_change'
@@ -6238,6 +6299,15 @@ function parseApiErrorMessage(bodyText: string, statusText: string, fallbackLabe
       const parsed: unknown = JSON.parse(trimmed)
       const detail = (parsed as { detail?: unknown } | null)?.detail
       if (typeof detail === 'string' && detail.trim()) return detail
+      if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+        const message = (detail as { message?: unknown }).message
+        if (typeof message === 'string' && message.trim()) return message
+        const nestedError = (detail as { error?: unknown }).error
+        if (nestedError && typeof nestedError === 'object') {
+          const nestedMessage = (nestedError as { message?: unknown }).message
+          if (typeof nestedMessage === 'string' && nestedMessage.trim()) return nestedMessage
+        }
+      }
       if (Array.isArray(detail) && detail.length > 0) {
         const messages = detail
           .map((d) =>
@@ -6252,6 +6322,11 @@ function parseApiErrorMessage(bodyText: string, statusText: string, fallbackLabe
       }
       const message = (parsed as { message?: unknown } | null)?.message
       if (typeof message === 'string' && message.trim()) return message
+      const topLevelError = (parsed as { error?: unknown } | null)?.error
+      if (topLevelError && typeof topLevelError === 'object') {
+        const errorMessage = (topLevelError as { message?: unknown }).message
+        if (typeof errorMessage === 'string' && errorMessage.trim()) return errorMessage
+      }
       // Recognizable JSON, but no known error field — don't dump the raw object.
     } catch {
       // Not JSON. A short plain-text body (e.g. from a proxy/load balancer) is
@@ -8685,13 +8760,20 @@ class ApiClient {
   }
 
   /**
-   * Update a user's role. Throws on 409 (last_admin guard) — the thrown
-   * Error message contains "409" and the "last_admin" code for callers.
+   * Update a user's role. Throws on 409 (last_admin guard or approval_required)
+   * — the thrown Error message contains the API message for callers.
    */
-  async updateUserRole(id: string, role: UserRole): Promise<AdminUser> {
+  async updateUserRole(
+    id: string,
+    role: UserRole,
+    options?: { reason?: string; approvalId?: string },
+  ): Promise<AdminUser> {
+    const body: { role: UserRole; reason?: string; approval_id?: string } = { role }
+    if (options?.reason) body.reason = options.reason
+    if (options?.approvalId) body.approval_id = options.approvalId
     return this.request<AdminUser>(`/admin/users/${encodeURIComponent(id)}/role`, {
       method: 'PATCH',
-      body: JSON.stringify({ role }),
+      body: JSON.stringify(body),
     })
   }
 
@@ -9692,6 +9774,75 @@ class ApiClient {
     return this.request<AdminRefundRequest>(
       `/admin/billing/refunds/${encodeURIComponent(id)}/reconcile`,
       { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+    )
+  }
+
+  async getAdminApprovals(params?: {
+    status?: AdminApprovalStatus | 'all'
+    request_type?: AdminApprovalRequestType
+    limit?: number
+    offset?: number
+  }): Promise<AdminApprovalList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.request_type) qs.set('request_type', params.request_type)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminApprovalList>(`/admin/approvals${suffix}`)
+  }
+
+  async createAdminApproval(body: {
+    request_type: Extract<
+      AdminApprovalRequestType,
+      'role_escalation' | 'bulk_entitlement_change' | 'impersonation'
+    >
+    payload: Record<string, unknown>
+    reason: string
+    expires_in_hours?: number
+  }): Promise<AdminApproval> {
+    return this.request<AdminApproval>('/admin/approvals', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async approveAdminApproval(id: string, note: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/approve`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    )
+  }
+
+  async rejectAdminApproval(id: string, note: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/reject`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    )
+  }
+
+  async cancelAdminApproval(id: string, reason: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async executeAdminApproval(id: string, note?: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/execute`,
+      { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+    )
+  }
+
+  async bulkUpdateAdminEntitlements(body: {
+    approval_id: string
+    changes: AdminBulkEntitlementChange[]
+    note?: string
+  }): Promise<{ approval: AdminApproval; entitlements: AdminEntitlementsState }> {
+    return this.request<{ approval: AdminApproval; entitlements: AdminEntitlementsState }>(
+      '/admin/entitlements/bulk',
+      { method: 'POST', body: JSON.stringify(body) },
     )
   }
 
