@@ -8,7 +8,9 @@ flag-driven: nothing is sent by the monitoring path.
 ## Endpoint and signature verification
 
 - `POST /webhooks/resend` (also `POST /email/webhooks/resend`)
-- Configure `RESEND_WEBHOOK_SECRET` from the Resend webhook detail page.
+- Configure `RESEND_WEBHOOK_SECRET` from the Resend webhook detail page. In
+  production it is provisioned as the dedicated Modal secret
+  `latexy-resend-webhook`, which `modal_app.py` attaches to the backend.
 - Resend uses the Svix signature scheme. The endpoint verifies the raw request
   body against `svix-id`, `svix-timestamp`, and `svix-signature` before parsing
   JSON. Standard-webhook `webhook-*` header aliases are accepted for compatible
