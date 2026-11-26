@@ -458,6 +458,16 @@ class Compilation(Base):
             "'storage', 'pdf_limit', 'unknown')",
             name="ck_compilations_error_class",
         ),
+        # Bounded document-complexity counts (0092). Only counts are stored;
+        # source text and rendered content never reach these columns.
+        CheckConstraint(
+            "page_count IS NULL OR (page_count >= 1 AND page_count <= 10000)",
+            name="ck_compilations_page_count_bounded",
+        ),
+        CheckConstraint(
+            "section_count IS NULL OR (section_count >= 0 AND section_count <= 500)",
+            name="ck_compilations_section_count_bounded",
+        ),
         # DB-013: composite index supports queries filtering by resume filtered by status
         Index("idx_compilations_resume_status", "resume_id", "status"),
         # Compile-latency analytics scan completed rows by status in a bounded
@@ -496,6 +506,12 @@ class Compilation(Base):
     template_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), index=True)
     pdf_size: Mapped[Optional[int]] = mapped_column(Integer)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
+    # Bounded compile-complexity counts (0092). ``page_count`` is the
+    # compiler-reported PDF page count for successful compiles; ``section_count``
+    # is a bounded count derived from submitted source at admission. Neither
+    # column stores LaTeX/PDF text or any other document content.
+    page_count: Mapped[Optional[int]] = mapped_column(Integer)
+    section_count: Mapped[Optional[int]] = mapped_column(Integer)
     # Normalized compile-error taxonomy (0083). Classified at write time from
     # bounded parser/finalization signals; raw logs and document text are never
     # copied into this column or exported to analytics.

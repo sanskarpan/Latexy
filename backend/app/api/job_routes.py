@@ -43,6 +43,7 @@ from ..middleware.auth_middleware import (
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
+from ..services.compile_complexity import count_sections
 from ..services.cover_letter_signature_service import (
     InvalidSignatureImage,
     validate_embedded_signature,
@@ -868,6 +869,7 @@ async def submit_job(
                 plan_family=resolve_plan_family(resolved_plan),
                 compiler=compiler,
                 template_id=template_id,
+                section_count=count_sections(request.latex_content),
             )
             db.add(compilation_record)
             await db.flush()
