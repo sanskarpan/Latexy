@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0088_admin_incidents"
+EXPECTED_HEAD = "0091_dunning_history"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -33,6 +33,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0082_signup_funnel_providers", "0083_compile_error_taxonomy",
     "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution",
     "0087_email_delivery_events", "0088_admin_incidents",
+    "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -41,6 +42,19 @@ BILLING_COLUMNS_ADDED_BY_REVISION = {
             "acknowledged_at", "acknowledged_by", "acknowledgement_note",
             "reconcile_attempts", "last_reconcile_at", "last_reconcile_error",
             "last_reconcile_outcome",
+        },
+    },
+    "0089_ai_latency_retry": {
+        "llm_call_attempts": {
+            "id", "occurred_at", "provider", "model", "feature", "plan", "run_ref",
+            "attempt_number", "status", "retry_reason", "error_class", "latency_ms",
+        },
+    },
+    "0091_dunning_history": {
+        "subscription_status_history": {
+            "id", "user_id", "subscription_id", "plan_id", "status", "previous_status",
+            "event_type", "reason", "source", "provider_event_at", "provider_event_id",
+            "applied", "recorded_at",
         },
     },
 }
@@ -84,7 +98,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
           "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
           "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions",
-          "email_delivery_events", "email_recipient_suppressions", "admin_incidents")
+          "email_delivery_events", "email_recipient_suppressions", "admin_incidents",
+          "llm_call_attempts", "subscription_status_history")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -99,6 +114,11 @@ CURRENT_BILLING_COLUMNS = {
     "payment_refunds": {"id", "payment_id", "provider", "provider_refund_id", "amount", "currency", "status", "reason", "created_at"},
     "coupon_redemptions": {"id", "coupon_id", "user_id", "subscription_id", "status", "redeemed_at"},
     "team_seats": {"owner_user_id", "member_user_id", "status"},
+    "llm_call_attempts": {"id", "occurred_at", "provider", "model", "feature", "plan", "run_ref",
+                          "attempt_number", "status", "retry_reason", "error_class", "latency_ms"},
+    "subscription_status_history": {"id", "user_id", "subscription_id", "plan_id", "status", "previous_status",
+                                    "event_type", "reason", "source", "provider_event_at", "provider_event_id",
+                                    "applied", "recorded_at"},
 }
 DATABASE_FAILURE_REASONS = {
     "configuration": "rollout_database_configuration_failed",
@@ -256,6 +276,19 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "id", "status", "severity", "title", "summary", "services", "owner",
             "links", "related_alert_keys", "deploy_sha", "deploy_url", "started_at",
             "ended_at", "created_by", "updated_by", "created_at", "updated_at",
+        },
+    },
+    "0089_ai_latency_retry": {
+        "llm_call_attempts": {
+            "id", "occurred_at", "provider", "model", "feature", "plan", "run_ref",
+            "attempt_number", "status", "retry_reason", "error_class", "latency_ms",
+        },
+    },
+    "0091_dunning_history": {
+        "subscription_status_history": {
+            "id", "user_id", "subscription_id", "plan_id", "status", "previous_status",
+            "event_type", "reason", "source", "provider_event_at", "provider_event_id",
+            "applied", "recorded_at",
         },
     },
 }

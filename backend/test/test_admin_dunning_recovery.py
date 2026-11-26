@@ -677,7 +677,7 @@ def test_migration_revision_chain_and_backfill() -> None:
     spec.loader.exec_module(migration)
 
     assert migration.revision == "0091_dunning_history"
-    assert migration.down_revision == "0088_admin_incidents"
+    assert migration.down_revision == "0090_ats_score_baseline"
     assert "subscription_status_history" in migration.BACKFILL_SQL
     assert "ON CONFLICT" in migration.BACKFILL_SQL
     assert "'past_due'" in migration.BACKFILL_SQL

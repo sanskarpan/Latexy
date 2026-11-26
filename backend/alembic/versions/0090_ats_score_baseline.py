@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0090_ats_score_baseline"
-down_revision = "0088_admin_incidents"
+down_revision = "0089_ai_latency_retry"
 branch_labels = None
 depends_on = None
 

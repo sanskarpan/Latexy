@@ -36,7 +36,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "0091_dunning_history"
-down_revision = "0088_admin_incidents"
+down_revision = "0090_ats_score_baseline"
 branch_labels = None
 depends_on = None
 
