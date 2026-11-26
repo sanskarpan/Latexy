@@ -623,6 +623,108 @@ class DocumentEmailDelivery(Base):
     )
 
 
+class EmailDeliveryEvent(Base):
+    """Append-only provider delivery/bounce/complaint evidence.
+
+    Rows are keyed by the provider webhook event id for idempotency and carry
+    the provider message id for delivery mapping. Recipient mailboxes are never
+    stored; ``recipient_hash`` is a one-way digest used only to honour
+    suppression state. No message body, subject, headers or provider payload is
+    persisted.
+    """
+
+    __tablename__ = "email_delivery_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "provider_event_id",
+            name="uq_email_delivery_events_provider_event",
+        ),
+        Index(
+            "ix_email_delivery_events_provider_message",
+            "provider_message_id",
+        ),
+        Index(
+            "ix_email_delivery_events_type_occurred",
+            "event_type",
+            "occurred_at",
+        ),
+        Index("ix_email_delivery_events_delivery", "delivery_id"),
+        Index("ix_email_delivery_events_recipient_hash", "recipient_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="resend", server_default="resend"
+    )
+    provider_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_message_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    delivery_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("document_email_deliveries.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    recipient_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    bounce_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    bounce_subtype: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    retryable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    occurred_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class EmailRecipientSuppression(Base):
+    """Current local suppression state for a hashed recipient address.
+
+    The provider remains the source of truth for its suppression list; this
+    table mirrors suppression.added/removed and hard bounce/complaint outcomes so
+    Latexy does not submit another document email to a known-bad mailbox.
+    """
+
+    __tablename__ = "email_recipient_suppressions"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "recipient_hash",
+            name="uq_email_recipient_suppressions_provider_hash",
+        ),
+        Index("ix_email_recipient_suppressions_created", "created_at"),
+        Index("ix_email_recipient_suppressions_delivery", "delivery_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="resend", server_default="resend"
+    )
+    recipient_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_event_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    delivery_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("document_email_deliveries.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class Optimization(Base):
     """LLM optimization history."""
 

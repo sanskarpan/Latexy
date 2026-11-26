@@ -20,6 +20,7 @@ import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
+import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
@@ -32,7 +33,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'product' | 'replays' | 'billing' | 'subscriptions' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'product' | 'replays' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -42,6 +43,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'replays', label: 'Replays' },
   { id: 'billing', label: 'Revenue' },
   { id: 'subscriptions', label: 'Subscriptions' },
+  { id: 'email', label: 'Email Health' },
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
@@ -952,6 +954,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'billing' && <AdminBilling />}
         {tab === 'subscriptions' && <AdminSubscriptions />}
+        {tab === 'email' && <AdminEmailHealth />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
         {tab === 'audit' && (

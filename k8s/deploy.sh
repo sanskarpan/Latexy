@@ -206,7 +206,7 @@ provision_secrets() {
     # Third-party credentials: never generated, only passed through.
     for var in OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY \
                DODO_TEST_API_KEY DODO_TEST_WEBHOOK_KEY DODO_LIVE_API_KEY DODO_LIVE_WEBHOOK_KEY \
-               RESEND_API_KEY GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET \
+               RESEND_API_KEY RESEND_WEBHOOK_SECRET GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET \
                SMTP_HOST SMTP_USER SMTP_PASSWORD; do
         if [[ -z "${!var:-}" ]]; then
             log "WARNING" "$var is not set — the matching feature will be disabled in the cluster"
@@ -243,6 +243,7 @@ provision_secrets() {
         --from-literal=dodo-live-webhook-key="${DODO_LIVE_WEBHOOK_KEY:-}" \
         --from-literal=dodo-live-business-id="${DODO_LIVE_BUSINESS_ID:-}" \
         --from-literal=resend-api-key="${RESEND_API_KEY:-}" \
+        --from-literal=resend-webhook-secret="${RESEND_WEBHOOK_SECRET:-}" \
         --from-literal=google-drive-client-id="${GOOGLE_DRIVE_CLIENT_ID:-}" \
         --from-literal=google-drive-client-secret="${GOOGLE_DRIVE_CLIENT_SECRET:-}" \
         --from-literal=smtp-host="${SMTP_HOST:-}" \

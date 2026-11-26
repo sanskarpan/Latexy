@@ -217,6 +217,10 @@ class Settings(BaseSettings):
     EMAIL_ENABLED: bool = Field(default=False, description="Master toggle — set True when email provider is configured")
     EMAIL_PROVIDER: str = Field(default="resend", description="Email provider: 'resend' | 'smtp'")
     RESEND_API_KEY: str = Field(default="", description="Resend API key (https://resend.com)")
+    RESEND_WEBHOOK_SECRET: str = Field(
+        default="",
+        description="Resend (Svix) webhook signing secret used to verify delivery events",
+    )
     SMTP_HOST: str = Field(default="", description="SMTP server host")
     SMTP_PORT: int = Field(default=587, description="SMTP server port")
     SMTP_USER: str = Field(default="", description="SMTP username")
