@@ -2039,8 +2039,7 @@ async def record_optimization(
                 industry = normalize_industry(getattr(baseline, "industry_key", None))
         except Exception as exc:
             logger.warning(
-                "Baseline ATS scoring unavailable for optimization record on resume %s",
-                sanitize_for_log(resume_id),
+                "Baseline ATS scoring unavailable for optimization record",
                 extra={"error_type": type(exc).__name__},
             )
 
