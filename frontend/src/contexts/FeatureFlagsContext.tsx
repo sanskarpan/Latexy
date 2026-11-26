@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { recordFlagExposures } from '@/lib/analytics/flag-exposure'
 
 export interface FeatureFlags {
   trial_limits: boolean
@@ -40,6 +41,9 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
             return acc
           }, {} as Partial<FeatureFlags>)
           setFlags((prev) => ({ ...prev, ...safe }))
+          // Only server-returned values are reported; defaults are not an
+          // evaluation. The server enforces consent and daily deduplication.
+          recordFlagExposures(safe)
         }
       })
       .catch(() => {

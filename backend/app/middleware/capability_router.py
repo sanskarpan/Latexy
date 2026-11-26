@@ -261,6 +261,9 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "admin_feature_adoption_routes": frozenset({
         "get_admin_feature_adoption",
     }),
+    "admin_flag_exposure_routes": frozenset({
+        "ingest_flag_exposure", "get_admin_flag_exposure",
+    }),
     "admin_career_adoption_routes": frozenset({
         "get_admin_career_adoption", "get_admin_career_feature_adoption",
     }),

@@ -95,6 +95,13 @@ from .consent_analytics_routes import router as consent_analytics_router
 router.include_router(consent_analytics_router)
 router.include_router(admin_consent_analytics_router)
 
+# Consent-covered feature-flag exposure capture and aggregate outcome joins.
+from .admin_flag_exposure_routes import admin_router as admin_flag_exposure_router
+from .admin_flag_exposure_routes import router as flag_exposure_router
+
+router.include_router(flag_exposure_router)
+router.include_router(admin_flag_exposure_router)
+
 # Privacy-safe editor mode, auto-compile and SyncTeX usage (issue #2077).
 from .editor_mode_telemetry_routes import router as editor_mode_telemetry_router
 

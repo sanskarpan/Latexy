@@ -30,6 +30,7 @@ import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcc
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
 import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
 import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
+import AdminFlagExposure from '@/components/admin/AdminFlagExposure'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -222,6 +223,7 @@ function FeatureFlagsTab() {
           />
         </div>
       ))}
+      <AdminFlagExposure />
     </div>
   )
 }
