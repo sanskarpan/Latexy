@@ -5,14 +5,20 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import BigInteger, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from ...core.config import settings
-from ...database.models import Compilation, JobFinalization, RenderArtifactManifest
+from ...database.models import (
+    Compilation,
+    JobFinalization,
+    RenderArtifactManifest,
+    UsageAnalytics,
+)
 from ...utils.db_url import database_identity, normalize_database_url
 from .. import storage_service
 from .artifacts import RenderManifest, canonical_json, manifest_key, sha256
@@ -20,6 +26,8 @@ from .artifacts import RenderManifest, canonical_json, manifest_key, sha256
 PREFIX = "render-artifacts/v1/"
 ORPHAN_GRACE_SECONDS = 3600
 DATABASE_MARKER = PREFIX + "database-binding.json"
+SWEEP_TELEMETRY_ACTION = "render_artifact_gc.sweep"
+MANUAL_CLEANUP_TELEMETRY_ACTION = "render_artifact_gc.manual_cleanup"
 
 
 def _binding() -> bytes:
@@ -64,6 +72,63 @@ async def _lock(session: Any, key: str) -> None:
     if value >= 2 ** 63:
         value -= 2 ** 64
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": value})
+
+
+async def lock_object(session: Any, key: str) -> None:
+    """Take the same per-object advisory lock used by manifest registration."""
+    await _lock(session, key)
+
+
+def manifest_size_expression():
+    """Registered bytes across the PDF, SyncTeX and geometry object refs."""
+    payload = RenderArtifactManifest.payload
+    pdf = func.coalesce(func.cast(payload["pdf"]["size"].astext, BigInteger), 0)
+    synctex = func.coalesce(func.cast(payload["synctex"]["size"].astext, BigInteger), 0)
+    geometry = func.coalesce(func.cast(payload["geometry"]["size"].astext, BigInteger), 0)
+    return pdf + synctex + geometry
+
+
+async def _record_sweep_telemetry(factory, result: dict[str, Any], started: float) -> None:
+    """Persist one aggregate sweep observation in ``usage_analytics``.
+
+    This is operational telemetry, not user behaviour: the row has no user or
+    device identifier and never contains object bytes, names or document data.
+    It is intentionally best-effort so telemetry cannot break retention.
+    """
+    try:
+        async with factory() as session:
+            manifest_count, manifest_bytes = (
+                await session.execute(
+                    select(
+                        func.count(RenderArtifactManifest.artifact_id),
+                        func.coalesce(func.sum(manifest_size_expression()), 0),
+                    )
+                )
+            ).one()
+            metadata = {
+                "scanned": int(result.get("scanned", 0)),
+                "deleted": int(result.get("deleted", 0)),
+                "protected": int(result.get("protected", 0)),
+                "failed": int(result.get("failed", 0)),
+                "failed_keys": list(result.get("failed_keys", []))[:20],
+                "next_cursor_present": bool(result.get("next_cursor")),
+                "skipped": result.get("skipped"),
+                "duration_ms": max(0, int((time.monotonic() - started) * 1000)),
+                "manifest_count": int(manifest_count or 0),
+                "manifest_bytes": int(manifest_bytes or 0),
+            }
+            session.add(
+                UsageAnalytics(
+                    id=str(uuid4()),
+                    action=SWEEP_TELEMETRY_ACTION,
+                    resource_type="render_artifact_gc",
+                    event_metadata=metadata,
+                )
+            )
+            await session.commit()
+    except Exception:
+        # Visibility must never turn a safe sweep into a failed one.
+        return
 
 
 async def register_manifest(manifest: RenderManifest, factory=None) -> bool:
@@ -121,15 +186,20 @@ async def sweep_artifacts(*, cursor: str | None = None, limit: int = 512, factor
     engine = None
     if factory is None:
         engine, factory = _factory()
+    started = time.monotonic()
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=ORPHAN_GRACE_SECONDS)
-    scanned = deleted = protected = 0
-    deadline = time.monotonic() + 20
+    scanned = deleted = protected = failed = 0
+    failed_keys: list[str] = []
+    deadline = started + 20
     last_key = None
     try:
         if not storage_database_bound():
-            return {"scanned": 0, "deleted": 0, "protected": 0, "next_cursor": cursor,
-                    "skipped": "storage_database_binding_unavailable"}
+            result = {"scanned": 0, "deleted": 0, "protected": 0, "failed": 0,
+                      "failed_keys": [], "next_cursor": cursor,
+                      "skipped": "storage_database_binding_unavailable"}
+            await _record_sweep_telemetry(factory, result, started)
+            return result
         objects, next_cursor = storage_service.list_object_page(PREFIX, cursor=cursor, limit=min(512, max(1, limit)))
         for item in objects:
             if time.monotonic() >= deadline:
@@ -176,14 +246,42 @@ async def sweep_artifacts(*, cursor: str | None = None, limit: int = 512, factor
                 else:
                     # Keep the advisory lock until deletion completes; a fresh
                     # registration waits, then validates existence before ready.
-                    if storage_service.delete_object(key):
+                    try:
+                        removed = storage_service.delete_object(key)
+                    except Exception:
+                        removed = False
+                    if removed:
                         deleted += 1
+                    else:
+                        failed += 1
+                        if len(failed_keys) < 20:
+                            failed_keys.append(key)
                 await session.commit()
         async with factory() as session:
             expired = select(RenderArtifactManifest.artifact_id).where(RenderArtifactManifest.expires_at <= now).limit(512)
             await session.execute(delete(RenderArtifactManifest).where(RenderArtifactManifest.artifact_id.in_(expired)))
             await session.commit()
-        return {"scanned": scanned, "deleted": deleted, "protected": protected, "next_cursor": next_cursor}
+        result = {"scanned": scanned, "deleted": deleted, "protected": protected,
+                  "failed": failed, "failed_keys": failed_keys, "next_cursor": next_cursor}
+        await _record_sweep_telemetry(factory, result, started)
+        return result
+    except Exception:
+        # Preserve the last observable attempt even when listing, locking or
+        # deletion aborts the sweep; the scheduled caller still fails/deferrs.
+        await _record_sweep_telemetry(
+            factory,
+            {
+                "scanned": scanned,
+                "deleted": deleted,
+                "protected": protected,
+                "failed": max(1, failed),
+                "failed_keys": failed_keys,
+                "next_cursor": cursor,
+                "skipped": "sweep_exception",
+            },
+            started,
+        )
+        raise
     finally:
         if engine:
             await engine.dispose()

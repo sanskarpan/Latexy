@@ -30,6 +30,7 @@ import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
+import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -965,7 +966,12 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminAtsScoreDistribution />
           </div>
         )}
-        {tab === 'operations' && <AdminIncidentTimeline />}
+        {tab === 'operations' && (
+          <div className="space-y-6">
+            <AdminIncidentTimeline />
+            <AdminArtifactLifecycle />
+          </div>
+        )}
         {tab === 'product' && (
           <div className="space-y-6">
             <AdminCollaboration />
