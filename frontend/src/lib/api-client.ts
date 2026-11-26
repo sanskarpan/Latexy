@@ -137,6 +137,10 @@ export interface RecordOptimizationRequest {
   optimized_latex: string
   changes_made?: Array<{ section: string; change_type: string; reason: string }>
   ats_score?: number
+  ats_score_before?: number
+  ats_score_after?: number
+  industry?: string
+  profile?: string
   tokens_used?: number
   job_description?: string
 }
@@ -1579,6 +1583,102 @@ export interface AdminOptimizationAcceptancePlanRow extends AdminOptimizationAcc
 
 export interface AdminOptimizationAcceptanceSourceRow extends AdminOptimizationAcceptanceMetrics {
   source: string
+}
+
+export interface AdminAtsScoreDistributionMetrics {
+  runs: number
+  users: number
+  mean_before: number | null
+  mean_after: number | null
+  median_before: number | null
+  median_after: number | null
+  mean_delta: number | null
+  median_delta: number | null
+  median_improvement: number | null
+  median_positive_delta: number | null
+  p25_delta: number | null
+  p75_delta: number | null
+  improved: number
+  unchanged: number
+  declined: number
+  improvement_rate_pct: number
+}
+
+export interface AdminAtsScoreDistributionBucket {
+  bucket: string
+  lower_bound: number
+  upper_bound: number
+  upper_inclusive: boolean
+  before_count: number
+  before_pct: number
+  after_count: number
+  after_pct: number
+}
+
+export interface AdminAtsScoreIndustryRow extends AdminAtsScoreDistributionMetrics {
+  industry: string
+}
+
+export interface AdminAtsScoreProfileRow extends AdminAtsScoreDistributionMetrics {
+  profile: string
+}
+
+export interface AdminAtsScorePlanRow extends AdminAtsScoreDistributionMetrics {
+  plan: string
+}
+
+export interface AdminAtsScoreDistributionResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    industry: string[] | null
+    profile: string[] | null
+    plan: string[] | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  minimum_runs: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    filtered_suppressed: boolean
+    suppressed_rows: number
+    by_dimension: Record<'industry' | 'profile' | 'plan', number>
+  }
+  totals: AdminAtsScoreDistributionMetrics
+  distribution: AdminAtsScoreDistributionBucket[]
+  by_industry: AdminAtsScoreIndustryRow[]
+  by_profile: AdminAtsScoreProfileRow[]
+  by_plan: AdminAtsScorePlanRow[]
+  excluded: {
+    missing_baseline: number
+    invalid_scores: number
+    auto_save_rows_excluded: boolean
+  }
+  reconciliation: {
+    source: 'optimizations'
+    rows_scanned: number
+    baseline_runs: number
+    missing_baseline: number
+    invalid_scores: number
+    reconciled: boolean
+    hidden_by_suppression: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
 }
 
 export interface AdminOptimizationAcceptanceResponse {
@@ -7345,6 +7445,27 @@ class ApiClient {
       throw new Error(`Content library adoption CSV failed (${response.status})`)
     }
     return response.blob()
+  }
+
+  async getAdminAtsScoreDistribution(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    industry?: string
+    profile?: string
+    plan?: string
+  }): Promise<AdminAtsScoreDistributionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.industry) qs.set('industry', params.industry)
+    if (params?.profile) qs.set('profile', params.profile)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAtsScoreDistributionResponse>(
+      `/admin/analytics/ats-score-distribution${suffix}`,
+    )
   }
 
   async getAdminOptimizationAcceptance(params?: {

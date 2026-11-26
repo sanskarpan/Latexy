@@ -22,6 +22,7 @@ import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQu
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
+import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -956,7 +957,12 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         tabIndex={0}
         className="focus:outline-none"
       >
-        {tab === 'analytics' && <AdminAnalytics />}
+        {tab === 'analytics' && (
+          <div className="space-y-6">
+            <AdminAnalytics />
+            <AdminAtsScoreDistribution />
+          </div>
+        )}
         {tab === 'operations' && <AdminIncidentTimeline />}
         {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
