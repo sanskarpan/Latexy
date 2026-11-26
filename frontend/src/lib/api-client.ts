@@ -2583,6 +2583,73 @@ export interface AdminConsentAnalyticsResponse {
   generated_at: string
 }
 
+export interface AdminLinterRuleRoute {
+  route: string
+  issues_detected: number
+  users: number
+}
+
+export interface AdminLinterRuleRow {
+  rule_id: string
+  severity: string
+  frequency: number
+  issues_detected: number
+  fixes_applied: number
+  issues_fixed: number
+  fix_rate_pct: number
+  users: number
+  share_pct: number
+  top_routes: AdminLinterRuleRoute[]
+  suppressed_routes: number
+}
+
+export interface AdminLinterTrendPoint {
+  date: string
+  frequency: number
+  issues_detected: number
+  issues_fixed: number
+  fix_rate_pct: number
+}
+
+export interface AdminLinterRulesResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    suppressed_rules: number
+    suppressed_days: number
+    suppressed_events_in_rows: boolean
+  }
+  summary: {
+    events: number | null
+    issues_detected: number | null
+    issues_fixed: number | null
+    fix_rate_pct: number | null
+    rules_seen: number | null
+    distinct_users: number | null
+  }
+  rules: AdminLinterRuleRow[]
+  top_noisy_rules: AdminLinterRuleRow[]
+  trend: AdminLinterTrendPoint[]
+  reconciliation: {
+    events: number | null
+    invalid_rows: number
+    truncated: boolean
+    max_rows: number
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    stored_fields: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -6745,6 +6812,11 @@ class ApiClient {
     if (params?.end_date) qs.set('end_date', params.end_date)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminConsentAnalyticsResponse>(`/admin/analytics/consent${suffix}`)
+  }
+
+  async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {
+    const qs = new URLSearchParams({ days: String(days) })
+    return this.request<AdminLinterRulesResponse>(`/admin/linter/rules?${qs}`)
   }
 
   async getAdminTrialAttribution(params?: {
