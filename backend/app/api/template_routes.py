@@ -448,7 +448,7 @@ async def use_template(
         resume_id=resume_id,
     )
 
-    logger.info("User %s created resume %s from template %s (category %s)", user_id, resume_id, template_id, t.category)
+    logger.info("Resume %s created from a catalog template", resume_id)
     return {"resume_id": resume_id, "title": resume_title}
 
 
