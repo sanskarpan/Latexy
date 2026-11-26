@@ -3118,6 +3118,165 @@ export interface AdminLinterRulesResponse {
   generated_at: string
 }
 
+export interface AdminEditorModePlanBreakdown {
+  plan: string
+  label: string
+  selections: number
+  users: number
+}
+
+export interface AdminEditorModeModeBreakdown {
+  mode: string
+  label: string
+  selections: number
+  users: number
+}
+
+export interface AdminEditorModeAdoptionRow {
+  mode: string
+  label: string
+  selections: number
+  users: number
+  documents: number
+  share_pct: number
+  by_plan: AdminEditorModePlanBreakdown[]
+}
+
+export interface AdminEditorModePlanRow {
+  plan: string
+  label: string
+  selections: number
+  users: number
+  documents: number
+  share_pct: number
+  by_mode: AdminEditorModeModeBreakdown[]
+}
+
+export interface AdminEditorModePlanModeRow {
+  plan: string
+  plan_label: string
+  mode: string
+  mode_label: string
+  selections: number
+  users: number
+  documents: number
+  share_pct: number
+}
+
+export interface AdminEditorModeCompileRow {
+  mode: string
+  label: string
+  compilations: number | null
+  completed: number | null
+  failed: number | null
+  cancelled: number | null
+  other: number | null
+  success_rate_pct: number | null
+  p50_seconds: number | null
+  p95_seconds: number | null
+  mean_seconds: number | null
+  samples: number | null
+  sparse: boolean
+  users: number | null
+  documents: number | null
+  suppressed: boolean
+}
+
+export interface AdminEditorModeAutoCompile {
+  toggles: number | null
+  enabled: number | null
+  disabled: number | null
+  users: number | null
+  documents: number | null
+  suppressed: boolean
+}
+
+export interface AdminEditorModeSyncTex {
+  events: number | null
+  users: number | null
+  documents: number | null
+  by_direction: Array<{ direction: string; label: string; count: number }>
+  suppressed: boolean
+}
+
+export interface AdminEditorModeUsageResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  filters: { plan: string | null }
+  minimum_cohort_size: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    suppressed_mode_rows: number
+    suppressed_plan_rows: number
+    suppressed_plan_mode_rows: number
+    suppressed_day_rows: number
+    suppressed_compile_modes: number
+    adoption_totals_visible: boolean
+    compile_totals_visible: boolean
+    auto_compile_visible: boolean
+    synctex_visible: boolean
+    rule: string
+  }
+  summary: {
+    mode_selections: number | null
+    mode_users: number | null
+    documents: number | null
+    auto_compile_toggles: number | null
+    auto_compile_users: number | null
+    synctex_events: number | null
+    synctex_users: number | null
+    compilations: number | null
+    attributed_compilations: number | null
+    unknown_mode_compilations: number | null
+    completed_compilations: number | null
+    failed_compilations: number | null
+    success_rate_pct: number | null
+    p50_seconds: number | null
+    p95_seconds: number | null
+    auto_compile_enabled_toggles: number | null
+    auto_compile_disabled_toggles: number | null
+    synctex_source_to_pdf: number | null
+    synctex_pdf_to_source: number | null
+  }
+  adoption_by_mode: AdminEditorModeAdoptionRow[]
+  adoption_by_plan: AdminEditorModePlanRow[]
+  adoption_by_plan_mode: AdminEditorModePlanModeRow[]
+  mode_adoption: AdminEditorModeAdoptionRow[]
+  mode_adoption_by_plan: AdminEditorModePlanRow[]
+  compile_by_mode: AdminEditorModeCompileRow[]
+  compile_outcomes_by_mode: AdminEditorModeCompileRow[]
+  auto_compile: AdminEditorModeAutoCompile
+  auto_compile_usage: AdminEditorModeAutoCompile
+  synctex: AdminEditorModeSyncTex
+  synctex_usage: AdminEditorModeSyncTex
+  trend: Array<{ date: string; mode_selections: number; users: number }>
+  reconciliation: {
+    editor_events: number | null
+    mode_selections: number | null
+    auto_compile_toggles: number | null
+    synctex_events: number | null
+    compilations: number | null
+    attributed_compilations: number | null
+    unattributed_compilations: number | null
+    invalid_rows: number
+    truncated_events: boolean
+    truncated_compilations: boolean
+    max_event_rows: number
+    max_compilation_rows: number
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    stored_event_fields: string[]
+    document_identifier: string
+    consent_gate: string
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -7399,6 +7558,23 @@ class ApiClient {
   async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {
     const qs = new URLSearchParams({ days: String(days) })
     return this.request<AdminLinterRulesResponse>(`/admin/linter/rules?${qs}`)
+  }
+
+  async getAdminEditorModeUsage(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+  }): Promise<AdminEditorModeUsageResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminEditorModeUsageResponse>(
+      `/admin/analytics/editor-modes${suffix}`,
+    )
   }
 
   async getAdminTrialAttribution(params?: {
