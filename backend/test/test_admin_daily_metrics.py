@@ -319,7 +319,7 @@ class TestMigrationContract:
                 calls.append(("drop_table", name))
 
         assert migration.revision == "0100_daily_metrics"
-        assert migration.down_revision == "0092_document_complexity"
+        assert migration.down_revision == "0099_tenant_domain_health"
         migration.op = FakeOp()
         migration.upgrade()
 

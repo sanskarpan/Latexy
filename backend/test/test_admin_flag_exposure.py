@@ -22,7 +22,7 @@ from app.database.models import AdminAuditLog
 CAPTURE = "/analytics/flag-exposure"
 REPORT = "/admin/analytics/flag-exposure"
 NOW = datetime.now(timezone.utc)
-EXPOSURE_AT = NOW - timedelta(days=2)
+EXPOSURE_AT = (NOW - timedelta(days=2)).replace(hour=12, minute=0, second=0, microsecond=0)
 
 
 def _id(prefix: str = "test-flag-exposure") -> str:

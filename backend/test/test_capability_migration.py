@@ -105,7 +105,12 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
         "0090_ats_score_baseline": "0089_ai_latency_retry",
         "0091_dunning_history": "0090_ats_score_baseline",
         "0092_document_complexity": "0091_dunning_history",
-        "0100_daily_metrics": "0092_document_complexity",
+        "0093_admin_saved_views": "0092_document_complexity",
+        "0094_template_health": "0093_admin_saved_views",
+        "0096_retention_controls": "0094_template_health",
+        "0097_two_person_approvals": "0096_retention_controls",
+        "0099_tenant_domain_health": "0097_two_person_approvals",
+        "0100_daily_metrics": "0099_tenant_domain_health",
     }
     for revision, parent in expected.items():
         assert scripts.get_revision(revision).down_revision == parent

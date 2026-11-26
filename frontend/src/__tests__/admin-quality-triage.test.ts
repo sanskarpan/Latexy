@@ -21,7 +21,8 @@ describe('admin quality triage surface', () => {
     )
     expect(page).toContain("{ id: 'quality', label: 'Quality' }")
     expect(page).toContain('<AdminQualityTriage />')
-    expect(page).toContain("tab === 'quality' && <AdminTemplatePerformance />")
+    expect(page).toContain("tab === 'quality'")
+    expect(page).toContain('<AdminTemplatePerformance />')
     expect(page).not.toContain("SUPPORT_TABS: Array<{ id: TabId; label: string }> = [\n  { id: 'quality'")
   })
 

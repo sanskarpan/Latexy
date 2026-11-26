@@ -34,7 +34,9 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution",
     "0087_email_delivery_events", "0088_admin_incidents",
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
-    "0092_document_complexity", "0100_daily_metrics",
+    "0092_document_complexity", "0093_admin_saved_views", "0094_template_health",
+    "0096_retention_controls", "0097_two_person_approvals", "0099_tenant_domain_health",
+    "0100_daily_metrics",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -101,7 +103,10 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
           "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions",
           "email_delivery_events", "email_recipient_suppressions", "admin_incidents",
-          "llm_call_attempts", "subscription_status_history", "admin_daily_metrics")
+          "llm_call_attempts", "subscription_status_history", "admin_saved_views",
+          "admin_segments", "template_health_checks", "retention_policies",
+          "retention_policy_revisions", "retention_runs", "admin_approvals",
+          "tenant_domain_events", "admin_daily_metrics")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -294,6 +299,54 @@ CAPABILITY_SCHEMA_COLUMNS = {
         },
     },
     "0092_document_complexity": {},
+    "0093_admin_saved_views": {
+        "admin_saved_views": {
+            "id", "owner_user_id", "name", "name_key", "scope", "filters",
+            "columns", "sort", "range_days", "shared", "is_default", "version",
+            "created_at", "updated_at", "deleted_at",
+        },
+        "admin_segments": {
+            "id", "owner_user_id", "name", "name_key", "description", "definition",
+            "shared", "version", "created_at", "updated_at", "deleted_at",
+        },
+    },
+    "0094_template_health": {
+        "template_health_checks": {
+            "id", "template_id", "status", "error_class", "visual_test", "commit_sha",
+            "ci_run_id", "source", "assets_present", "compile_samples",
+            "compile_failures", "status_detail", "idempotency_key", "checked_at",
+        },
+    },
+    "0096_retention_controls": {
+        "retention_policies": {
+            "data_class", "configured_hours", "schedule_hours", "enabled", "version",
+            "updated_by", "updated_at", "change_reason",
+        },
+        "retention_policy_revisions": {
+            "data_class", "version", "snapshot", "changed_by", "reason", "created_at",
+        },
+        "retention_runs": {
+            "id", "data_class", "mode", "status", "retention_hours", "effective_hours",
+            "cutoff_at", "scanned", "eligible", "protected_active_jobs",
+            "protected_legal_hold", "protected_immutable", "recent", "affected",
+            "batch_limit", "has_more", "started_by", "reason", "detail",
+            "idempotency_key", "started_at", "finished_at",
+        },
+    },
+    "0097_two_person_approvals": {
+        "admin_approvals": {
+            "id", "request_type", "resource_type", "resource_id", "payload_hash",
+            "payload", "reason", "status", "requested_by", "approved_by",
+            "decision_note", "execution_note", "executed_by", "result", "requested_at",
+            "expires_at", "decided_at", "executed_at", "audit_request_id",
+            "audit_decision_id", "audit_execution_id", "created_at", "updated_at",
+        },
+    },
+    "0099_tenant_domain_health": {
+        "tenant_domain_events": {
+            "id", "tenant_id", "domain", "event_type", "error_class", "checked_at",
+        },
+    },
     "0100_daily_metrics": {
         "admin_daily_metrics": {
             "metric_date", "new_users", "active_users", "usage_events",

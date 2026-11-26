@@ -1341,7 +1341,7 @@ export interface AdminKpiTrend {
   sparkline: AdminKpiTrendPoint[]
 }
 
-
+export type AdminSavedViewScope =
   | 'analytics'
   | 'operations'
   | 'quality'

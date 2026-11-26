@@ -942,4 +942,4 @@ def test_no_integration_analytics_migration_was_added() -> None:
     versions = BACKEND / "alembic" / "versions"
     names = [path.name for path in versions.glob("*.py")]
     assert names
-    assert not any("admin_integration" in name or "0093" in name or "2081" in name for name in names)
+    assert not any("admin_integration" in name or "integration_analytics" in name or "2081" in name for name in names)
