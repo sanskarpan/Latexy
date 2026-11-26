@@ -162,6 +162,14 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
             payload={"count": count},
         )
 
+    async def plan_health() -> list[dict[str, Any]]:
+        # Advisory plan-risk flags (weekly/lifetime refund, churn and chargeback
+        # outliers). The signal payload is aggregate-only and explicitly says a
+        # human must review it; no billing mutation is triggered here.
+        from .admin_plan_health_service import collect_alert_signals
+
+        return await collect_alert_signals(db, now)
+
     async def stuck_jobs() -> dict[str, Any] | None:
         cutoff = now - timedelta(minutes=15)
         stuck_compilations = int(
@@ -293,6 +301,7 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
         ("billing.webhook_failures", webhook_failures),
         ("billing.failed_payments", failed_payments),
         ("billing.past_due", past_due),
+        ("billing.plan_health", plan_health),
         ("jobs.stuck", stuck_jobs),
         ("queue.backlog", queue_backlog),
         ("spend.caps", spend_signals),

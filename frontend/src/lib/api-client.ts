@@ -2786,6 +2786,120 @@ export interface AdminTrialHealthResponse {
   notes: string[]
 }
 
+export interface AdminPlanHealthCohort {
+  cohort: string
+  users: number
+  subscriptions: number
+  active_subscriptions: number
+  retained_pct: number
+}
+
+export interface AdminPlanHealthMetric {
+  plan_id: 'weekly' | 'lifetime'
+  interval: 'week' | 'lifetime'
+  active_subscriptions: number
+  past_due_subscriptions: number
+  new_subscriptions: number
+  cancelled_subscriptions: number
+  refunded_subscriptions: number
+  by_status: Array<{ status: string; count: number }>
+  revenue: {
+    currency: string
+    gross_minor: number
+    gross: number
+    refunded_minor: number
+    refunded: number
+    net_minor: number
+    net: number
+    payments_count: number
+  }
+  refunds: {
+    currency: string
+    count: number
+    amount_minor: number
+    amount: number
+    amount_rate_pct: number
+    by_status: Array<{ status: string; count: number }>
+  }
+  chargebacks: {
+    currency: string
+    count: number
+    open_count: number
+    amount_minor: number
+    amount: number
+    amount_rate_pct: number
+  }
+  renewal: {
+    renewals: number
+    cancellations: number
+    renewal_rate_pct: number
+    churn_rate_pct: number
+  }
+  retention: {
+    months: number
+    minimum_cohort_size: number
+    cohorts: AdminPlanHealthCohort[]
+    suppressed_cohorts: number
+    tracked_subscriptions: number
+    retained_subscriptions: number
+    retention_pct: number
+  }
+  lifetime_sales: number | null
+  lifetime_refunds: number | null
+  lifetime_refund_rate_pct: number | null
+  risk_flags: AdminPlanHealthRiskFlag[]
+}
+
+export interface AdminPlanHealthRiskFlag {
+  code: string
+  plan_id: 'weekly' | 'lifetime'
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  title: string
+  detail: string
+  metric: string
+  value: number
+  threshold: number
+  sample_size: number
+  advisory: boolean
+  requires_human_review: boolean
+  auto_action: 'none'
+}
+
+export interface AdminPlanHealthResponse {
+  generated_at: string
+  window_days: number
+  window_start: string
+  window_end: string
+  currency: string
+  plans: { weekly: AdminPlanHealthMetric; lifetime: AdminPlanHealthMetric }
+  risk_flags: AdminPlanHealthRiskFlag[]
+  minimum_cohort_size: number
+  advisory: {
+    flags_are_advisory: boolean
+    requires_human_review: boolean
+    automatic_refund: boolean
+    automatic_downgrade: boolean
+    automatic_cancellation: boolean
+    automatic_grant: boolean
+    customer_identifiers_included: boolean
+  }
+  reconciliation: {
+    balanced: boolean
+    checks: Array<{
+      key: string
+      ok: boolean
+      expected_minor: number | null
+      actual_minor: number | null
+    }>
+    scanned_subscriptions: number
+    scanned_payments: number
+    scanned_refunds: number
+    rows_truncated: boolean
+    unlinked_chargebacks: number
+  }
+  notes: string[]
+}
+
 export type AdminEmailHealthStatus = 'ok' | 'watch' | 'review' | 'unconfigured'
 
 export interface AdminEmailHealthFailure {
@@ -6684,6 +6798,12 @@ class ApiClient {
 
   async getAdminTrialHealth(): Promise<AdminTrialHealthResponse> {
     return this.request<AdminTrialHealthResponse>('/admin/analytics/trial-health')
+  }
+
+  async getAdminPlanHealth(days = 30): Promise<AdminPlanHealthResponse> {
+    return this.request<AdminPlanHealthResponse>(
+      `/admin/analytics/plan-health?days=${encodeURIComponent(String(days))}`,
+    )
   }
 
   async getAdminAiCost(params?: {
