@@ -11,6 +11,7 @@ import {
 } from '@/lib/api-client'
 import AdminRevenueBreakdown from './AdminRevenueBreakdown'
 import AdminPlanHealth from './AdminPlanHealth'
+import AdminTeamSeatUtilization from './AdminTeamSeatUtilization'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
 import AdminCheckoutFunnel from './AdminCheckoutFunnel'
 
@@ -1143,6 +1144,8 @@ export default function AdminBilling() {
       />
 
       <AdminPlanHealth />
+
+      <AdminTeamSeatUtilization />
 
       <WebhookHealth
         data={webhooks}
