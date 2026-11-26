@@ -273,6 +273,12 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "consent_analytics_routes": frozenset({
         "record_consent_event", "get_admin_consent_analytics",
     }),
+    "editor_mode_telemetry_routes": frozenset({
+        "ingest_editor_telemetry",
+    }),
+    "admin_editor_mode_routes": frozenset({
+        "get_admin_editor_modes",
+    }),
     "application_routes": frozenset({
         "list_submissions", "get_submission",
     }),

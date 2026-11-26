@@ -7,6 +7,7 @@ import {
   type AdminFeatureAdoptionResponse,
   type AdminFeatureAdoptionSegment,
 } from '@/lib/api-client'
+import AdminEditorModeUsage from './AdminEditorModeUsage'
 
 const DIMENSIONS: Array<{ id: AdminFeatureAdoptionDimension; label: string }> = [
   { id: 'plan', label: 'Plan' },
@@ -181,6 +182,7 @@ export default function AdminProduct() {
   }
 
   return (
+    <div className="space-y-5">
     <section className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -378,5 +380,7 @@ export default function AdminProduct() {
         </div>
       )}
     </section>
+    <AdminEditorModeUsage />
+    </div>
   )
 }

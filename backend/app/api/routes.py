@@ -95,6 +95,11 @@ from .consent_analytics_routes import router as consent_analytics_router
 router.include_router(consent_analytics_router)
 router.include_router(admin_consent_analytics_router)
 
+# Privacy-safe editor mode, auto-compile and SyncTeX usage (issue #2077).
+from .editor_mode_telemetry_routes import router as editor_mode_telemetry_router
+
+router.include_router(editor_mode_telemetry_router)
+
 # First-party UTM/referrer capture and aggregate growth reporting. Kept in a
 # dedicated module so the public capture path cannot reach document models.
 from .traffic_source_routes import admin_router as admin_traffic_source_router
@@ -190,6 +195,7 @@ from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
 from .admin_control_routes import router as admin_control_router
 from .admin_dunning_routes import router as admin_dunning_router
+from .admin_editor_mode_routes import router as admin_editor_mode_router
 from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
@@ -233,6 +239,7 @@ router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
 router.include_router(admin_team_seat_router)
 router.include_router(admin_dunning_router)
+router.include_router(admin_editor_mode_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
