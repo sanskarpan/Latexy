@@ -77,6 +77,17 @@ IP addresses. You can withdraw browser analytics consent at any time through
 “Privacy choices” in the footer; withdrawing consent stops future browser
 capture and replay.
 
+To honour and evidence that choice, Latexy records the consent decision
+(granted, denied, or withdrawn), the surface where you made it, a server
+timestamp, and a random browser/session identifier in our first-party database.
+These consent records contain no name, email, résumé or document text, IP
+address, user-agent string, or replay payload, and they are used only in
+aggregate privacy-compliance reporting. We process them to demonstrate
+compliance with your choice and to operate our consent controls; the legal basis
+is the applicable legal obligation to evidence consent or, where no obligation
+applies, our legitimate interest in auditing those controls. They are never used
+for advertising or profiling.
+
 ## 2. How we use information
 
 We use information to:
@@ -140,8 +151,8 @@ hours. Temporary compilation files are cleaned automatically; generated
 artifacts associated with saved work may remain until the owning record is
 deleted and cleanup completes.
 
-Product analytics events are kept for up to one year, and consented session
-replay recordings for up to 30 days, unless a shorter retention period is
+Product analytics and consent-choice records are kept for up to one year, and
+consented session replay recordings for up to 30 days, unless a shorter retention period is
 configured. Withdrawing consent stops future capture and replay; it does not
 retroactively delete recordings already retained under the applicable period.
 

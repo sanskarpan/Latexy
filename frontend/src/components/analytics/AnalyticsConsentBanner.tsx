@@ -5,7 +5,7 @@ import { writeAnalyticsConsent } from '@/lib/analytics/posthog'
 
 export default function AnalyticsConsentBanner() {
   const choose = (value: 'granted' | 'denied') => {
-    writeAnalyticsConsent(value)
+    writeAnalyticsConsent(value, 'banner')
   }
 
   return (

@@ -2516,6 +2516,73 @@ export interface AdminPrivacyBreakdownResponse {
   generated_at: string
 }
 
+export type AdminConsentDecisionKey = 'granted' | 'denied' | 'withdrawn'
+
+export interface AdminConsentCountRow {
+  granted: number | null
+  denied: number | null
+  withdrawn: number | null
+  total: number | null
+  unique_sessions: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminConsentDayRow extends AdminConsentCountRow {
+  date: string
+}
+
+export type AdminConsentSurfaceKey =
+  | 'banner'
+  | 'privacy_choices'
+  | 'privacy_page'
+  | 'settings'
+  | 'footer'
+  | 'other'
+  | 'unknown'
+
+export interface AdminConsentSurfaceRow extends AdminConsentCountRow {
+  surface: AdminConsentSurfaceKey
+  label: string
+}
+
+export interface AdminConsentAnalyticsResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_cohort_size: number
+  summary: AdminConsentCountRow & {
+    consent_coverage_pct: number | null
+  }
+  by_day: AdminConsentDayRow[]
+  by_surface: AdminConsentSurfaceRow[]
+  counts_by_day: AdminConsentDayRow[]
+  counts_by_surface: AdminConsentSurfaceRow[]
+  withdrawal_trend: {
+    current: number | null
+    previous: number | null
+    absolute_delta: number | null
+    percent_delta: number | null
+    baseline_zero: boolean
+    suppressed: boolean
+    current_days: number
+    previous_days: number
+    description: string
+  }
+  replay_coverage: {
+    eligible_sessions: number | null
+    sessions_with_consent: number | null
+    coverage_pct: number | null
+    suppressed: boolean
+    definition: string
+    posthog_capture: string
+  }
+  suppressed_rows: number
+  suppressed_cells: number
+  truncated_surfaces: number
+  truncated_events: boolean
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -6665,6 +6732,19 @@ class ApiClient {
     return this.request<AdminPrivacyBreakdownResponse>(
       `/admin/analytics/privacy-breakdowns${suffix}`,
     )
+  }
+
+  async getAdminConsentAnalytics(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminConsentAnalyticsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminConsentAnalyticsResponse>(`/admin/analytics/consent${suffix}`)
   }
 
   async getAdminTrialAttribution(params?: {
