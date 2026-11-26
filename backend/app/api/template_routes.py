@@ -37,6 +37,7 @@ from ..middleware.entitlements import require_feature
 from ..services import storage_service
 from ..services.entitlement_service import entitlement_service
 from ..services.europecv import configure_europecv_latex, is_europecv_source
+from ..services.template_analytics_service import template_analytics_service
 
 logger = get_logger(__name__)
 
@@ -436,9 +437,19 @@ async def use_template(
     db.add(resume)
     await db.commit()
     await db.refresh(resume)
+    resume_id = str(resume.id)
+    resume_title = resume.title
 
-    logger.info("User %s created resume %s from template %s (%s)", user_id, resume.id, template_id, t.name)
-    return {"resume_id": resume.id, "title": resume.title}
+    # Aggregate-only catalog attribution; analytics failure never blocks use.
+    await template_analytics_service.record_use(
+        db,
+        template_id=template_id,
+        user_id=user_id,
+        resume_id=resume_id,
+    )
+
+    logger.info("User %s created resume %s from template %s (%s)", user_id, resume_id, template_id, t.name)
+    return {"resume_id": resume_id, "title": resume_title}
 
 
 @router.post("", response_model=TemplateDetailResponse, status_code=status.HTTP_201_CREATED)

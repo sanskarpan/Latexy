@@ -218,6 +218,7 @@ export default function TemplatesPage() {
       generation: previewIdentityRef.current.generation + 1,
     }
     setPreviewTemplateId(id)
+    void apiClient.trackTemplateEvent(id, 'view')
   }, [canAccessTemplate])
 
   const handleClosePreview = useCallback(() => {
@@ -249,6 +250,7 @@ export default function TemplatesPage() {
     }
     activeTemplateUseRef.current = request
     setUsingTemplateId(id)
+    void apiClient.trackTemplateEvent(id, 'select')
     try {
       const selected = templatesRef.current.find(template => template.id === id)
       let locale: string | undefined

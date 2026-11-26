@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.config import resolve_plan_family
 from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import cache_manager, redis_manager
@@ -1200,12 +1201,66 @@ class AnalyticsService:
         compilation_time: Optional[float] = None,
         ip_address: Optional[str] = None
     ) -> bool:
-        """Track compilation-specific events. Returns True on success."""
+        """Track compilation-specific events. Returns True on success.
+
+        Template id and plan are resolved from the durable ``Compilation`` row
+        (or the account's server-owned plan) rather than from the browser. A
+        terminal result for the same job is recorded once so a retried client
+        callback cannot inflate template compile counts.
+        """
+        normalized_status = (status or "").strip().lower()[:32] or "unknown"
+        template_id: Optional[str] = None
+        plan: Optional[str] = None
+        try:
+            row = (
+                await db.execute(
+                    select(Compilation.template_id, Compilation.plan_family)
+                    .where(Compilation.job_id == compilation_id)
+                    .limit(1)
+                )
+            ).first()
+            if row is not None:
+                template_id = str(row.template_id) if row.template_id else None
+                plan = row.plan_family
+            if not plan and user_id:
+                plan_row = await db.execute(
+                    select(User.subscription_plan).where(User.id == user_id)
+                )
+                plan = resolve_plan_family(plan_row.scalar_one_or_none())
+        except Exception as exc:  # pragma: no cover - attribution is best effort
+            logger.debug("Compile event attribution failed (%s)", type(exc).__name__)
+        if not plan:
+            plan = "anonymous" if not user_id else "free"
+
+        idempotency_key = (
+            f"compile:{compilation_id}:{normalized_status}"
+            if normalized_status in {"completed", "failed"}
+            else None
+        )
+        if idempotency_key:
+            existing = (
+                await db.execute(
+                    select(UsageAnalytics.id)
+                    .where(
+                        UsageAnalytics.action == "compile",
+                        UsageAnalytics.event_metadata["event_id"].as_string()
+                        == idempotency_key,
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return True
+
         metadata = {
             "compilation_id": compilation_id,
-            "status": status,
-            "compilation_time": compilation_time
+            "status": normalized_status,
+            "compilation_time": compilation_time,
+            "template_id": template_id,
+            "plan": plan,
         }
+        if idempotency_key:
+            metadata["event_id"] = idempotency_key
 
         return await self.track_event(
             db=db,

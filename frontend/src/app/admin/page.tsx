@@ -18,6 +18,7 @@ import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
+import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminGdpr from '@/components/admin/AdminGdpr'
@@ -32,7 +33,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'product' | 'replays' | 'billing' | 'subscriptions' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -40,6 +41,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analytics', label: 'Analytics' },
   { id: 'product', label: 'Product' },
   { id: 'replays', label: 'Replays' },
+  { id: 'quality', label: 'Quality' },
   { id: 'billing', label: 'Revenue' },
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'growth', label: 'Growth & Cost' },
@@ -950,6 +952,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'analytics' && <AdminAnalytics />}
         {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
+        {tab === 'quality' && <AdminTemplatePerformance />}
         {tab === 'billing' && <AdminBilling />}
         {tab === 'subscriptions' && <AdminSubscriptions />}
         {tab === 'growth' && <AdminGrowth />}
