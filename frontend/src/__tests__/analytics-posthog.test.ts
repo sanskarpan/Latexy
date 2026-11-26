@@ -4,8 +4,12 @@ import {
   analyticsReplayLinkConfig,
   analyticsReplayTriageLinks,
   isAnalyticsConfigured,
+  isBlockedAnalyticsPath,
+  sanitizeAnalyticsEvent,
   sanitizeAnalyticsPath,
   sanitizeAnalyticsProperties,
+  sanitizeAnalyticsRelease,
+  sanitizeExceptionText,
 } from '@/lib/analytics/posthog'
 
 describe('analytics path sanitization', () => {
@@ -18,6 +22,155 @@ describe('analytics path sanitization', () => {
       '/workspace/:resumeId/edit',
     )
     expect(sanitizeAnalyticsPath('/workspaces/team-id/recruiter')).toBe('/workspaces/:workspaceId/recruiter')
+  })
+})
+
+describe('analytics event boundary', () => {
+  it('blocks document, share, portfolio, and guest-editor surfaces entirely', () => {
+    for (const path of [
+      '/workspace/abc/edit',
+      '/workspaces/team/recruiter',
+      '/try',
+      '/r/secret-token',
+      '/u/sanskar',
+      '/share/secret-token',
+      '/portfolio/sanskar',
+    ]) {
+      expect(isBlockedAnalyticsPath(path)).toBe(true)
+      expect(isBlockedAnalyticsPath(`https://latexy.xyz${path}?token=secret`)).toBe(true)
+      expect(
+        sanitizeAnalyticsEvent({
+          event: '$exception',
+          properties: {
+            $current_url: `https://latexy.xyz${path}?token=secret`,
+            $exception_list: [{ type: 'TypeError', value: 'document error' }],
+          },
+        }),
+      ).toBeNull()
+    }
+    expect(isBlockedAnalyticsPath('/dashboard')).toBe(false)
+    expect(isBlockedAnalyticsPath('/templates?tab=modern')).toBe(false)
+  })
+
+  it('keeps templated pageviews on share pages while blocking content events', () => {
+    const pageview = sanitizeAnalyticsEvent({
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://latexy.xyz/r/abc123?token=secret#preview',
+        $pathname: '/r/abc123',
+      },
+    })
+    expect(pageview).not.toBeNull()
+    expect(pageview?.properties).toMatchObject({
+      $current_url: 'https://latexy.xyz/r/:token',
+      $pathname: '/r/:token',
+      route: '/r/:token',
+    })
+
+    for (const eventName of ['$exception', '$rageclick', '$dead_click']) {
+      expect(
+        sanitizeAnalyticsEvent({
+          event: eventName,
+          properties: { $current_url: 'https://latexy.xyz/r/abc123?token=secret' },
+        }),
+      ).toBeNull()
+    }
+  })
+
+  it('templates URLs and derives a low-cardinality route before send', () => {
+    const event = sanitizeAnalyticsEvent({
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://latexy.xyz/templates?token=secret#preview',
+        $referrer: 'https://news.ycombinator.com/item?id=1',
+        $pathname: '/templates',
+        $input: 'private input',
+        $selected_content: 'document text',
+      },
+    })
+    expect(event).not.toBeNull()
+    expect(event?.properties).toMatchObject({
+      $current_url: 'https://latexy.xyz/templates',
+      $pathname: '/templates',
+      route: '/templates',
+      $referrer: 'https://news.ycombinator.com/item',
+    })
+    expect(event?.properties?.$input).toBeUndefined()
+    expect(event?.properties?.$selected_content).toBeUndefined()
+  })
+
+  it('strips clicked element text from rage and dead-click events', () => {
+    for (const eventName of ['$rageclick', '$dead_click']) {
+      const event = sanitizeAnalyticsEvent({
+        event: eventName,
+        properties: {
+          $current_url: 'https://latexy.xyz/templates',
+          $el_text: 'Download my résumé',
+          $elements_chain: 'button:text="Download my résumé"',
+          $elements: [{ tag_name: 'button', attr_class: 'primary' }],
+        },
+      })
+      const properties = (event?.properties ?? {}) as Record<string, unknown>
+      expect(properties.$el_text).toBeUndefined()
+      expect(properties.$elements_chain).toBeUndefined()
+      expect(properties.$elements).toBeUndefined()
+      expect(properties.route).toBe('/templates')
+    }
+  })
+
+  it('redacts exception values, stack filenames, emails, tokens, and identifiers', () => {
+    const event = sanitizeAnalyticsEvent({
+      event: '$exception',
+      properties: {
+        $current_url: 'https://latexy.xyz/dashboard?token=secret',
+        $exception_list: [
+          {
+            type: 'TypeError',
+            value:
+              'Failed for person@example.com with phc_abcdefgh12345678 at https://latexy.xyz/app.js?token=secret id 550e8400-e29b-41d4-a716-446655440000',
+            stacktrace: {
+              type: 'raw',
+              frames: [
+                {
+                  filename: 'https://latexy.xyz/static/app.js?token=secret',
+                  function: 'runOptimization',
+                  lineno: 12,
+                  colno: 4,
+                },
+              ],
+            },
+          },
+        ],
+        $exception_steps: [{ message: 'private resume text' }],
+      },
+    })
+    expect(event).not.toBeNull()
+    const properties = (event?.properties ?? {}) as Record<string, unknown>
+    expect(properties.route).toBe('/dashboard')
+    expect(properties.error_type).toBe('TypeError')
+    expect(properties.$exception_steps).toBeUndefined()
+    const exception = (properties.$exception_list as Array<Record<string, unknown>>)[0]
+    expect(exception.type).toBe('TypeError')
+    expect(String(exception.value)).not.toContain('@')
+    expect(String(exception.value)).not.toContain('phc_')
+    expect(String(exception.value)).not.toContain('550e8400')
+    expect(String(exception.value)).not.toContain('token=secret')
+    const frame = (
+      (exception.stacktrace as { frames: Array<Record<string, unknown>> }).frames
+    )[0]
+    expect(frame.filename).toBe('https://latexy.xyz/static/app.js')
+  })
+
+  it('bounds exception text and rejects unsafe release identifiers', () => {
+    expect(sanitizeExceptionText('x'.repeat(500))).toHaveLength(240)
+    expect(sanitizeExceptionText('mail person@example.com')).toBe('mail [email]')
+    expect(sanitizeAnalyticsRelease('v1.2.3')).toBe('v1.2.3')
+    expect(sanitizeAnalyticsRelease('abc123')).toBe('abc123')
+    expect(sanitizeAnalyticsRelease('release one')).toBeNull()
+    expect(sanitizeAnalyticsRelease('/etc/passwd')).toBeNull()
+    expect(sanitizeAnalyticsRelease('phc_notarealkey123456')).toBeNull()
+    expect(sanitizeAnalyticsRelease('a'.repeat(65))).toBeNull()
+    expect(sanitizeAnalyticsRelease(null)).toBeNull()
   })
 })
 

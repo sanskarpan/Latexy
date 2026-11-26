@@ -98,7 +98,11 @@ else
     "latexy-analytics-consent"
     "disable_session_recording: true"
     "capture_pageleave: false"
+    "capture_exceptions: true"
+    "capture_dead_clicks: true"
     "before_send:"
+    "sanitizeAnalyticsEvent"
+    "isBlockedAnalyticsPath"
     "mask_all_text: true"
     "maskTextSelector: '*'"
     "maskAllInputs: true"
@@ -106,6 +110,8 @@ else
     "blockSelector: '.ph-no-capture, [data-ph-no-capture]'"
     "readAnalyticsConsent() !== 'granted'"
     "startSessionRecording()"
+    "startExceptionAutocapture()"
+    "stopExceptionAutocapture()"
   )
   for token in "${required_tokens[@]}"; do
     if ! grep -qF "$token" "$POSTHOG_WRAPPER"; then
