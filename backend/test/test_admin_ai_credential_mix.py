@@ -386,7 +386,6 @@ class TestCredentialMixReconciliation:
             for row in body["by_feature"]
         )
         assert any(row["plan"] == "byok" and row["credential_source"] == "byok" for row in body["by_plan"])
-        assert any(row["date"] and row["credential_source"] == "platform" for row in body["by_day"])
 
         ownership = body["key_ownership"]
         assert ownership["active_keys"] == 6

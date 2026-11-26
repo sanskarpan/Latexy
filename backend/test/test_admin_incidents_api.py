@@ -1,4 +1,4 @@
-"""Admin incident timeline: authorization, transitions, filters, audit and PII."""
+﻿"""Admin incident timeline: authorization, transitions, filters, audit and PII."""
 
 from __future__ import annotations
 
@@ -455,7 +455,7 @@ def test_incident_migration_declares_isolated_revision():
     assert spec.loader is not None
     spec.loader.exec_module(migration)
     assert migration.revision == "0088_admin_incidents"
-    assert migration.down_revision == "0086_trial_attribution"
+    assert migration.down_revision == "0087_email_delivery_events"
     source = path.read_text()
     assert '"admin_incidents"' in source
     assert "drop_table" in source
