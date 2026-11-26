@@ -1690,6 +1690,143 @@ class AdminIncident(Base):
     )
 
 
+class AdminSavedView(Base):
+    """Reusable admin tab state: filters, columns, sort and range.
+
+    Rows are owner-scoped operator preferences, never customer records. Only
+    allowlisted filter keys/values are persisted by the service layer; names,
+    filters and payloads are rejected when they look like PII or document
+    content. Deletes are soft (``deleted_at``) so a stale browser cannot
+    silently lose a shared view. ``version`` is the optimistic-concurrency
+    token used by update/delete.
+    """
+
+    __tablename__ = "admin_saved_views"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(name)) BETWEEN 1 AND 80 AND length(name_key) BETWEEN 1 AND 80",
+            name="ck_admin_saved_views_name",
+        ),
+        CheckConstraint(
+            "scope IN ('analytics', 'operations', 'quality', 'billing', "
+            "'subscriptions', 'email', 'growth', 'customers')",
+            name="ck_admin_saved_views_scope",
+        ),
+        CheckConstraint(
+            "range_days IS NULL OR (range_days >= 1 AND range_days <= 365)",
+            name="ck_admin_saved_views_range",
+        ),
+        CheckConstraint("version >= 1", name="ck_admin_saved_views_version"),
+        CheckConstraint(
+            "jsonb_typeof(filters) = 'object'",
+            name="ck_admin_saved_views_filters_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(columns) = 'array'",
+            name="ck_admin_saved_views_columns_array",
+        ),
+        CheckConstraint(
+            "sort IS NULL OR jsonb_typeof(sort) = 'object'",
+            name="ck_admin_saved_views_sort_object",
+        ),
+        Index(
+            "uq_admin_saved_views_owner_scope_name",
+            "owner_user_id",
+            "scope",
+            "name_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_admin_saved_views_owner_default",
+            "owner_user_id",
+            "scope",
+            unique=True,
+            postgresql_where=text("is_default AND deleted_at IS NULL"),
+        ),
+        Index("idx_admin_saved_views_scope_updated", "scope", "updated_at"),
+        Index("idx_admin_saved_views_owner_updated", "owner_user_id", "updated_at"),
+        Index("idx_admin_saved_views_shared_updated", "shared", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    owner_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    filters: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    columns: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    sort: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    range_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminSegment(Base):
+    """Reusable cohort definition over allowlisted aggregate dimensions.
+
+    Only the typed filter DSL (match + conditions) is stored. The service
+    compiler maps each field/operator to a fixed SQLAlchemy expression, so a
+    stored definition can never contain SQL, identifiers, document content or
+    per-user data. Visibility is private by default; sharing requires the
+    owner's explicit flag. Deletes are soft and versioned like saved views.
+    """
+
+    __tablename__ = "admin_segments"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(name)) BETWEEN 1 AND 80 AND length(name_key) BETWEEN 1 AND 80",
+            name="ck_admin_segments_name",
+        ),
+        CheckConstraint(
+            "description IS NULL OR length(description) <= 280",
+            name="ck_admin_segments_description",
+        ),
+        CheckConstraint("version >= 1", name="ck_admin_segments_version"),
+        CheckConstraint(
+            "jsonb_typeof(definition) = 'object'",
+            name="ck_admin_segments_definition_object",
+        ),
+        Index(
+            "uq_admin_segments_owner_name",
+            "owner_user_id",
+            "name_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("idx_admin_segments_owner_updated", "owner_user_id", "updated_at"),
+        Index("idx_admin_segments_shared_updated", "shared", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    owner_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    definition: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class LLMCallAttempt(Base):
     """Append-only, privacy-safe telemetry for one LLM provider attempt.
 

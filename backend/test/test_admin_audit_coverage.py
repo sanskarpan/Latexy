@@ -24,6 +24,7 @@ from app.api import (
     admin_incident_routes,
     admin_operations_routes,
     admin_routes,
+    admin_saved_views_routes,
     admin_stuck_job_routes,
     plan_catalog_routes,
 )
@@ -44,10 +45,20 @@ AUDITED_SERVICE_CALLS = (
     "admin_stuck_jobs_service.",
     "plan_catalog_service.",
     "entitlement_service.set_",
+    "service.create_saved_view",
+    "service.update_saved_view",
+    "service.delete_saved_view",
+    "service.create_segment",
+    "service.update_segment",
+    "service.delete_segment",
 )
 
 # POST endpoints that are read-only previews, not mutations.
-READ_ONLY_POSTS = {("/admin/alerts/dry-run", "POST")}
+READ_ONLY_POSTS = {
+    ("/admin/alerts/dry-run", "POST"),
+    ("/admin/segments/preview", "POST"),
+    ("/admin/saved-segments/preview", "POST"),
+}
 
 # Endpoints that delegate to a local helper which performs the audit write.
 AUDITED_HELPERS = {
@@ -65,6 +76,7 @@ ADMIN_ROUTERS = (
     admin_billing_reconciliation_routes.router,
     admin_incident_routes.router,
     admin_operations_routes.router,
+    admin_saved_views_routes.router,
     admin_stuck_job_routes.router,
     plan_catalog_routes.router,
 )
