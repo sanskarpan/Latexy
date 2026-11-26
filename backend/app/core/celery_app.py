@@ -335,6 +335,13 @@ celery_app.conf.update(
             "task": "app.workers.cleanup_worker.health_check_task",
             "schedule": 300.0,  # Run every 5 minutes
         },
+        # Admin analytics — refresh the bounded daily rollup (issue #2181).
+        # 10 minutes is inside the required 5-15 minute freshness window.
+        "refresh-daily-metrics": {
+            "task": "app.workers.cleanup_worker.refresh_daily_metrics_task",
+            "schedule": 600.0,
+            "options": {"queue": "cleanup"},
+        },
         # Feature 19 — weekly digest every Monday at 09:00 UTC
         "weekly-digest-monday-9am": {
             "task": "app.workers.email_worker.send_weekly_digest_to_all",

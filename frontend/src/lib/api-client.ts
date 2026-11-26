@@ -1242,6 +1242,85 @@ export interface AdminKpiTrend {
   sparkline: AdminKpiTrendPoint[]
 }
 
+export interface AdminDailyMetricsFreshness {
+  fresh: boolean
+  source: 'rollup' | 'base_tables'
+  last_refreshed_at: string | null
+  age_seconds: number | null
+  stale_after_seconds: number
+  refresh_interval_seconds: number
+  coverage_start: string | null
+  coverage_end: string | null
+  rollup_rows: number
+  reason: 'fresh' | 'stale' | 'no_rollup' | 'insufficient_coverage'
+  fallback_reason: string | null
+}
+
+export interface AdminDailyMetricsPoint {
+  date: string
+  new_users: number
+  active_users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  optimizations: number
+  events: number
+  gross_revenue_inr: number
+  refunds_inr: number
+  revenue_inr: number
+  payments_count: number
+  refunds_count: number
+  sparse: boolean
+}
+
+export interface AdminDailyMetricsTotals {
+  new_users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  optimizations: number
+  events: number
+  active_user_days: number
+  peak_active_users: number
+  payments_count: number
+  refunds_count: number
+  gross_revenue_inr: number
+  refunds_inr: number
+  revenue_inr: number
+  sparse_days: number
+}
+
+export interface AdminDailyMetricsResponse {
+  days: number
+  window: { start: string; end: string; timezone: string }
+  source: 'rollup' | 'base_tables'
+  freshness: AdminDailyMetricsFreshness
+  rollup: {
+    table: string
+    refresh_interval_seconds: number
+    stale_after_seconds: number
+    default_refresh_days: number
+    max_refresh_ms: number
+  }
+  minimum_cohort_users: number
+  suppression: {
+    minimum_users: number
+    cohort_rows_returned: number
+    rule: string
+    sparse_days: number
+  }
+  series: AdminDailyMetricsPoint[]
+  totals: AdminDailyMetricsTotals
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminAnalyticsOverviewResponse {
   period_days: number
   system: {
@@ -1268,6 +1347,7 @@ export interface AdminAnalyticsOverviewResponse {
   recent_events: AdminRecentEvent[]
   operations: AdminOperationsSummary
   kpi_trends: AdminKpiTrend[]
+  metrics_freshness?: AdminDailyMetricsFreshness
   generated_at: string
 }
 
@@ -6793,6 +6873,12 @@ class ApiClient {
 
   async getAdminAnalyticsOverview(days: number = 30): Promise<AdminAnalyticsOverviewResponse> {
     return this.request<AdminAnalyticsOverviewResponse>(`/analytics/admin/overview?days=${days}`)
+  }
+
+  async getAdminDailyMetrics(days: number = 30): Promise<AdminDailyMetricsResponse> {
+    return this.request<AdminDailyMetricsResponse>(
+      `/admin/analytics/daily-metrics?days=${encodeURIComponent(String(days))}`,
+    )
   }
 
   async getAdminActivityFeed(params?: {

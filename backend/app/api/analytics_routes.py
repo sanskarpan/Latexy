@@ -29,6 +29,7 @@ from ..middleware.auth_middleware import (
 )
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
+from ..services.admin_daily_metrics_service import daily_series as admin_daily_series
 from ..services.analytics_service import analytics_service
 from ..services.client_environment import country_from_request, with_server_country
 from ..services.landing_conversion_service import classify_device_class
@@ -211,6 +212,7 @@ class AdminAnalyticsOverviewResponse(BaseModel):
     recent_events: List[AdminRecentEvent]
     operations: AdminOperationsSummary
     kpi_trends: List[AdminKpiTrend]
+    metrics_freshness: Optional[Dict[str, Any]] = None
     generated_at: str
 
 @router.post("/track", status_code=status.HTTP_201_CREATED)
@@ -626,7 +628,7 @@ async def get_admin_analytics_overview(
     try:
         system = await analytics_service.get_system_analytics(db=db, days=days)
         funnel = await analytics_service.get_conversion_funnel(db=db, days=days)
-        timeseries = await analytics_service.get_admin_timeseries(db=db, days=days)
+        timeseries, metrics_freshness = await admin_daily_series(db=db, days=days)
         top_features = await analytics_service.get_admin_top_features(db=db, days=days)
         recent_events = await analytics_service.get_admin_recent_events(db=db)
         operations = await analytics_service.get_admin_operations(db=db)
@@ -645,6 +647,7 @@ async def get_admin_analytics_overview(
             recent_events=[AdminRecentEvent(**event) for event in recent_events],
             operations=AdminOperationsSummary(**operations),
             kpi_trends=[AdminKpiTrend(**trend) for trend in kpi_trends],
+            metrics_freshness=metrics_freshness,
             generated_at=datetime.now().isoformat(),
         )
         payload = response.model_dump()

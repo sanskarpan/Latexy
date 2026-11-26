@@ -331,6 +331,27 @@ export default function AdminAnalytics() {
             First-party usage, billing and operational health. Session replays and deeper exploration open in PostHog;
             replay is consent-based, fully text-masked, and blocked on résumé surfaces.
           </p>
+          {data.metrics_freshness && (
+            <p className="mt-2 text-[11px] text-fg-3">
+              {data.metrics_freshness.source === 'rollup' ? (
+                <span className="text-ok">
+                  Daily rollup · refreshed{' '}
+                  {data.metrics_freshness.last_refreshed_at
+                    ? new Date(data.metrics_freshness.last_refreshed_at).toLocaleTimeString()
+                    : 'recently'}
+                </span>
+              ) : (
+                <span className="text-warn">
+                  Live base-table metrics ·{' '}
+                  {data.metrics_freshness.reason === 'insufficient_coverage'
+                    ? 'rollup does not cover this period'
+                    : data.metrics_freshness.reason === 'no_rollup'
+                      ? 'rollup not populated yet'
+                      : 'daily rollup is stale'}
+                </span>
+              )}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-[var(--radius-md)] border border-line bg-surface p-0.5" role="group" aria-label="Analytics period">
