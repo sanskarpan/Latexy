@@ -246,8 +246,18 @@ function RecentEvents({ events }: { events: AdminAnalyticsOverviewResponse['rece
   )
 }
 
-export default function AdminAnalytics() {
-  const [days, setDays] = useState<number>(30)
+export default function AdminAnalytics({
+  initialDays = 30,
+  savedViewName = null,
+  savedViewFilters = {},
+  onDaysChange,
+}: {
+  initialDays?: number
+  savedViewName?: string | null
+  savedViewFilters?: Record<string, unknown>
+  onDaysChange?: (days: number) => void
+} = {}) {
+  const [days, setDays] = useState<number>(initialDays)
   const [data, setData] = useState<AdminAnalyticsOverviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -339,7 +349,10 @@ export default function AdminAnalytics() {
                 key={range.days}
                 type="button"
                 aria-pressed={days === range.days}
-                onClick={() => setDays(range.days)}
+                onClick={() => {
+                  setDays(range.days)
+                  onDaysChange?.(range.days)
+                }}
                 className={`rounded px-3 py-1.5 text-xs font-medium transition ${
                   days === range.days ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'
                 }`}
@@ -358,6 +371,19 @@ export default function AdminAnalytics() {
           </button>
         </div>
       </div>
+
+      {savedViewName && (
+        <div role="status" aria-label="Applied saved view" className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft px-4 py-3 text-xs text-accent-strong">
+          <span className="font-semibold">Saved view: {savedViewName}</span>
+          {Object.keys(savedViewFilters).length > 0 && (
+            <span className="ml-2 text-fg-2">
+              {Object.entries(savedViewFilters)
+                .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(',') : String(value)}`)
+                .join(' · ')}
+            </span>
+          )}
+        </div>
+      )}
 
       {error && (
         <div role="alert" className="rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-4 py-3 text-xs text-warn">

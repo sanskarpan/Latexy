@@ -1242,6 +1242,166 @@ export interface AdminKpiTrend {
   sparkline: AdminKpiTrendPoint[]
 }
 
+export type AdminSavedViewScope =
+  | 'analytics'
+  | 'operations'
+  | 'quality'
+  | 'billing'
+  | 'subscriptions'
+  | 'email'
+  | 'growth'
+  | 'customers'
+
+export type AdminSavedViewVisibility = 'all' | 'owned' | 'shared'
+
+export interface AdminSavedViewSort {
+  field: string
+  direction: 'asc' | 'desc'
+}
+
+export interface AdminSavedView {
+  id: string
+  name: string
+  scope: AdminSavedViewScope
+  filters: Record<string, unknown>
+  columns: string[]
+  sort: AdminSavedViewSort | null
+  range_days: number | null
+  shared: boolean
+  is_default: boolean
+  is_owner: boolean
+  version: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminSavedViewList {
+  items: AdminSavedView[]
+  total: number
+  limit: number
+  offset: number
+  scopes: AdminSavedViewScope[]
+}
+
+export interface AdminSavedViewInput {
+  name: string
+  scope: AdminSavedViewScope
+  filters?: Record<string, unknown>
+  columns?: string[]
+  sort?: AdminSavedViewSort | null
+  range_days?: number | null
+  shared?: boolean
+  is_default?: boolean
+}
+
+export interface AdminSavedViewUpdateInput {
+  expected_version: number
+  name?: string
+  scope?: AdminSavedViewScope
+  filters?: Record<string, unknown>
+  columns?: string[]
+  sort?: AdminSavedViewSort | null
+  range_days?: number | null
+  shared?: boolean
+  is_default?: boolean
+}
+
+export interface AdminSavedViewScopeCatalogEntry {
+  scope: AdminSavedViewScope
+  filters: string[]
+  columns: string[]
+  sort_fields: string[]
+}
+
+export interface AdminSavedViewCatalog {
+  schema_version: number
+  scopes: AdminSavedViewScopeCatalogEntry[]
+}
+
+export interface AdminSegmentField {
+  field: string
+  label: string
+  type: string
+  operators: string[]
+  values?: string[]
+}
+
+export interface AdminSegmentFieldsResponse {
+  schema_version: number
+  minimum_cohort: number
+  max_conditions: number
+  max_values: number
+  fields: AdminSegmentField[]
+  group_by: string[]
+}
+
+export interface AdminSegmentCondition {
+  field: string
+  operator: string
+  value: unknown
+}
+
+export interface AdminSegmentDefinition {
+  match: 'all' | 'any'
+  conditions: AdminSegmentCondition[]
+}
+
+export interface AdminSegment {
+  id: string
+  name: string
+  description: string | null
+  definition: AdminSegmentDefinition
+  condition_count: number
+  match: 'all' | 'any'
+  shared: boolean
+  is_owner: boolean
+  version: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminSegmentList {
+  items: AdminSegment[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminSegmentInput {
+  name: string
+  description?: string | null
+  definition: AdminSegmentDefinition
+  shared?: boolean
+}
+
+export interface AdminSegmentUpdateInput {
+  expected_version: number
+  name?: string
+  description?: string | null
+  definition?: AdminSegmentDefinition
+  shared?: boolean
+}
+
+export interface AdminSegmentPreviewGroup {
+  value: string
+  count: number
+}
+
+export interface AdminSegmentPreview {
+  segment_id?: string
+  segment_version?: number
+  count: number | null
+  suppressed: boolean
+  minimum_cohort: number
+  match: 'all' | 'any'
+  condition_count: number
+  group_by: string | null
+  groups: AdminSegmentPreviewGroup[]
+  suppressed_groups: number
+  data_source: string
+  generated_at: string
+}
+
 export interface AdminAnalyticsOverviewResponse {
   period_days: number
   system: {
@@ -6793,6 +6953,134 @@ class ApiClient {
 
   async getAdminAnalyticsOverview(days: number = 30): Promise<AdminAnalyticsOverviewResponse> {
     return this.request<AdminAnalyticsOverviewResponse>(`/analytics/admin/overview?days=${days}`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Saved admin views and aggregate cohort segments                  //
+  // ---------------------------------------------------------------- //
+
+  async getAdminSavedViews(params?: {
+    scope?: AdminSavedViewScope
+    visibility?: AdminSavedViewVisibility
+    limit?: number
+    offset?: number
+  }): Promise<AdminSavedViewList> {
+    const qs = new URLSearchParams()
+    if (params?.scope) qs.set('scope', params.scope)
+    if (params?.visibility) qs.set('visibility', params.visibility)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSavedViewList>(`/admin/saved-views${suffix}`)
+  }
+
+  async getAdminSavedViewCatalog(): Promise<AdminSavedViewCatalog> {
+    return this.request<AdminSavedViewCatalog>('/admin/saved-views/catalog')
+  }
+
+  async createAdminSavedView(body: AdminSavedViewInput): Promise<AdminSavedView> {
+    return this.request<AdminSavedView>('/admin/saved-views', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminSavedView(
+    id: string,
+    body: AdminSavedViewUpdateInput,
+  ): Promise<AdminSavedView> {
+    return this.request<AdminSavedView>(
+      `/admin/saved-views/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminSavedView(
+    id: string,
+    version: number,
+    reason: string,
+  ): Promise<{ id: string; deleted: boolean; version: number }> {
+    const qs = new URLSearchParams({
+      version: String(version),
+      confirm: 'true',
+      reason,
+    })
+    return this.request<{ id: string; deleted: boolean; version: number }>(
+      `/admin/saved-views/${encodeURIComponent(id)}?${qs}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  async getAdminSegmentFields(): Promise<AdminSegmentFieldsResponse> {
+    return this.request<AdminSegmentFieldsResponse>('/admin/segments/fields')
+  }
+
+  async getAdminSegments(params?: {
+    visibility?: AdminSavedViewVisibility
+    limit?: number
+    offset?: number
+  }): Promise<AdminSegmentList> {
+    const qs = new URLSearchParams()
+    if (params?.visibility) qs.set('visibility', params.visibility)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSegmentList>(`/admin/segments${suffix}`)
+  }
+
+  async createAdminSegment(body: AdminSegmentInput): Promise<AdminSegment> {
+    return this.request<AdminSegment>('/admin/segments', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminSegment(
+    id: string,
+    body: AdminSegmentUpdateInput,
+  ): Promise<AdminSegment> {
+    return this.request<AdminSegment>(
+      `/admin/segments/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminSegment(
+    id: string,
+    version: number,
+    reason: string,
+  ): Promise<{ id: string; deleted: boolean; version: number }> {
+    const qs = new URLSearchParams({
+      version: String(version),
+      confirm: 'true',
+      reason,
+    })
+    return this.request<{ id: string; deleted: boolean; version: number }>(
+      `/admin/segments/${encodeURIComponent(id)}?${qs}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  async previewAdminSegment(
+    body: AdminSegmentDefinition,
+    groupBy?: 'plan' | 'role' | 'verified' | null,
+  ): Promise<AdminSegmentPreview> {
+    return this.request<AdminSegmentPreview>('/admin/segments/preview', {
+      method: 'POST',
+      body: JSON.stringify({ definition: body, group_by: groupBy ?? null }),
+    })
+  }
+
+  async previewSavedAdminSegment(
+    id: string,
+    groupBy?: 'plan' | 'role' | 'verified' | null,
+  ): Promise<AdminSegmentPreview> {
+    const qs = new URLSearchParams()
+    if (groupBy) qs.set('group_by', groupBy)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSegmentPreview>(
+      `/admin/segments/${encodeURIComponent(id)}/preview${suffix}`,
+    )
   }
 
   async getAdminActivityFeed(params?: {

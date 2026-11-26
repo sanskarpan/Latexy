@@ -8,6 +8,8 @@ import {
   type AdminUser,
   type UserRole,
   type EntitlementRole,
+  type AdminSavedView,
+  type AdminSavedViewScope,
 } from '@/lib/api-client'
 import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
@@ -34,6 +36,7 @@ import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
+import AdminSavedViews, { AdminSavedViewsBar } from '@/components/admin/AdminSavedViews'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
 interface FlagDetail {
@@ -44,7 +47,22 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
+
+const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
+  'analytics',
+  'operations',
+  'quality',
+  'billing',
+  'subscriptions',
+  'email',
+  'growth',
+  'customers',
+])
+
+function asSavedViewScope(tab: TabId): AdminSavedViewScope | null {
+  return SAVED_VIEW_SCOPES.has(tab as AdminSavedViewScope) ? (tab as AdminSavedViewScope) : null
+}
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -64,6 +82,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
+  { id: 'views', label: 'Saved Views' },
 ]
 
 const SUPPORT_TABS: Array<{ id: TabId; label: string }> = [
@@ -887,14 +906,69 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
   const canAdmin = role === 'admin'
   const tabs = canAdmin ? ADMIN_TABS : SUPPORT_TABS
   const [tab, setTab] = useState<TabId>(canAdmin ? 'matrix' : 'customers')
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30)
+  const [appliedView, setAppliedView] = useState<{
+    id: string
+    name: string
+    filters: Record<string, unknown>
+  } | null>(null)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get('tab')
+    const params = new URLSearchParams(window.location.search)
     if (requested && (canAdmin ? ADMIN_TABS : SUPPORT_TABS).some((item) => item.id === requested)) {
       setTab(requested as TabId)
     }
+    const requestedDays = Number(params.get('days'))
+    if (Number.isInteger(requestedDays) && requestedDays >= 1 && requestedDays <= 365) {
+      setAnalyticsDays(requestedDays)
+    }
+    // The saved view id is enough to rehydrate from the API. This fallback
+    // keeps range/filter URL state meaningful if the view was deleted later.
+    const filterEntries = Array.from(params.entries()).filter(([key]) => key.startsWith('filter_'))
+    if (filterEntries.length > 0) {
+      const filters = Object.fromEntries(
+        filterEntries.map(([key, value]) => [
+          key.slice('filter_'.length),
+          value.includes(',') ? value.split(',').filter(Boolean) : value,
+        ]),
+      )
+      setAppliedView({
+        id: params.get('view') ?? 'url-view',
+        name: params.get('view_name') ?? 'URL view',
+        filters,
+      })
+    }
   }, [canAdmin])
+
+  const applySavedView = useCallback((view: AdminSavedView) => {
+    setAppliedView({ id: view.id, name: view.name, filters: view.filters ?? {} })
+    setTab(view.scope)
+    if (view.range_days) setAnalyticsDays(view.range_days)
+    const params = new URLSearchParams(window.location.search)
+    params.set('tab', view.scope)
+    params.set('view', view.id)
+    params.set('view_name', view.name)
+    if (view.range_days) params.set('days', String(view.range_days))
+    else params.delete('days')
+    for (const key of Array.from(params.keys())) {
+      if (key.startsWith('filter_')) params.delete(key)
+    }
+    for (const [key, value] of Object.entries(view.filters ?? {})) {
+      params.set(`filter_${key}`, Array.isArray(value) ? value.join(',') : String(value))
+    }
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
+  }, [])
+
+  const handleAnalyticsDays = useCallback((days: number) => {
+    setAnalyticsDays(days)
+    const params = new URLSearchParams(window.location.search)
+    params.set('days', String(days))
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
+  }, [])
+
+  const savedViewScope = canAdmin ? asSavedViewScope(tab) : null
 
   useEffect(() => {
     const hash = window.location.hash
@@ -955,6 +1029,15 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         })}
       </div>
 
+      {savedViewScope && (
+        <AdminSavedViewsBar
+          key={savedViewScope}
+          scope={savedViewScope}
+          onApply={applySavedView}
+          onManage={() => setTab('views')}
+        />
+      )}
+
       <div
         role="tabpanel"
         id={`admin-panel-${tab}`}
@@ -964,14 +1047,20 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
       >
         {tab === 'analytics' && (
           <div className="space-y-6">
-            <AdminAnalytics />
+            <AdminAnalytics
+              key={appliedView?.id ?? 'default-analytics'}
+              initialDays={analyticsDays}
+              savedViewName={appliedView?.name ?? null}
+              savedViewFilters={appliedView?.filters ?? {}}
+              onDaysChange={handleAnalyticsDays}
+            />
             <AdminAtsScoreDistribution />
             <AdminDocumentComplexity />
           </div>
         )}
+        {tab === 'operations' && <AdminIncidentTimeline />}
         {tab === 'operations' && (
-          <div className="space-y-6">
-            <AdminIncidentTimeline />
+          <div className="mt-6">
             <AdminArtifactLifecycle />
           </div>
         )}
@@ -1019,6 +1108,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}
+        {tab === 'views' && <AdminSavedViews onApply={applySavedView} />}
       </div>
 
       {canAdmin && (
