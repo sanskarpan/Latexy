@@ -24,6 +24,7 @@ import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
 import AdminCollaboration from '@/components/admin/AdminCollaboration'
 import AdminCareerAdoption from '@/components/admin/AdminCareerAdoption'
+import AdminIntegrations from '@/components/admin/AdminIntegrations'
 import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
@@ -1082,6 +1083,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
           <div className="space-y-6">
             <AdminCollaboration />
             <AdminCareerAdoption />
+            <AdminIntegrations />
             <AdminProduct />
           </div>
         )}
