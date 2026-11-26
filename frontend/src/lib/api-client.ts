@@ -1174,6 +1174,122 @@ export interface AdminCompileLatencyResponse {
   generated_at: string
 }
 
+export interface AdminAiLatencyRetrySummary {
+  attempts: number
+  runs: number
+  successes: number
+  errors: number
+  timeouts: number
+  cancelled: number
+  retried_attempts: number
+  first_attempt_successes: number
+  retry_rate_pct: number
+  success_rate_pct: number
+  error_rate_pct: number
+  timeout_rate_pct: number
+  failure_rate_pct: number
+  first_attempt_success_rate_pct: number
+  latency_samples: number
+  p50_ms: number | null
+  p95_ms: number | null
+  p99_ms: number | null
+  mean_ms: number | null
+  max_ms: number | null
+  sparse: boolean
+  sample_status: 'ok' | 'insufficient_samples'
+}
+
+export interface AdminAiLatencyRetryBucket extends AdminAiLatencyRetrySummary {
+  dimension: 'provider' | 'model' | 'feature' | 'plan'
+  value: string
+  label: string
+  provider?: string
+  model?: string
+}
+
+export interface AdminAiLatencyRetryDimensionCardinality {
+  groups: number
+  returned_groups: number
+  returned_attempts: number
+  truncated_groups: number
+  truncated_attempts: number
+  truncated: boolean
+  max_groups: number
+}
+
+export interface AdminAiLatencyRetryResponse {
+  days: number
+  window: { start: string; end: string }
+  filters: {
+    plan: string | null
+    feature: string | null
+    provider: string | null
+    model: string | null
+  }
+  duration_unit: 'milliseconds'
+  sparse_threshold: number
+  max_groups: number
+  overall: AdminAiLatencyRetrySummary
+  by_provider: AdminAiLatencyRetryBucket[]
+  by_model: AdminAiLatencyRetryBucket[]
+  by_feature: AdminAiLatencyRetryBucket[]
+  by_plan: AdminAiLatencyRetryBucket[]
+  retry_reasons: Array<{
+    reason: string
+    label: string
+    attempts: number
+    runs: number
+    share_pct: number
+  }>
+  statuses: Array<{
+    status: string
+    attempts: number
+    runs: number
+    share_pct: number
+  }>
+  missing_dimensions: { provider: number; model: number; feature: number; plan: number }
+  cardinality: Record<
+    'provider' | 'model' | 'feature' | 'plan',
+    AdminAiLatencyRetryDimensionCardinality
+  >
+  totals: {
+    attempts: number
+    runs: number
+    latency_samples: number
+    retried_attempts: number
+    errors: number
+    timeouts: number
+    successes: number
+  }
+  reconciliation: {
+    total_attempts: number
+    dimension_attempts: Record<'provider' | 'model' | 'feature' | 'plan', number>
+    dimension_reconciled: Record<'provider' | 'model' | 'feature' | 'plan', boolean>
+    retry_reason_attempts: number
+    retried_attempts: number
+    retry_reasons_reconcile: boolean
+    status_attempts: number
+    statuses_reconcile: boolean
+    all_dimensions_reconcile: boolean
+    note: string
+  }
+  suppression: {
+    minimum_group_size: number
+    user_dimension_included: boolean
+    user_suppression_applicable: boolean
+    suppressed_groups: number
+    rule: string
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    per_row_records: boolean
+    content_fields_read: string[]
+    fields_excluded: string[]
+  }
+  generated_at: string
+}
+
 export type AdminCompileErrorClassKey =
   | 'syntax'
   | 'missing_package'
@@ -6753,6 +6869,25 @@ class ApiClient {
     if (params?.template) qs.set('template', params.template)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminCompileLatencyResponse>(`/admin/analytics/compile-latency${suffix}`)
+  }
+
+  async getAdminAiLatencyRetry(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    provider?: string
+    model?: string
+  }): Promise<AdminAiLatencyRetryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.model) qs.set('model', params.model)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAiLatencyRetryResponse>(
+      `/admin/analytics/ai-latency-retry${suffix}`,
+    )
   }
 
   async getAdminCompileErrors(params?: {

@@ -17,6 +17,7 @@ import openai
 
 from ...core.config import settings
 from ...core.engine_observability import engine_span
+from ..llm_attempt_recording import record_llm_attempt_best_effort
 from ..render_engine.cancellation import CancellationPoll
 from .budgets import BudgetExceeded
 from .credential_scope import credential_scope as credential_scope_for_api_key
@@ -301,9 +302,12 @@ class SemanticProvider:
         cancelled,
         owner_scope: str,
         client_factory=None,
+        plan: str = "unknown",
+        run_id: str | None = None,
     ):
         self.spec, self.api_key, self.ledger, self.deadline = spec, api_key, ledger, deadline
         self.cancelled, self.owner_scope, self.client_factory = cancelled, owner_scope, client_factory
+        self.plan, self.run_id = plan, run_id
         self.credential_scope = credential_scope_for_api_key(api_key)
         self._clients: dict[int, object] = {}
         self._lock = threading.Lock()
@@ -435,6 +439,7 @@ class SemanticProvider:
         watcher = threading.Thread(target=watch_cancel, name="resume-provider-cancellation", daemon=True)
         watcher.start()
         usage = None
+        attempt_started: float | None = None
         try:
             self.ledger.check_owner()
             remaining = self.deadline - time.monotonic()
@@ -455,6 +460,7 @@ class SemanticProvider:
                 }
             raw_parts, byte_count, finish = [], 0, None
             poll_cancel = CancellationPoll(self.cancelled)
+            attempt_started = time.perf_counter()
             with engine_span("model_call"):
                 stream = (AnthropicStageStream(client, self.spec, system, prompt, max_output_tokens, remaining)
                           if self.spec.protocol == "anthropic_messages_v1" else client.chat.completions.create(**kwargs))
@@ -518,8 +524,35 @@ class SemanticProvider:
             if not isinstance(value, dict):
                 raise CompactOptimizationError("Provider stage must return an object")
             self.ledger.complete(stage_key, output=value, usage=usage)
+            if attempt_started is not None:
+                record_llm_attempt_best_effort(
+                    provider=self.spec.provider,
+                    model=self.spec.model,
+                    feature="resume_optimization",
+                    plan=self.plan,
+                    run_id=self.run_id,
+                    attempt_number=1,
+                    status="success",
+                    retry_reason="none",
+                    latency_ms=(time.perf_counter() - attempt_started) * 1000,
+                )
             return value, usage, False
-        except Exception:
+        except Exception as exc:
+            if attempt_started is not None:
+                record_llm_attempt_best_effort(
+                    provider=self.spec.provider,
+                    model=self.spec.model,
+                    feature="resume_optimization",
+                    plan=self.plan,
+                    run_id=self.run_id,
+                    attempt_number=1,
+                    status="cancelled"
+                    if isinstance(exc, CompactOptimizationCancelled)
+                    else "error",
+                    retry_reason="none",
+                    latency_ms=(time.perf_counter() - attempt_started) * 1000,
+                    exc=exc,
+                )
             try:
                 self.ledger.fail(stage_key, usage=usage)
             except Exception:
