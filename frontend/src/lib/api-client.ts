@@ -1839,6 +1839,197 @@ export interface AdminContentLibraryResponse {
   generated_at: string
 }
 
+export interface AdminReferralFunnelStage {
+  key: string
+  label: string
+  count: number | null
+}
+
+export interface AdminReferralFunnel {
+  captured: number | null
+  qualified: number | null
+  paid: number | null
+  currently_qualified: number | null
+  reversed: number | null
+  qualified_conversion_pct: number | null
+  paid_conversion_pct: number | null
+  paid_conversion_rate: number | null
+  reversal_pct: number | null
+  suppressed: boolean
+  stages: AdminReferralFunnelStage[]
+}
+
+export interface AdminReferralRewardStatusRow {
+  status: string
+  label: string
+  rewards: number
+  value_days: number
+  suppressed: boolean
+}
+
+export interface AdminReferralRewardSummary {
+  statuses: AdminReferralRewardStatusRow[]
+  total_rewards: number | null
+  total_value_days: number | null
+  issued: number | null
+  pending: number | null
+  reversed: number | null
+  unavailable: number | null
+  issued_value_days: number | null
+  pending_value_days: number | null
+  reversed_value_days: number | null
+  payout_status: string
+  payout_basis: string
+  suppressed_statuses: number
+  suppressed: boolean
+}
+
+export interface AdminReferralRejectionReason {
+  reason: string
+  label: string
+  count: number
+  suppressed: boolean
+}
+
+export interface AdminReferralRejectionReasons {
+  items: AdminReferralRejectionReason[]
+  suppressed_reasons: number
+  suppressed: boolean
+  basis: string
+}
+
+export interface AdminReferralQualifyBucket {
+  key: string
+  label: string
+  count: number
+  suppressed: boolean
+}
+
+export interface AdminReferralTimeToQualify {
+  basis: string
+  sample_size: number | null
+  average_hours: number | null
+  median_hours: number | null
+  p90_hours: number | null
+  average_days: number | null
+  median_days: number | null
+  p90_days: number | null
+  buckets: AdminReferralQualifyBucket[]
+  suppressed_buckets?: number
+  suppressed: boolean
+}
+
+export interface AdminReferralFraudSignal {
+  key: string
+  label: string
+  priority: string
+  threshold: string
+  referrers: number
+  captured: number
+  qualified: number
+  reversed: number
+  refunded: number
+  suppressed: boolean
+}
+
+export interface AdminReferralFraudQueueItem {
+  signal: string
+  label: string
+  priority: string
+  referrers: number
+  recommended_action: string
+  automatic_action: boolean
+}
+
+export interface AdminReferralFraudReview {
+  method: string
+  signals: AdminReferralFraudSignal[]
+  queue: AdminReferralFraudQueueItem[]
+  signal_count: number | null
+  suppressed_signals: number
+  may_overlap: boolean
+  manual_review_required: boolean
+  automatic_payout: boolean
+  automatic_punishment: boolean
+  suppressed: boolean
+}
+
+export interface AdminReferralPlanRow {
+  plan: string
+  captured: number
+  qualified: number
+  paid: number
+  reversed: number
+  rewards: number
+  paid_conversion_pct: number
+}
+
+export interface AdminReferralSummaryResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    applied: boolean
+    distinct_referred_users: number | null
+    suppressed_groups: number
+    rule: string
+  }
+  funnel: AdminReferralFunnel
+  reward_summary: AdminReferralRewardSummary
+  rejection_reasons: AdminReferralRejectionReasons
+  time_to_qualify: AdminReferralTimeToQualify
+  fraud_review: AdminReferralFraudReview
+  by_plan: AdminReferralPlanRow[]
+  activity: {
+    captured_in_range: number | null
+    qualified_in_range: number | null
+    reversed_in_range: number | null
+    rewards_issued_in_range: number | null
+    rewards_reversed_in_range: number | null
+  }
+  reconciliation: {
+    source: string
+    counts: Record<string, number>
+    qualified_without_qualified_at: number | null
+    qualified_without_reward: number | null
+    missing_payments: number | null
+    invalid_time_to_qualify: number | null
+    reconciled: boolean | null
+  }
+  payout: {
+    status: string
+    basis: string
+    automatic_payout: boolean
+  }
+  programme_issue: number
+  data_sources: string[]
+  privacy: {
+    aggregate_only: boolean
+    minimum_users: number
+    excluded_fields: string[]
+    reads_consent_gated_analytics: boolean
+  }
+  automation: {
+    automatic_payout: boolean
+    automatic_punishment: boolean
+    manual_review_required: boolean
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminOptimizationAcceptanceMetrics {
   candidates_shown: number
   decided: number
@@ -8578,6 +8769,42 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Content library adoption CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminReferralSummary(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+  }): Promise<AdminReferralSummaryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminReferralSummaryResponse>(`/admin/referrals/summary${suffix}`)
+  }
+
+  async downloadAdminReferralSummaryCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/referrals/summary/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Referral analytics CSV failed (${response.status})`)
     }
     return response.blob()
   }

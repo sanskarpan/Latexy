@@ -20,6 +20,7 @@ import AdminTrafficSources from '@/components/admin/AdminTrafficSources'
 import AdminLandingConversion from '@/components/admin/AdminLandingConversion'
 import AdminOnboardingAnalytics from '@/components/admin/AdminOnboardingAnalytics'
 import AdminPrivacyBreakdowns from '@/components/admin/AdminPrivacyBreakdowns'
+import AdminReferralAnalytics from '@/components/admin/AdminReferralAnalytics'
 import AdminTrialAttribution from '@/components/admin/AdminTrialAttribution'
 import AdminTrialHealth from '@/components/admin/AdminTrialHealth'
 import AdminCredentialMix from '@/components/admin/AdminCredentialMix'
@@ -1357,6 +1358,7 @@ export default function AdminGrowth() {
       <AdminPrivacyBreakdowns days={days} />
       <AdminTrialAttribution days={days} />
       <AdminTrialHealth />
+      <AdminReferralAnalytics days={days} />
       {retention && <Retention data={retention} />}
       {cost && (
         <Cost
