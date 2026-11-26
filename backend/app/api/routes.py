@@ -182,6 +182,7 @@ from .admin_feature_adoption_routes import router as admin_feature_adoption_rout
 from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_incident_routes import router as admin_incident_router
 from .admin_operations_routes import router as admin_operations_router
+from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
@@ -200,6 +201,7 @@ router.include_router(admin_incident_router)
 router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
+router.include_router(admin_privacy_breakdown_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)

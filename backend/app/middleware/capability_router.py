@@ -391,6 +391,9 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "landing_conversion_routes": frozenset({
         "get_admin_landing_conversion",
     }),
+    "admin_privacy_breakdown_routes": frozenset({
+        "get_admin_privacy_breakdowns",
+    }),
     "telemetry_routes": frozenset({
         "ingest_frontend_telemetry",
     }),

@@ -27,6 +27,7 @@ from ..database.models import (
     UsageAnalytics,
     User,
 )
+from .client_environment import normalize_country_code
 from .landing_conversion_service import (
     normalize_device_class,
     normalize_experiment,
@@ -1309,6 +1310,7 @@ class AnalyticsService:
         variant: Optional[str] = None,
         device_class: Optional[str] = None,
         feature: Optional[str] = None,
+        country: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> bool:
@@ -1338,6 +1340,9 @@ class AnalyticsService:
             metadata["device_class"] = normalize_device_class(device_class, user_agent)
         if feature:
             metadata["feature"] = feature
+        normalized_country = normalize_country_code(country)
+        if normalized_country is not None:
+            metadata["country"] = normalized_country
 
         return await self.track_event(
             db=db,

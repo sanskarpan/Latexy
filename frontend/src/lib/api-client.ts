@@ -2343,6 +2343,56 @@ export interface AdminLandingConversionResponse {
   generated_at: string
 }
 
+export interface AdminPrivacyBreakdownRow {
+  value: string
+  label: string
+  page_views: number | null
+  sessions: number | null
+  signups: number | null
+  signup_conversion: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminPrivacyBreakdownDimension {
+  key: 'device' | 'browser' | 'os' | 'country'
+  label: string
+  supported_values: string[] | null
+  rows: AdminPrivacyBreakdownRow[]
+  suppressed_rows: number
+  truncated_rows: number
+  unknown_label: string
+}
+
+export interface AdminPrivacyBreakdownResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_cohort_size: number
+  summary: {
+    page_views: number
+    sessions: number
+    signups: number | null
+    signup_conversion: number | null
+    suppressed_cells: string[]
+  }
+  signup_attribution: {
+    attributed: number | null
+    unattributed: number | null
+    description: string
+  }
+  dimensions: {
+    device: AdminPrivacyBreakdownDimension
+    browser: AdminPrivacyBreakdownDimension
+    os: AdminPrivacyBreakdownDimension
+    country: AdminPrivacyBreakdownDimension
+  }
+  suppressed_rows: number
+  suppressed_cells: number
+  truncated_rows: number
+  truncated_page_views: boolean
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -6375,6 +6425,21 @@ class ApiClient {
   async getAdminLandingConversion(days = 30): Promise<AdminLandingConversionResponse> {
     const qs = new URLSearchParams({ days: String(days) })
     return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
+  }
+
+  async getAdminPrivacyBreakdowns(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminPrivacyBreakdownResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminPrivacyBreakdownResponse>(
+      `/admin/analytics/privacy-breakdowns${suffix}`,
+    )
   }
 
   async getAdminTrialAttribution(params?: {
