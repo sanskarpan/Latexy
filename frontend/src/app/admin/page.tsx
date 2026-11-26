@@ -19,6 +19,7 @@ import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
+import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -958,6 +959,11 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'quality' && <AdminTemplatePerformance />}
+        {tab === 'quality' && (
+          <div className="mt-6">
+            <AdminOptimizationAcceptance />
+          </div>
+        )}
         {tab === 'billing' && <AdminBilling />}
         {tab === 'subscriptions' && <AdminSubscriptions />}
         {tab === 'email' && <AdminEmailHealth />}
