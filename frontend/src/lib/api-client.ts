@@ -4253,6 +4253,148 @@ export interface AdminFeatureAdoptionResponse {
   generated_at: string
 }
 
+export interface AdminCollaborationCommentMetrics {
+  total: number
+  resolved: number
+  resolution_rate: number | null
+  resolution_denominator: number
+  distinct_authors: number
+}
+
+export interface AdminCollaborationMentionMetrics {
+  total: number
+  delivered: number
+  pending: number
+  delivery_rate: number | null
+  delivery_denominator: number
+  delivery_attempts: number
+  distinct_mentioned_users: number
+}
+
+export interface AdminCollaborationReviewCommentMetrics {
+  total: number
+  resolved: number
+  resolution_rate: number | null
+  resolution_denominator: number
+  distinct_reviewers: number
+  distinct_review_links: number
+}
+
+export interface AdminCollaborationReviewLinkMetrics {
+  opens: number
+  distinct_links_opened: number
+}
+
+export interface AdminCollaborationTimeToFirstReview {
+  eligible_submissions: number
+  reviewed_submissions: number
+  denominator: number
+  median_hours: number | null
+  p90_hours: number | null
+  suppressed: boolean
+  suppression_threshold: number
+}
+
+export interface AdminCollaborationActivity {
+  comments: AdminCollaborationCommentMetrics
+  mentions: AdminCollaborationMentionMetrics
+  review_comments: AdminCollaborationReviewCommentMetrics
+  review_links: AdminCollaborationReviewLinkMetrics
+  time_to_first_review: AdminCollaborationTimeToFirstReview
+}
+
+export interface AdminCollaborationTenantRow {
+  tenant_id: string
+  name: string
+  slug: string
+  plan_id: string
+  active: boolean
+  suppressed: boolean
+  suppression_reason: string | null
+  member_count: number | null
+  cohort_count: number | null
+  cohort_member_count: number | null
+  submitted_resume_count: number | null
+  activity: AdminCollaborationActivity | null
+}
+
+export interface AdminCollaborationCohortRow {
+  cohort_id: string
+  name: string
+  suppressed: boolean
+  suppression_reason: string | null
+  member_count: number | null
+  submission_count: number | null
+  activity: AdminCollaborationActivity | null
+}
+
+export interface AdminCollaborationTenantReconciliation {
+  member_count: number | null
+  cohort_count: number | null
+  visible_cohort_count: number | null
+  suppressed_cohort_count: number | null
+  cohort_member_count: number | null
+  visible_cohort_member_count: number | null
+  suppressed_cohort_member_count: number | null
+  submitted_resume_count: number | null
+  visible_cohort_submission_count: number | null
+  suppressed_cohort_submission_count: number | null
+}
+
+export interface AdminCollaborationSelectedTenant extends AdminCollaborationTenantRow {
+  cohorts: AdminCollaborationCohortRow[]
+  suppressed_cohort_count: number | null
+  reconciliation: AdminCollaborationTenantReconciliation | null
+}
+
+export interface AdminCollaborationReconciliation {
+  tenant_count: number
+  active_tenant_count: number
+  visible_tenant_count: number
+  suppressed_tenant_count: number
+  tenant_member_count: number
+  visible_tenant_member_count: number
+  suppressed_tenant_member_count: number
+  distinct_tenant_members: number
+  cohort_count: number
+  visible_cohort_count: number
+  suppressed_cohort_count: number
+  cohort_member_count: number
+  visible_cohort_member_count: number
+  suppressed_cohort_member_count: number
+  cohort_submission_count: number
+  visible_cohort_submission_count: number
+  suppressed_cohort_submission_count: number
+}
+
+export interface AdminCollaborationResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  date_range: {
+    start: string
+    end: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    tenant_id: string | null
+    timezone: string
+  }
+  minimum_group_size: number
+  summary: AdminCollaborationActivity
+  tenants: AdminCollaborationTenantRow[]
+  suppressed_tenants: number
+  reconciliation: AdminCollaborationReconciliation
+  selected_tenant: AdminCollaborationSelectedTenant | null
+  definitions: Record<string, string>
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
@@ -7576,6 +7718,21 @@ class ApiClient {
     if (params?.feature) qs.set('feature', params.feature)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminFeatureAdoptionResponse>(`/admin/analytics/feature-adoption${suffix}`)
+  }
+
+  async getAdminCollaborationAnalytics(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    tenant_id?: string
+  }): Promise<AdminCollaborationResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCollaborationResponse>(`/admin/analytics/collaboration${suffix}`)
   }
 
   async getAdminTemplatePerformance(params?: {
