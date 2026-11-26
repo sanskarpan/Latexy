@@ -74,9 +74,11 @@ async def _count_pending_invitations(tenant_id: str) -> tuple[int, bool]:
             return 0, False
         count = 0
         scanned = 0
+        truncated = False
         async for key in redis.scan_iter(match="tenant_invite:*", count=250):
             scanned += 1
             if scanned > _MAX_INVITATION_KEYS:
+                truncated = True
                 logger.warning(
                     "Tenant overview invitation scan truncated at %s keys",
                     _MAX_INVITATION_KEYS,
@@ -91,7 +93,7 @@ async def _count_pending_invitations(tenant_id: str) -> tuple[int, bool]:
                 continue
             if isinstance(payload, Mapping) and payload.get("tenant_id") == tenant_id:
                 count += 1
-        return count, True
+        return count, not truncated
     except Exception as exc:  # pragma: no cover - cache outage path
         logger.warning(
             "Tenant overview invitation count unavailable (%s)",
