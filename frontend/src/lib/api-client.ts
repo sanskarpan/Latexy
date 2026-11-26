@@ -1303,6 +1303,109 @@ export interface AdminTemplatePerformanceResponse {
   generated_at: string
 }
 
+export interface AdminOptimizationAcceptanceMetrics {
+  candidates_shown: number
+  decided: number
+  accepted: number
+  rejected: number
+  discarded: number
+  undecided: number
+  acceptance_rate_pct: number
+  decision_rate_pct: number
+  accepted_of_shown_pct: number
+  users: number
+}
+
+export interface AdminOptimizationAcceptanceDayRow extends AdminOptimizationAcceptanceMetrics {
+  date: string
+}
+
+export interface AdminOptimizationAcceptanceFeatureRow extends AdminOptimizationAcceptanceMetrics {
+  feature: string
+}
+
+export interface AdminOptimizationAcceptancePersonaRow extends AdminOptimizationAcceptanceMetrics {
+  persona: string
+}
+
+export interface AdminOptimizationAcceptancePlanRow extends AdminOptimizationAcceptanceMetrics {
+  plan: string
+}
+
+export interface AdminOptimizationAcceptanceSourceRow extends AdminOptimizationAcceptanceMetrics {
+  source: string
+}
+
+export interface AdminOptimizationAcceptanceResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    feature: string | null
+    persona: string | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    filtered_suppressed: boolean
+    suppressed_rows: number
+    by_dimension: Record<'date' | 'feature' | 'persona' | 'plan' | 'source', number>
+  }
+  totals: AdminOptimizationAcceptanceMetrics
+  by_day: AdminOptimizationAcceptanceDayRow[]
+  by_feature: AdminOptimizationAcceptanceFeatureRow[]
+  by_persona: AdminOptimizationAcceptancePersonaRow[]
+  by_plan: AdminOptimizationAcceptancePlanRow[]
+  by_source: AdminOptimizationAcceptanceSourceRow[]
+  reconciliation: {
+    tables: string[]
+    run_rows_scanned: number
+    run_expired_rows_excluded: number
+    run_candidates_shown: number
+    run_decision_keys: number
+    run_unmatched_decisions: number
+    run_invalid_decisions: number
+    run_duplicate_patch_ids: number
+    suggestion_rows_scanned: number
+    suggestion_accepted: number
+    suggestion_rejected: number
+    suggestion_discarded: number
+    suggestion_invalid_status: number
+    suggestion_filtered_out: number
+    candidates_shown: number
+    decided: number
+    accepted: number
+    rejected: number
+    discarded: number
+    undecided: number
+    reconciled: boolean
+    hidden_by_suppression: boolean
+  }
+  retention: {
+    run_decisions: string
+    suggestion_decisions: string
+  }
+  persona_source: string
+  feature_source: string
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  Entitlements / Admin Control Plane                                 //
 // ------------------------------------------------------------------ //
@@ -6723,6 +6826,52 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Template performance CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminOptimizationAcceptance(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    feature?: string
+    persona?: string
+  }): Promise<AdminOptimizationAcceptanceResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.persona) qs.set('persona', params.persona)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminOptimizationAcceptanceResponse>(
+      `/admin/analytics/optimization-acceptance${suffix}`,
+    )
+  }
+
+  async downloadAdminOptimizationAcceptanceCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    feature?: string
+    persona?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.persona) qs.set('persona', params.persona)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/analytics/optimization-acceptance/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Optimization acceptance CSV failed (${response.status})`)
     }
     return response.blob()
   }
