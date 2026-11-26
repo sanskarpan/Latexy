@@ -3388,6 +3388,161 @@ export interface AdminTrialHealthResponse {
   notes: string[]
 }
 
+export interface AdminTeamSeatAging {
+  pending: number
+  over_7_days: number
+  over_14_days: number
+  over_30_days: number
+  oldest_pending_days: number
+}
+
+export interface AdminTeamSeatCurrent {
+  owners: number
+  seats: number
+  accepted_ever: number
+  active: number
+  pending: number
+  removed: number
+  other: number
+  seat_cap: number
+  seat_capacity: number
+  utilization_pct: number | null
+  over_capacity: number
+  at_or_over_cap: boolean
+  aging_invites: AdminTeamSeatAging
+}
+
+export interface AdminTeamSeatInvitations {
+  invited: number
+  accepted_ever: number
+  active_now: number
+  pending_now: number
+  removed_now: number
+  other_now: number
+  invite_to_accept_pct: number | null
+  invite_to_active_pct: number | null
+  median_accept_hours: number | null
+  accept_samples: number
+  median_accept_suppressed: boolean
+}
+
+export interface AdminTeamSeatSubscription {
+  plan_id: string
+  status: string
+  current_period_end: string | null
+  created_at: string | null
+}
+
+export interface AdminTeamSeatTenantRef {
+  tenant_id: string
+  tenant_name: string
+  tenant_plan_id: string
+  tenant_max_members: number
+}
+
+export interface AdminTeamSeatOwner {
+  owner_user_id: string
+  owner_plan: string
+  owner_subscription_status: string
+  team_plan_active: boolean
+  subscription: AdminTeamSeatSubscription | null
+  tenant: AdminTeamSeatTenantRef | null
+  current: AdminTeamSeatCurrent
+  invitations: AdminTeamSeatInvitations | null
+  invitation_suppressed: boolean
+}
+
+export interface AdminTeamSeatTenantMembers {
+  active_members: number
+  member_cap: number
+  utilization_pct: number | null
+  at_or_over_cap: boolean
+}
+
+export interface AdminTeamSeatTenant {
+  tenant_id: string
+  tenant_name: string
+  tenant_plan_id: string
+  tenant_max_members: number
+  team_owners: number
+  team_seat_cap: number
+  current: AdminTeamSeatCurrent | null
+  invitations: AdminTeamSeatInvitations | null
+  seat_section_suppressed: boolean
+  tenant_members: AdminTeamSeatTenantMembers | null
+  member_section_suppressed: boolean
+}
+
+export interface AdminTeamSeatResponse {
+  generated_at: string
+  days: number
+  date_range: {
+    start: string
+    end: string
+    start_date: string
+    end_date: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    owner_id: string | null
+    tenant_id: string | null
+    tenant_name: string | null
+    days: number
+    start_date: string
+    end_date: string
+    timezone: string
+  }
+  minimum_group_size: number
+  suppressed: boolean
+  suppression: {
+    minimum_group_size: number
+    rule: string
+    summary_suppressed: boolean
+    invitation_section_suppressed: boolean
+    suppressed_owner_rows: number
+    suppressed_tenant_rows: number
+    suppressed_invitation_sections: number
+    suppressed_seat_sections: number
+  }
+  summary: {
+    current: AdminTeamSeatCurrent | null
+    invitations: AdminTeamSeatInvitations | null
+    team_plan_owners: number
+    inactive_plan_owners_with_seats: number
+    owners_at_or_over_cap: number
+  }
+  owners: AdminTeamSeatOwner[]
+  tenants: AdminTeamSeatTenant[]
+  reconciliation: {
+    source_tables: string[]
+    seats_scanned: number
+    seats_after_filters: number
+    rows_truncated: boolean
+    owner_rows_published: number
+    tenant_rows_published: number
+    owners_with_multiple_tenants: number
+    subscriptions_scanned: number
+    unassigned_owners: number
+    unassigned_seats: number
+    tenant_attributed_seats: number
+    period_invitations: number
+    period_bucket_total: number
+    checks: Array<{ key: string; ok: boolean }>
+    all_checks_passed: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    invitee_emails_included: boolean
+    invitee_user_ids_included: boolean
+    owner_user_ids_included: boolean
+    tenant_ids_included: boolean
+    fields_read: string[]
+    fields_excluded: string[]
+  }
+  notes: string[]
+}
+
 export interface AdminPlanHealthCohort {
   cohort: string
   users: number
@@ -7424,6 +7579,23 @@ class ApiClient {
     return this.request<AdminPlanHealthResponse>(
       `/admin/analytics/plan-health?days=${encodeURIComponent(String(days))}`,
     )
+  }
+
+  async getAdminTeamSeatUtilization(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    owner_id?: string
+    tenant_id?: string
+  }): Promise<AdminTeamSeatResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.owner_id) qs.set('owner_id', params.owner_id)
+    if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTeamSeatResponse>(`/admin/analytics/team-seats${suffix}`)
   }
 
   async getAdminAiCost(params?: {
