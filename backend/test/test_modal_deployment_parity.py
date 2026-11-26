@@ -127,6 +127,7 @@ def test_optional_modal_billing_secret_is_validated_before_selected_redis_overla
             and call.func.value.attr == "Secret"
             and call.func.attr == "from_name"] == [
                 "latexy-backend-secrets", "latexy-storage", "latexy-posthog",
+                "latexy-resend-webhook",
             ]
     runtime_secrets = next(
         node for node in tree.body if isinstance(node, ast.Assign)

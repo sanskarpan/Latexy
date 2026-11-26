@@ -766,6 +766,26 @@ export interface AdminRecentEvent {
   created_at: string | null
 }
 
+export type AdminActivityCategory = 'signup' | 'payment' | 'compile' | 'optimize' | 'error'
+
+export interface AdminActivityEvent {
+  id: string
+  category: AdminActivityCategory
+  event: string
+  created_at: string
+  href: string | null
+}
+
+export interface AdminActivityFeedResponse {
+  items: AdminActivityEvent[]
+  next_cursor: string | null
+  has_more: boolean
+  mode: 'live' | 'fallback'
+  degraded: boolean
+  detail: string | null
+  generated_at: string
+}
+
 export interface AdminOperationsSummary {
   queued_jobs: number
   processing_jobs: number
@@ -1300,6 +1320,109 @@ export interface AdminTemplatePerformanceResponse {
     compilation_failed: number
     reconciled: boolean
   }
+  generated_at: string
+}
+
+export interface AdminOptimizationAcceptanceMetrics {
+  candidates_shown: number
+  decided: number
+  accepted: number
+  rejected: number
+  discarded: number
+  undecided: number
+  acceptance_rate_pct: number
+  decision_rate_pct: number
+  accepted_of_shown_pct: number
+  users: number
+}
+
+export interface AdminOptimizationAcceptanceDayRow extends AdminOptimizationAcceptanceMetrics {
+  date: string
+}
+
+export interface AdminOptimizationAcceptanceFeatureRow extends AdminOptimizationAcceptanceMetrics {
+  feature: string
+}
+
+export interface AdminOptimizationAcceptancePersonaRow extends AdminOptimizationAcceptanceMetrics {
+  persona: string
+}
+
+export interface AdminOptimizationAcceptancePlanRow extends AdminOptimizationAcceptanceMetrics {
+  plan: string
+}
+
+export interface AdminOptimizationAcceptanceSourceRow extends AdminOptimizationAcceptanceMetrics {
+  source: string
+}
+
+export interface AdminOptimizationAcceptanceResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    feature: string | null
+    persona: string | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    filtered_suppressed: boolean
+    suppressed_rows: number
+    by_dimension: Record<'date' | 'feature' | 'persona' | 'plan' | 'source', number>
+  }
+  totals: AdminOptimizationAcceptanceMetrics
+  by_day: AdminOptimizationAcceptanceDayRow[]
+  by_feature: AdminOptimizationAcceptanceFeatureRow[]
+  by_persona: AdminOptimizationAcceptancePersonaRow[]
+  by_plan: AdminOptimizationAcceptancePlanRow[]
+  by_source: AdminOptimizationAcceptanceSourceRow[]
+  reconciliation: {
+    tables: string[]
+    run_rows_scanned: number
+    run_expired_rows_excluded: number
+    run_candidates_shown: number
+    run_decision_keys: number
+    run_unmatched_decisions: number
+    run_invalid_decisions: number
+    run_duplicate_patch_ids: number
+    suggestion_rows_scanned: number
+    suggestion_accepted: number
+    suggestion_rejected: number
+    suggestion_discarded: number
+    suggestion_invalid_status: number
+    suggestion_filtered_out: number
+    candidates_shown: number
+    decided: number
+    accepted: number
+    rejected: number
+    discarded: number
+    undecided: number
+    reconciled: boolean
+    hidden_by_suppression: boolean
+  }
+  retention: {
+    run_decisions: string
+    suggestion_decisions: string
+  }
+  persona_source: string
+  feature_source: string
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
   generated_at: string
 }
 
@@ -2343,6 +2466,56 @@ export interface AdminLandingConversionResponse {
   generated_at: string
 }
 
+export interface AdminPrivacyBreakdownRow {
+  value: string
+  label: string
+  page_views: number | null
+  sessions: number | null
+  signups: number | null
+  signup_conversion: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminPrivacyBreakdownDimension {
+  key: 'device' | 'browser' | 'os' | 'country'
+  label: string
+  supported_values: string[] | null
+  rows: AdminPrivacyBreakdownRow[]
+  suppressed_rows: number
+  truncated_rows: number
+  unknown_label: string
+}
+
+export interface AdminPrivacyBreakdownResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_cohort_size: number
+  summary: {
+    page_views: number
+    sessions: number
+    signups: number | null
+    signup_conversion: number | null
+    suppressed_cells: string[]
+  }
+  signup_attribution: {
+    attributed: number | null
+    unattributed: number | null
+    description: string
+  }
+  dimensions: {
+    device: AdminPrivacyBreakdownDimension
+    browser: AdminPrivacyBreakdownDimension
+    os: AdminPrivacyBreakdownDimension
+    country: AdminPrivacyBreakdownDimension
+  }
+  suppressed_rows: number
+  suppressed_cells: number
+  truncated_rows: number
+  truncated_page_views: boolean
+  notes: string[]
+  generated_at: string
+}
+
 export type SignupAuthProvider = 'email' | 'google' | 'github' | 'oidc' | 'passkey' | 'unknown'
 export type SignupOAuthFailureCode =
   | 'access_denied'
@@ -2520,6 +2693,97 @@ export interface AdminTrialAttributionResponse {
   truncated: Record<string, number>
   notes: string[]
   generated_at: string
+}
+
+export interface AdminTrialHealthBucket {
+  label: string
+  min: number
+  max: number | null
+  devices?: number | null
+  clusters?: number | null
+  suppressed: boolean
+}
+
+export interface AdminTrialHealthReason {
+  key: string
+  label: string
+  definition: string
+  devices: number | null
+  suppressed: boolean
+}
+
+export interface AdminTrialHealthWindow {
+  days: number
+  start: string
+  end: string
+  trial_starts: number
+  unique_devices: number
+  blocked_devices: number
+  blocked_pct: number
+  devices_with_usage: number
+  devices_at_or_above_limit: number
+  conversion: {
+    basis: string
+    attributed_trials: number | null
+    paid_trials: number | null
+    trial_to_paid_pct: number | null
+    suppressed: boolean
+  }
+  usage_distribution: {
+    total_devices: number
+    hidden: boolean
+    buckets: AdminTrialHealthBucket[]
+    suppressed_buckets: number
+  }
+  repeat_device_distribution: {
+    basis: string
+    devices_with_ip: number
+    devices_without_ip: number
+    clusters: number | null
+    repeat_clusters: number | null
+    devices_in_repeat_clusters: number | null
+    abuse_threshold_devices: number
+    abuse_clusters: number | null
+    abuse_devices: number | null
+    hidden: boolean
+    buckets: AdminTrialHealthBucket[]
+    suppressed_buckets: number
+  }
+  rejection_reasons: {
+    items: AdminTrialHealthReason[]
+    suppressed: number
+    truncated: boolean
+    overlap: boolean
+  }
+}
+
+export interface AdminTrialHealthResponse {
+  generated_at: string
+  windows_days: number[]
+  minimum_cohort_size: number
+  trial_limit: number
+  deep_analysis_trial_limit: number
+  repeat_device_cluster_threshold: number
+  max_scanned_rows: number
+  windows: AdminTrialHealthWindow[]
+  reconciliation: {
+    trial_starts_7d: number
+    trial_starts_30d: number
+    trial_starts_90d: number
+    trial_starts_8_to_30d: number
+    trial_starts_31_to_90d: number
+    window_sum_equals_90d: boolean
+    scanned_rows: number
+    rows_truncated: boolean
+    deep_analysis_rows_scanned: number
+    deep_analysis_rows_truncated: boolean
+    devices_with_ip_90d: number
+    devices_without_ip_90d: number
+    attributed_trials_90d: number | null
+    paid_trials_90d: number | null
+    unattributed_trials_90d: number | null
+  }
+  notes: string[]
 }
 
 export type AdminEmailHealthStatus = 'ok' | 'watch' | 'review' | 'unconfigured'
@@ -4445,6 +4709,17 @@ class ApiClient {
 
   async getAdminAnalyticsOverview(days: number = 30): Promise<AdminAnalyticsOverviewResponse> {
     return this.request<AdminAnalyticsOverviewResponse>(`/analytics/admin/overview?days=${days}`)
+  }
+
+  async getAdminActivityFeed(params?: {
+    cursor?: string | null
+    limit?: number
+  }): Promise<AdminActivityFeedResponse> {
+    const qs = new URLSearchParams()
+    if (params?.cursor) qs.set('cursor', params.cursor)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminActivityFeedResponse>(`/admin/analytics/activity${suffix}`)
   }
 
   // ---------------------------------------------------------------- //
@@ -6377,6 +6652,21 @@ class ApiClient {
     return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
   }
 
+  async getAdminPrivacyBreakdowns(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminPrivacyBreakdownResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminPrivacyBreakdownResponse>(
+      `/admin/analytics/privacy-breakdowns${suffix}`,
+    )
+  }
+
   async getAdminTrialAttribution(params?: {
     days?: number
     start_date?: string
@@ -6390,6 +6680,10 @@ class ApiClient {
     return this.request<AdminTrialAttributionResponse>(
       `/admin/analytics/trial-attribution${suffix}`,
     )
+  }
+
+  async getAdminTrialHealth(): Promise<AdminTrialHealthResponse> {
+    return this.request<AdminTrialHealthResponse>('/admin/analytics/trial-health')
   }
 
   async getAdminAiCost(params?: {
@@ -6563,6 +6857,52 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Template performance CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminOptimizationAcceptance(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    feature?: string
+    persona?: string
+  }): Promise<AdminOptimizationAcceptanceResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.persona) qs.set('persona', params.persona)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminOptimizationAcceptanceResponse>(
+      `/admin/analytics/optimization-acceptance${suffix}`,
+    )
+  }
+
+  async downloadAdminOptimizationAcceptanceCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    feature?: string
+    persona?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.persona) qs.set('persona', params.persona)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/analytics/optimization-acceptance/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Optimization acceptance CSV failed (${response.status})`)
     }
     return response.blob()
   }

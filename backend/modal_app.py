@@ -367,6 +367,9 @@ _base_secrets = [
     # Dedicated, opt-in analytics secret so rotating the PostHog project token
     # never requires rewriting the opaque backend secret.
     modal.Secret.from_name("latexy-posthog"),
+    # Resend (Svix) webhook signing secret. Kept separate so rotating it never
+    # requires rewriting the opaque backend secret.
+    modal.Secret.from_name("latexy-resend-webhook"),
 ]
 
 # Dodo credentials are needed by the public API and its read-only billing
