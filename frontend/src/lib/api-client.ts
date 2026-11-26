@@ -1142,6 +1142,85 @@ export interface AdminCompileErrorsResponse {
   generated_at: string
 }
 
+export interface AdminTemplatePerformanceRow {
+  rank: number
+  template_id: string
+  template_name: string | null
+  category: string | null
+  deleted: boolean
+  active: boolean
+  users: number
+  views: number
+  selects: number
+  uses: number
+  exports: number
+  usage_events: number
+  compile_success: number
+  compile_failed: number
+  compile_attempts: number
+  success_rate: number
+  last_used_at: string | null
+}
+
+export interface AdminTemplatePerformanceTrendPoint {
+  date: string
+  views: number
+  selects: number
+  uses: number
+  exports: number
+  compile_success: number
+  compile_failed: number
+}
+
+export interface AdminTemplatePerformanceResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    template: string | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  candidate_templates: number
+  suppressed: boolean
+  suppressed_templates: number
+  ranking: AdminTemplatePerformanceRow[]
+  trend: AdminTemplatePerformanceTrendPoint[]
+  totals: {
+    templates: number
+    suppressed_templates: number
+    views: number
+    selects: number
+    uses: number
+    exports: number
+    usage_events: number
+    compile_success: number
+    compile_failed: number
+    compile_attempts: number
+  }
+  reconciliation: {
+    source: 'compilations'
+    attributed_compile_success: number
+    attributed_compile_failed: number
+    ranked_compile_success: number
+    ranked_compile_failed: number
+    suppressed_compile_success: number
+    suppressed_compile_failed: number
+    unattributed_compile_success: number
+    unattributed_compile_failed: number
+    compilation_success: number
+    compilation_failed: number
+    reconciled: boolean
+  }
+  generated_at: string
+}
+
 // ------------------------------------------------------------------ //
 //  Entitlements / Admin Control Plane                                 //
 // ------------------------------------------------------------------ //
@@ -5379,6 +5458,44 @@ class ApiClient {
   }
 
   /**
+   * Privacy-safe template catalog event. Only the allowlisted event name, the
+   * public template id and a browser-generated retry id reach the server; the
+   * plan is resolved server-side from the account.
+   */
+  async trackTemplateEvent(
+    templateId: string,
+    event: 'view' | 'select',
+    eventId?: string,
+  ): Promise<void> {
+    let retryId = eventId
+    if (!retryId) {
+      try {
+        retryId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      } catch {
+        retryId = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      }
+    }
+    captureAnalyticsEvent('template_event', {
+      template_id: templateId,
+      template_event: event,
+      surface: 'templates',
+    })
+    try {
+      await this.request<{ recorded: string; duplicate: boolean }>(
+        `/templates/${encodeURIComponent(templateId)}/events`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ event, event_id: retryId }),
+        },
+      )
+    } catch {
+      // Analytics must never block browsing or document creation.
+    }
+  }
+
+  /**
    * Anonymous signup-attempt counter. Only the allowlisted provider label is
    * sent; the backend never uses it to attribute an account. Account provider,
    * completion and verification always come from server-owned auth state.
@@ -6120,6 +6237,48 @@ class ApiClient {
     if (params?.feature) qs.set('feature', params.feature)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminFeatureAdoptionResponse>(`/admin/analytics/feature-adoption${suffix}`)
+  }
+
+  async getAdminTemplatePerformance(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    template?: string
+  }): Promise<AdminTemplatePerformanceResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTemplatePerformanceResponse>(
+      `/admin/templates/performance${suffix}`,
+    )
+  }
+
+  async downloadAdminTemplatePerformanceCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    template?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/templates/performance/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Template performance CSV failed (${response.status})`)
+    }
+    return response.blob()
   }
 
   async getAdminAttention(): Promise<AdminAttentionResponse> {

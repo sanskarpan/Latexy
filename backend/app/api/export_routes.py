@@ -28,6 +28,7 @@ from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..services.analytics_service import analytics_service
 from ..services.document_export_service import document_export_service
 from ..services.json_resume_interchange_service import json_resume_interchange_service
+from ..services.template_analytics_service import template_analytics_service
 from ..utils.bounded_io import BoundedReadError, read_file_bounded
 from ..utils.file_utils import get_job_files
 from ..utils.uuid_guard import ensure_uuid
@@ -400,13 +401,25 @@ async def export_resume(
             content_bytes = _convert_latex(resume.latex_content, fmt)
         mime_type, filename = EXPORT_FORMATS[fmt]
 
-        # Activation milestone used by the admin funnel. FastAPI runs this after
-        # the body is sent; direct service tests use an empty collector.
+        # Activation milestone used by the admin funnel. When the résumé came
+        # from a catalog template, preserve only the public template id and
+        # server-derived plan for aggregate template performance reporting.
+        template_id = (
+            str(resume.selected_template_id)
+            if getattr(resume, "selected_template_id", None)
+            else None
+        )
+        plan = await template_analytics_service.resolve_actor_plan(db, user_id)
         background_tasks.add_task(
             analytics_service.track_event_in_own_session,
             event_type="export",
             user_id=user_id,
-            metadata={"resource_type": "resume", "format": fmt},
+            metadata={
+                "resource_type": "resume",
+                "format": fmt,
+                "template_id": template_id,
+                "plan": plan,
+            },
         )
 
         return Response(

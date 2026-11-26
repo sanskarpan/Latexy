@@ -149,9 +149,11 @@ router.include_router(export_router)
 router.include_router(google_drive_router)
 
 # Include Template routes
+from .template_analytics_routes import router as template_analytics_router
 from .template_routes import router as template_router
 
 router.include_router(template_router)
+router.include_router(template_analytics_router)
 
 # Include Cover Letter routes
 from .cover_letter_routes import router as cover_letter_router
@@ -180,6 +182,7 @@ from .admin_operations_routes import router as admin_operations_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
+from .admin_template_performance_routes import router as admin_template_performance_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
@@ -193,6 +196,7 @@ router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
 router.include_router(admin_subscription_router)
+router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 
 # Data-subject GDPR rights are intentionally outside the admin capability
