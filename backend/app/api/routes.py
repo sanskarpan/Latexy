@@ -184,6 +184,7 @@ from .admin_ai_latency_retry_routes import router as admin_ai_latency_retry_rout
 from .admin_alert_routes import router as admin_alert_router
 from .admin_ats_score_routes import router as admin_ats_score_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
+from .admin_career_adoption_routes import router as admin_career_adoption_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
@@ -213,6 +214,7 @@ router.include_router(admin_ai_latency_retry_router)
 router.include_router(admin_ai_credential_mix_router)
 router.include_router(admin_feature_adoption_router)
 router.include_router(admin_billing_reconciliation_router)
+router.include_router(admin_career_adoption_router)
 router.include_router(admin_checkout_funnel_router)
 router.include_router(admin_compile_error_router)
 router.include_router(admin_content_library_router)

@@ -27,6 +27,10 @@ from ..middleware.auth_middleware import require_admin
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
+from ..services.career_feature_events import (
+    FEATURE_CAREER_PATHS,
+    record_generation_event,
+)
 from ..services.career_path_service import career_path_service
 from ..services.entitlement_service import entitlement_service
 from ..services.esco_service import ESCO_LANGUAGES, ESCO_VERSION, esco_service
@@ -216,6 +220,10 @@ async def analyze_career_path(
         path_roles = [role_map[rid] for rid in analysis.path_role_ids if rid in role_map]
 
     target_role = await db.get(CareerRole, analysis.target_role_id) if analysis.target_role_id else None
+
+    await record_generation_event(
+        db, feature=FEATURE_CAREER_PATHS, user_id=user_id
+    )
 
     return _analysis_to_schema(analysis, path_roles=path_roles, target_role=target_role)
 

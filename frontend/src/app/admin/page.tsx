@@ -19,6 +19,7 @@ import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
 import AdminDunningRecovery from '@/components/admin/AdminDunningRecovery'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
+import AdminCareerAdoption from '@/components/admin/AdminCareerAdoption'
 import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
@@ -966,6 +967,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         )}
         {tab === 'operations' && <AdminIncidentTimeline />}
         {tab === 'product' && <AdminProduct />}
+        {tab === 'product' && <AdminCareerAdoption />}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'quality' && <AdminTemplatePerformance />}
         {tab === 'quality' && (

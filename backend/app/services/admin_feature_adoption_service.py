@@ -31,8 +31,14 @@ SUBSCRIPTION_STATUSES = ("active", "trialing", "past_due", "cancel_scheduled")
 # matrix (and out of the response).
 FEATURE_EVENT_ALIASES = {
     "ai_optimization": "llm_optimize",
+    "career_analysis_completed": "career_paths",
+    "career_analysis_generated": "career_paths",
     "cover_letter": "cover_letters",
+    "cover_letter_generated": "cover_letters",
     "cover_letter_generation": "cover_letters",
+    "interview_prep_completed": "interview_prep",
+    "interview_prep_generated": "interview_prep",
+    "interview_prep_generation": "interview_prep",
     "optimize": "llm_optimize",
     "resume_optimization": "llm_optimize",
 }
