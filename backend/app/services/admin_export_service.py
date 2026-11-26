@@ -1278,19 +1278,21 @@ async def load_digest_config(db: AsyncSession, actor: AdminActor) -> DigestConfi
 
 async def list_admin_recipients(db: AsyncSession, *, current_actor_user_id: str) -> list[dict[str, Any]]:
     """List verified administrator ids without exposing emails or names."""
-    configured = settings.admin_email_set()
+    configured = sorted(email.lower() for email in settings.admin_email_set() if email)
+    eligible = [User.role == "admin"]
+    if configured:
+        # Configured operator mailboxes may belong to non-admin accounts.
+        eligible.append(func.lower(User.email).in_(configured))
     rows = (
         await db.execute(
             select(User.id, User.email, User.role)
-            .where(User.email_verified.is_(True), User.role.in_(["admin", "user", "support"]))
+            .where(User.email_verified.is_(True), or_(*eligible))
             .order_by(User.id)
             .limit(200)
         )
     ).all()
     result: list[dict[str, Any]] = []
-    for user_id, email, role in rows:
-        if role != "admin" and (not email or str(email).lower() not in configured):
-            continue
+    for user_id, _email, _role in rows:
         result.append(
             {
                 "user_id": str(user_id),
