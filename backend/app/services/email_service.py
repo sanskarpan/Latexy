@@ -13,6 +13,7 @@ import smtplib
 import ssl
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import datetime
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -614,6 +615,180 @@ def render_weekly_digest_email(
         f"Unsubscribe: {settings.FRONTEND_URL}/settings"
     )
     return html, text
+
+
+def render_account_verification_email(
+    user_name: Optional[str], verification_url: str
+) -> tuple[str, str]:
+    """Return a privacy-minimised email-verification message.
+
+    The one-time link is interpolated into the body only. Callers must never
+    return it, audit it or log it.
+    """
+    safe_name = escape(user_name or "there")
+    safe_url = escape(verification_url, quote=True)
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#a78bfa;margin-top:0">Verify your Latexy email</h2>
+    <p>Hi {safe_name},</p>
+    <p>A Latexy support agent asked us to send you a fresh verification link.</p>
+    <p style="margin-top:24px">
+      <a href="{safe_url}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+        Verify email
+      </a>
+    </p>
+    <p style="color:#71717a;font-size:12px;margin-top:28px">
+      This link expires in one hour and can be used once.<br>
+      If you did not expect this message, you can ignore it.
+    </p>
+  </div>
+</body>
+</html>"""
+    text = (
+        "Verify your Latexy email\n\n"
+        f"Hi {user_name or 'there'},\n\n"
+        "A Latexy support agent asked us to send you a fresh verification link.\n\n"
+        f"Verify email: {verification_url}\n\n"
+        "This link expires in one hour and can be used once.\n"
+        "If you did not expect this message, you can ignore it."
+    )
+    return html, text
+
+
+def render_account_password_reset_email(reset_url: str) -> tuple[str, str]:
+    """Return a password-reset message for a support-triggered reset."""
+    safe_url = escape(reset_url, quote=True)
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#a78bfa;margin-top:0">Reset your Latexy password</h2>
+    <p>A Latexy support agent asked us to send you a password reset link.</p>
+    <p style="margin-top:24px">
+      <a href="{safe_url}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+        Reset password
+      </a>
+    </p>
+    <p style="color:#71717a;font-size:12px;margin-top:28px">
+      This link expires in one hour and can be used once. Resetting your
+      password signs out existing sessions.<br>
+      If you did not expect this message, contact support and do not share this link.
+    </p>
+  </div>
+</body>
+</html>"""
+    text = (
+        "Reset your Latexy password\n\n"
+        "A Latexy support agent asked us to send you a password reset link.\n\n"
+        f"Reset password: {reset_url}\n\n"
+        "This link expires in one hour and can be used once. Resetting your "
+        "password signs out existing sessions.\n"
+        "If you did not expect this message, contact support and do not share this link."
+    )
+    return html, text
+
+
+def _format_minor_amount(amount_minor: int, currency: str) -> str:
+    currency_label = escape((currency or "").upper()) or ""
+    return f"{currency_label} {int(amount_minor) / 100:,.2f}".strip()
+
+
+def render_payment_receipt_email(
+    user_name: Optional[str],
+    *,
+    payment_reference: str,
+    amount_minor: int,
+    currency: str,
+    paid_at: Optional[datetime],
+    line_items: Sequence[dict] = (),
+    line_items_state: str = "not_linked",
+) -> tuple[str, str]:
+    """Return a receipt from the local ledger plus optional provider items.
+
+    Provider line items are descriptive only; the ledger amount remains the
+    authoritative total. No customer identity, provider credential or action
+    token is included.
+    """
+    safe_name = escape(user_name or "there")
+    safe_reference = escape(str(payment_reference), quote=True)
+    total = _format_minor_amount(amount_minor, currency)
+    paid_label = paid_at.strftime("%Y-%m-%d %H:%M UTC") if paid_at else "recorded in your account"
+    item_rows = []
+    item_text_lines = []
+    for item in list(line_items)[:50]:
+        if not isinstance(item, dict):
+            continue
+        description = escape(str(item.get("description") or "Line item"))
+        quantity = item.get("quantity")
+        quantity = quantity if type(quantity) is int else 1
+        item_amount = item.get("amount_minor")
+        item_currency = str(item.get("currency") or currency or "")
+        amount_label = (
+            _format_minor_amount(item_amount, item_currency)
+            if type(item_amount) is int
+            else "—"
+        )
+        item_rows.append(
+            "<tr>"
+            f'<td style="padding:6px 0;border-top:1px solid #27272a">{description}</td>'
+            f'<td style="padding:6px 0;border-top:1px solid #27272a;text-align:right">{quantity}</td>'
+            f'<td style="padding:6px 0;border-top:1px solid #27272a;text-align:right">{amount_label}</td>'
+            "</tr>"
+        )
+        item_text_lines.append(f"- {description} × {quantity}: {amount_label}")
+    items_html = (
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:16px">'
+        '<thead><tr style="color:#a1a1aa;text-align:left">'
+        '<th style="padding-bottom:4px">Item</th>'
+        '<th style="padding-bottom:4px;text-align:right">Qty</th>'
+        '<th style="padding-bottom:4px;text-align:right">Amount</th>'
+        "</tr></thead><tbody>"
+        + "".join(item_rows)
+        + "</tbody></table>"
+        if item_rows
+        else ""
+    )
+    source_note = (
+        "Item details were provided by the payment processor."
+        if item_rows
+        else "The payment processor did not expose itemised lines for this payment; the total below comes from the Latexy billing ledger."
+    )
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#a78bfa;margin-top:0">Your Latexy payment receipt</h2>
+    <p>Hi {safe_name},</p>
+    <p>A copy of your receipt is below.</p>
+    <p style="font-size:13px;color:#a1a1aa;margin-top:20px">
+      Reference <span style="font-family:monospace;color:#e4e4e7">{safe_reference}</span><br>
+      Paid {paid_label}
+    </p>
+    {items_html}
+    <p style="font-size:18px;font-weight:700;margin-top:18px">Total: {total}</p>
+    <p style="color:#71717a;font-size:12px;margin-top:24px">
+      {source_note}<br>
+      This receipt was sent because you asked Latexy support for a copy.
+    </p>
+  </div>
+</body>
+</html>"""
+    text_lines = [
+        "Your Latexy payment receipt",
+        "",
+        f"Hi {user_name or 'there'},",
+        "",
+        f"Reference: {payment_reference}",
+        f"Paid: {paid_label}",
+        *item_text_lines,
+        f"Total: {total}",
+        "",
+        source_note,
+        "This receipt was sent because you asked Latexy support for a copy.",
+    ]
+    return html, "\n".join(text_lines)
 
 
 # Singleton

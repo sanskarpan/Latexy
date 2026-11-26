@@ -88,6 +88,13 @@ from .signup_funnel_routes import router as signup_funnel_router
 
 router.include_router(signup_funnel_router)
 
+# First-party consent choices and aggregate consent/replay coverage reporting.
+from .consent_analytics_routes import admin_router as admin_consent_analytics_router
+from .consent_analytics_routes import router as consent_analytics_router
+
+router.include_router(consent_analytics_router)
+router.include_router(admin_consent_analytics_router)
+
 # First-party UTM/referrer capture and aggregate growth reporting. Kept in a
 # dedicated module so the public capture path cannot reach document models.
 from .traffic_source_routes import admin_router as admin_traffic_source_router
@@ -177,17 +184,20 @@ from .admin_alert_routes import router as admin_alert_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
+from .admin_content_library_routes import router as admin_content_library_router
 from .admin_control_routes import router as admin_control_router
 from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_incident_routes import router as admin_incident_router
+from .admin_linter_routes import router as admin_linter_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
+from .admin_support_action_routes import router as admin_support_action_router
 from .admin_template_performance_routes import router as admin_template_performance_router
 from .admin_trial_health_routes import router as admin_trial_health_router
 from .landing_conversion_routes import router as landing_conversion_router
@@ -200,14 +210,17 @@ router.include_router(admin_feature_adoption_router)
 router.include_router(admin_billing_reconciliation_router)
 router.include_router(admin_checkout_funnel_router)
 router.include_router(admin_compile_error_router)
+router.include_router(admin_content_library_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_optimization_acceptance_router)
 router.include_router(admin_incident_router)
+router.include_router(admin_linter_router)
 router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
 router.include_router(admin_privacy_breakdown_router)
 router.include_router(admin_subscription_router)
+router.include_router(admin_support_action_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
@@ -340,10 +353,12 @@ router.include_router(team_router)
 
 # Include One-Click Application routes (Feature 87)
 from .application_routes import router as application_router
+from .linter_telemetry_routes import router as linter_telemetry_router
 from .telemetry_routes import router as telemetry_router
 
 router.include_router(application_router)
 router.include_router(telemetry_router)
+router.include_router(linter_telemetry_router)
 
 # Include per-change accept/reject review routes (Feature 2 / P0)
 from .optimize_routes import router as optimize_review_router

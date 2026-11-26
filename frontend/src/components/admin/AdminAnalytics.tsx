@@ -7,6 +7,7 @@ import AdminActivityFeed from '@/components/admin/AdminActivityFeed'
 import AdminCompileLatency from '@/components/admin/AdminCompileLatency'
 import AdminCompileErrors from '@/components/admin/AdminCompileErrors'
 import AdminOperations from '@/components/admin/AdminOperations'
+import AdminConsentAnalytics from '@/components/admin/AdminConsentAnalytics'
 import { analyticsDashboardLinks, analyticsReplayTriageLinks } from '@/lib/analytics/posthog'
 
 const RANGES = [
@@ -364,6 +365,8 @@ export default function AdminAnalytics() {
       )}
 
       <AdminOperations />
+
+      <AdminConsentAnalytics days={days} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="Total users" value={formatNumber(system.total_users)} detail={`${formatNumber(system.new_users)} new in period`} trend={trendMap.get('total_users')} />

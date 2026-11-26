@@ -1323,6 +1323,115 @@ export interface AdminTemplatePerformanceResponse {
   generated_at: string
 }
 
+export interface AdminContentLibraryRow {
+  rank: number
+  snippet_id: string
+  title: string | null
+  category: string | null
+  is_official: boolean
+  deleted: boolean
+  deleted_at: string | null
+  created_at: string | null
+  age_days: number
+  users: number
+  active_users: number
+  installers: number
+  inserts: number
+  uses: number
+  upvotes: number
+  upvote_ratio: number
+  lifetime_installs: number
+  lifetime_upvotes: number
+  last_used_at: string | null
+  active: boolean
+  stale: boolean
+  unused: boolean
+}
+
+export interface AdminContentLibraryMacroSummary {
+  total_macros: number
+  script_macros: number
+  recorded_macros: number
+  owners: number
+  created_in_range: number
+  updated_in_range: number
+  used_macros: number
+  use_events: number
+  active_owners: number
+  unused_macros: number
+  stale_macros: number
+  last_used_at: string | null
+}
+
+export type AdminContentLibraryStatus = 'all' | 'active' | 'stale' | 'unused' | 'deleted'
+
+export interface AdminContentLibraryResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    category: string[] | null
+    status: AdminContentLibraryStatus
+    official: boolean | null
+    snippet: string | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  stale_after_days: number
+  candidate_snippets: number
+  suppressed: boolean
+  suppressed_snippets: number
+  ranking: AdminContentLibraryRow[]
+  macro_summary: AdminContentLibraryMacroSummary | null
+  macro_suppressed: boolean
+  totals: {
+    snippets: number
+    suppressed_snippets: number
+    installs: number
+    uses: number
+    upvotes: number
+    lifetime_installs: number
+    lifetime_upvotes: number
+    active_snippets: number
+    stale_snippets: number
+    unused_snippets: number
+    deleted_snippets: number
+    official_snippets: number
+    upvote_ratio: number
+  }
+  reconciliation: {
+    source: string
+    candidate_snippets: number
+    visible_snippets: number
+    suppressed_snippets: number
+    source_installs: number
+    visible_installs: number
+    suppressed_installs: number
+    source_uses: number
+    visible_uses: number
+    suppressed_uses: number
+    source_upvotes: number
+    visible_upvotes: number
+    suppressed_upvotes: number
+    counter_installs: number
+    lifetime_install_rows: number
+    counter_upvotes: number
+    lifetime_upvote_rows: number
+    counter_install_drift: number
+    counter_upvote_drift: number
+    reconciled: boolean
+    macro_source: string
+    macro_values_suppressed: boolean
+  }
+  definitions: Record<string, string>
+  generated_at: string
+}
+
 export interface AdminOptimizationAcceptanceMetrics {
   candidates_shown: number
   decided: number
@@ -2175,6 +2284,46 @@ export interface AdminUserTrialActionResult {
   trial: AdminUser360['trial']
 }
 
+export type AdminUserPayment = AdminUser360['billing']['payments'][number]
+
+export type AdminReceiptLineItemsState =
+  | 'available'
+  | 'not_exposed'
+  | 'not_linked'
+  | 'unconfigured'
+
+export interface AdminReceiptLineItem {
+  description: string
+  quantity: number
+  amount_minor: number | null
+  currency: string | null
+}
+
+export interface AdminPaymentReceipt {
+  payment_id: string
+  provider_payment_id: string | null
+  amount_minor: number
+  currency: string | null
+  status: string
+  paid_at: string | null
+  line_items: AdminReceiptLineItem[]
+  line_items_available: boolean
+  line_items_state: AdminReceiptLineItemsState
+  line_items_source: 'provider' | 'local'
+}
+
+export interface AdminSupportActionResult {
+  action: 'verification_email' | 'password_reset' | 'payment_receipt'
+  status: 'sent'
+  delivery: 'accepted'
+  target_user_id: string
+  retry_after_seconds: number
+  payment_id?: string
+  line_items_count?: number
+  line_items_source?: 'provider' | 'local'
+  line_items_state?: AdminReceiptLineItemsState
+}
+
 export interface AdminAuditEntry {
   id: string
   actor_user_id: string | null
@@ -2512,6 +2661,140 @@ export interface AdminPrivacyBreakdownResponse {
   suppressed_cells: number
   truncated_rows: number
   truncated_page_views: boolean
+  notes: string[]
+  generated_at: string
+}
+
+export type AdminConsentDecisionKey = 'granted' | 'denied' | 'withdrawn'
+
+export interface AdminConsentCountRow {
+  granted: number | null
+  denied: number | null
+  withdrawn: number | null
+  total: number | null
+  unique_sessions: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminConsentDayRow extends AdminConsentCountRow {
+  date: string
+}
+
+export type AdminConsentSurfaceKey =
+  | 'banner'
+  | 'privacy_choices'
+  | 'privacy_page'
+  | 'settings'
+  | 'footer'
+  | 'other'
+  | 'unknown'
+
+export interface AdminConsentSurfaceRow extends AdminConsentCountRow {
+  surface: AdminConsentSurfaceKey
+  label: string
+}
+
+export interface AdminConsentAnalyticsResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_cohort_size: number
+  summary: AdminConsentCountRow & {
+    consent_coverage_pct: number | null
+  }
+  by_day: AdminConsentDayRow[]
+  by_surface: AdminConsentSurfaceRow[]
+  counts_by_day: AdminConsentDayRow[]
+  counts_by_surface: AdminConsentSurfaceRow[]
+  withdrawal_trend: {
+    current: number | null
+    previous: number | null
+    absolute_delta: number | null
+    percent_delta: number | null
+    baseline_zero: boolean
+    suppressed: boolean
+    current_days: number
+    previous_days: number
+    description: string
+  }
+  replay_coverage: {
+    eligible_sessions: number | null
+    sessions_with_consent: number | null
+    coverage_pct: number | null
+    suppressed: boolean
+    definition: string
+    posthog_capture: string
+  }
+  suppressed_rows: number
+  suppressed_cells: number
+  truncated_surfaces: number
+  truncated_events: boolean
+  notes: string[]
+  generated_at: string
+}
+
+export interface AdminLinterRuleRoute {
+  route: string
+  issues_detected: number
+  users: number
+}
+
+export interface AdminLinterRuleRow {
+  rule_id: string
+  severity: string
+  frequency: number
+  issues_detected: number
+  fixes_applied: number
+  issues_fixed: number
+  fix_rate_pct: number
+  users: number
+  share_pct: number
+  top_routes: AdminLinterRuleRoute[]
+  suppressed_routes: number
+}
+
+export interface AdminLinterTrendPoint {
+  date: string
+  frequency: number
+  issues_detected: number
+  issues_fixed: number
+  fix_rate_pct: number
+}
+
+export interface AdminLinterRulesResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    suppressed_rules: number
+    suppressed_days: number
+    suppressed_events_in_rows: boolean
+  }
+  summary: {
+    events: number | null
+    issues_detected: number | null
+    issues_fixed: number | null
+    fix_rate_pct: number | null
+    rules_seen: number | null
+    distinct_users: number | null
+  }
+  rules: AdminLinterRuleRow[]
+  top_noisy_rules: AdminLinterRuleRow[]
+  trend: AdminLinterTrendPoint[]
+  reconciliation: {
+    events: number | null
+    invalid_rows: number
+    truncated: boolean
+    max_rows: number
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    stored_fields: string[]
+    content_fields_excluded: string[]
+  }
   notes: string[]
   generated_at: string
 }
@@ -6667,6 +6950,24 @@ class ApiClient {
     )
   }
 
+  async getAdminConsentAnalytics(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+  }): Promise<AdminConsentAnalyticsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminConsentAnalyticsResponse>(`/admin/analytics/consent${suffix}`)
+  }
+
+  async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {
+    const qs = new URLSearchParams({ days: String(days) })
+    return this.request<AdminLinterRulesResponse>(`/admin/linter/rules?${qs}`)
+  }
+
   async getAdminTrialAttribution(params?: {
     days?: number
     start_date?: string
@@ -6857,6 +7158,56 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Template performance CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminContentLibraryAdoption(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    category?: string
+    status?: AdminContentLibraryStatus
+    official?: boolean
+    snippet?: string
+  }): Promise<AdminContentLibraryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.official != null) qs.set('official', String(params.official))
+    if (params?.snippet) qs.set('snippet', params.snippet)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminContentLibraryResponse>(
+      `/admin/content-library/adoption${suffix}`,
+    )
+  }
+
+  async downloadAdminContentLibraryAdoptionCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    category?: string
+    status?: AdminContentLibraryStatus
+    official?: boolean
+    snippet?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.official != null) qs.set('official', String(params.official))
+    if (params?.snippet) qs.set('snippet', params.snippet)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/content-library/adoption/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Content library adoption CSV failed (${response.status})`)
     }
     return response.blob()
   }
@@ -7296,6 +7647,40 @@ class ApiClient {
     return this.request<{ trial_used: boolean; device_trials_reset: number }>(
       `/admin/users/${encodeURIComponent(id)}/trial/reset`,
       { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async resendAdminVerificationEmail(id: string, reason: string): Promise<AdminSupportActionResult> {
+    return this.request<AdminSupportActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/support/resend-verification`,
+      { method: 'POST', body: JSON.stringify({ reason, confirm: true }) },
+    )
+  }
+
+  async sendAdminPasswordReset(id: string, reason: string): Promise<AdminSupportActionResult> {
+    return this.request<AdminSupportActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/support/password-reset`,
+      { method: 'POST', body: JSON.stringify({ reason, confirm: true }) },
+    )
+  }
+
+  async getAdminPaymentReceipt(id: string, paymentId: string): Promise<AdminPaymentReceipt> {
+    return this.request<AdminPaymentReceipt>(
+      `/admin/users/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/receipt`,
+    )
+  }
+
+  async resendAdminPaymentReceipt(
+    id: string,
+    paymentId: string,
+    reason: string,
+  ): Promise<AdminSupportActionResult> {
+    return this.request<AdminSupportActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/support/resend-receipt`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ payment_id: paymentId, reason, confirm: true }),
+      },
     )
   }
 

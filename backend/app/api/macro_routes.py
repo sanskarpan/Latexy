@@ -20,6 +20,7 @@ from ..database.models import User, UserMacro
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
+from ..services.content_library_events import record_macro_use
 from ..services.macro_scripting import MAX_OPERATIONS, MacroScriptError, execute_script, parse_script
 from ..utils.uuid_guard import ensure_uuid
 
@@ -504,6 +505,18 @@ async def execute_macro(
         # A malformed stored script is an internal consistency error, but do
         # not leak a traceback or implementation details to the caller.
         raise HTTPException(status_code=422, detail="Macro script validation failed.") from exc
+    # Adoption telemetry is secondary to the pure transform: never fail the
+    # execution because the aggregate event could not be stored.
+    try:
+        await record_macro_use(
+            db,
+            macro_id=macro.id,
+            user_id=user_id,
+            script_version=version,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
     return MacroExecuteResponse(
         document=document,
         script_version=version,

@@ -16,6 +16,12 @@
  */
 
 import {
+  recordConsentDecision,
+  resolveConsentDecision,
+  type ConsentDecision,
+  type ConsentSurface,
+} from './consent'
+import {
   replayTriageLinks,
   type ReplayLinkConfig,
   type ReplayTriageLinks,
@@ -78,8 +84,27 @@ export function readAnalyticsConsent(): AnalyticsConsent {
   }
 }
 
-export function writeAnalyticsConsent(consent: AnalyticsConsent): void {
+export function writeAnalyticsConsent(
+  consent: AnalyticsConsent,
+  surface: ConsentSurface = 'other',
+): void {
   if (typeof window === 'undefined') return
+
+  const previous = readAnalyticsConsent()
+  // A fresh grant is recorded once. Denying before any grant is a denial;
+  // moving away from a prior grant (to denied or to no choice) is a withdrawal
+  // and must stop capture/replay immediately.
+  const decision: ConsentDecision | null = resolveConsentDecision(previous, consent)
+
+  // Stop the vendor before anything else on withdrawal. This is synchronous
+  // and does not wait for the first-party record or a React re-render.
+  if (decision === 'withdrawn' || consent === 'denied') disableAnalytics()
+
+  // Record the choice with the first-party backend before PostHog can be
+  // initialized. This path is independent of the PostHog SDK and works even
+  // when the vendor is blocked.
+  if (decision) recordConsentDecision(decision, surface)
+
   try {
     if (consent === null) window.localStorage.removeItem(ANALYTICS_CONSENT_KEY)
     else window.localStorage.setItem(ANALYTICS_CONSENT_KEY, consent)
@@ -88,6 +113,18 @@ export function writeAnalyticsConsent(consent: AnalyticsConsent): void {
     // still controls this page; the banner simply reappears next visit.
   }
   window.dispatchEvent(new CustomEvent<AnalyticsConsent>(ANALYTICS_CONSENT_EVENT, { detail: consent }))
+
+  if (decision === 'granted') {
+    // Consent is already persisted. Only now may the vendor load and start;
+    // the grant event itself is never captured before this point.
+    void initializeAnalytics().then((ok) => {
+      if (!ok) return
+      captureAnalyticsEvent('consent_granted', {
+        decision: 'granted',
+        surface,
+      })
+    })
+  }
 }
 
 /** Remove query strings and opaque path identifiers before a URL reaches PostHog. */
