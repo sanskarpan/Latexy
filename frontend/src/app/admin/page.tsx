@@ -33,6 +33,7 @@ import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
+import AdminReceiptLookup from '@/components/admin/AdminReceiptLookup'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -44,7 +45,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -56,6 +57,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'quality', label: 'Quality' },
   { id: 'billing', label: 'Revenue' },
   { id: 'subscriptions', label: 'Subscriptions' },
+  { id: 'receipts', label: 'Receipts' },
   { id: 'email', label: 'Email Health' },
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
@@ -609,6 +611,13 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
+  // Receipt lookups deep-link into the customer's payment timeline. Read the
+  // target after mount so server and client render the same initial state.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('user')
+    if (requested) setSelectedUserId(requested)
+  }, [])
+
   // debounce the search box → resets pagination
   useEffect(() => {
     const t = setTimeout(() => {
@@ -1006,6 +1015,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminDunningRecovery />
           </div>
         )}
+        {tab === 'receipts' && <AdminReceiptLookup />}
         {tab === 'email' && <AdminEmailHealth />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}

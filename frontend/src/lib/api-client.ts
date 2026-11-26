@@ -3351,8 +3351,15 @@ export interface AdminReceiptLineItem {
   currency: string | null
 }
 
+export type AdminReceiptInvoiceState =
+  | 'available'
+  | 'not_exposed'
+  | 'not_linked'
+  | 'unconfigured'
+
 export interface AdminPaymentReceipt {
   payment_id: string
+  user_id: string
   provider_payment_id: string | null
   amount_minor: number
   currency: string | null
@@ -3362,18 +3369,57 @@ export interface AdminPaymentReceipt {
   line_items_available: boolean
   line_items_state: AdminReceiptLineItemsState
   line_items_source: 'provider' | 'local'
+  invoice_available: boolean
+  invoice_state: AdminReceiptInvoiceState
+  invoice_size_bytes: number | null
+}
+
+export interface AdminReceiptSearchItem {
+  payment_id: string
+  user_id: string
+  provider: string
+  provider_payment_id: string | null
+  subscription_id: string | null
+  amount_minor: number
+  currency: string | null
+  status: string
+  payment_method: string | null
+  created_at: string | null
+  settled: boolean
+  receipt_eligible: boolean
+  provider_linked: boolean
+}
+
+export interface AdminReceiptSearchResult {
+  match_type: 'payment_id' | 'subscription_id' | 'user_id' | 'email_hash'
+  items: AdminReceiptSearchItem[]
+  total: number
+  limit: number
+  truncated: boolean
+}
+
+export interface AdminReceiptSearchParams {
+  payment_id?: string
+  subscription_id?: string
+  user_id?: string
+  email_hash?: string
+  limit?: number
 }
 
 export interface AdminSupportActionResult {
   action: 'verification_email' | 'password_reset' | 'payment_receipt'
-  status: 'sent'
+  status: 'sent' | 'already_sent'
   delivery: 'accepted'
   target_user_id: string
   retry_after_seconds: number
+  duplicate?: boolean
+  idempotency_key?: string
   payment_id?: string
   line_items_count?: number
   line_items_source?: 'provider' | 'local'
   line_items_state?: AdminReceiptLineItemsState
+  invoice_state?: AdminReceiptInvoiceState
+  invoice_attached?: boolean
 }
 
 export interface AdminAuditEntry {
@@ -9748,6 +9794,18 @@ class ApiClient {
     )
   }
 
+  async searchAdminReceipts(params: AdminReceiptSearchParams): Promise<AdminReceiptSearchResult> {
+    const qs = new URLSearchParams()
+    if (params.payment_id) qs.set('payment_id', params.payment_id)
+    if (params.subscription_id) qs.set('subscription_id', params.subscription_id)
+    if (params.user_id) qs.set('user_id', params.user_id)
+    if (params.email_hash) qs.set('email_hash', params.email_hash)
+    if (params.limit != null) qs.set('limit', String(params.limit))
+    return this.request<AdminReceiptSearchResult>(
+      `/admin/receipts/search${qs.toString() ? `?${qs.toString()}` : ''}`,
+    )
+  }
+
   async getAdminPaymentReceipt(id: string, paymentId: string): Promise<AdminPaymentReceipt> {
     return this.request<AdminPaymentReceipt>(
       `/admin/users/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/receipt`,
@@ -9758,12 +9816,18 @@ class ApiClient {
     id: string,
     paymentId: string,
     reason: string,
+    idempotencyKey?: string,
   ): Promise<AdminSupportActionResult> {
     return this.request<AdminSupportActionResult>(
       `/admin/users/${encodeURIComponent(id)}/support/resend-receipt`,
       {
         method: 'POST',
-        body: JSON.stringify({ payment_id: paymentId, reason, confirm: true }),
+        body: JSON.stringify({
+          payment_id: paymentId,
+          reason,
+          confirm: true,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+        }),
       },
     )
   }

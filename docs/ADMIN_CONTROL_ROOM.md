@@ -27,6 +27,9 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Customers | `POST /admin/users/{id}/plan` · `POST /trial/reset` · `POST /quota/reset` · `POST /sessions/revoke` · `POST /passkeys/revoke` · `POST /api-keys/revoke` | Admin-only audited support actions |
 | Customers | `POST /admin/users/{id}/features/grant\|revoke` | Row-locked, idempotent per-user feature override stored in `users.user_metadata`; confirmation and reason required |
 | Customers | `POST /admin/users/{id}/trial/extend` · `POST /trial/eligibility` | Support trial extension or explicit eligibility, confirmation and reason required |
+| Receipts | `GET /admin/receipts/search` | Exact receipt search by payment/subscription/user id or normalized email digest; ledger identifiers and money metadata only |
+| Receipts | `GET /admin/users/{id}/payments/{payment_id}/receipt` | Normalized receipt preview with bounded provider line items and invoice-PDF availability |
+| Receipts | `POST /admin/users/{id}/support/resend-receipt` | Audited receipt resend with reason, confirmation, provider idempotency key, cooldown and duplicate-send prevention |
 | Audit | `GET /admin/audit` | Append-only operator audit trail with cursor pagination |
 | Overview | `GET /analytics/admin/overview` | Seven executive KPIs with equal-length prior-period comparison, absolute/percent deltas and daily sparklines; cached for 60 seconds in-process and in Redis |
 | Overview | `GET /admin/operations/attention` | Failed webhooks/payments, past-due subscriptions, stuck jobs, and partial domain coverage with one-click filtered links |
@@ -65,6 +68,21 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   responses are cached for 60 seconds and invalidated by support mutations;
   revealed PII is overlaid live and is never cached.
 - No provider credential, card detail, or bank detail is returned to the browser.
+- Receipt search accepts an email only as the same one-way SHA-256 digest used
+  by email health. Responses contain payment/subscription/account UUIDs, money
+  and status metadata; they never include an address, name, card field or raw
+  provider payload. Receipt preview returns only normalized line-item
+  description/quantity/amount/currency fields plus invoice availability.
+- Receipt PDFs are fetched from the provider's documented invoice endpoint with
+  a fixed origin, a bounded size and a real `%PDF-` content check. The bytes are
+  attached to the customer email only and never returned in JSON, logs or audit
+  metadata.
+- Receipt resends require a reason, explicit confirmation and a validated
+  idempotency key. The append-only audit log is the durable idempotency store:
+  a completed key replays the earlier result, a recent in-flight key conflicts,
+  a key cannot be reused for another payment, and the provider receives a stable
+  idempotency header. Cooldown is per actor+account+payment; a failed handoff
+  releases the window so the same key can be retried safely.
 - Growth segments and retention cohorts suppress rates below five users to
   avoid re-identifying a small group. Feature-depth groups below five users are
   omitted and a filtered cohort below five users returns no counts; only
@@ -234,6 +252,15 @@ serve normal traffic; there is no application delete path or scheduled purge.
 - `backend/test/test_admin_audit_hardening.py` covers cursor stability under
   identical timestamps, filter echo, page-size bounds, changed-only redaction,
   the absence of audit mutation routes, and the database-role grant script.
+- `backend/test/test_admin_support_actions_api.py` covers support-action RBAC,
+  cooldown, receipt search by payment/subscription/user/email digest, missing
+  provider invoices, invoice-PDF attachment, idempotent replay, key-reuse
+  conflicts, failure-state audit rows and response redaction.
+- `backend/test/test_dodo_provider.py` covers the fixed-origin invoice-PDF
+  endpoint, redirect refusal, size/content validation and identifier rejection.
+- `frontend/src/__tests__/admin-receipt-lookup.test.ts` pins the Receipts tab,
+  exact search fields, timeline links, reason/confirmation/idempotency wiring
+  and the absence of card or provider payload rendering.
 - `backend/test/test_analytics_admin_fixes.py` pins the INR-only refund
   timeseries and substring-based telemetry redaction.
 - `backend/test/test_admin_operations_api.py` covers admin-only access, the

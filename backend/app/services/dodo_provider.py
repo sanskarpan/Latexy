@@ -21,6 +21,9 @@ class DodoAPIError(RuntimeError):
         super().__init__(f"Dodo request failed ({status_code}, {code})")
 
 
+MAX_INVOICE_PDF_BYTES = 4 * 1024 * 1024
+
+
 class DodoProvider:
     provider_name = "dodo"
     _RESOURCE_ID = r"[A-Za-z0-9_-]{1,128}"
@@ -133,6 +136,52 @@ class DodoProvider:
 
     async def get_payment_line_items(self, payment_id: str) -> dict[str, Any]:
         return await self.request("GET", f"/payments/{payment_id}/line-items")
+
+    async def get_payment_invoice(self, payment_id: str) -> bytes:
+        """Fetch the provider-generated invoice PDF for one payment.
+
+        The invoice endpoint is a binary download rather than JSON, so it gets a
+        dedicated bounded request path. Only a real PDF with a bounded size is
+        accepted; provider HTML, redirects and arbitrary payloads are rejected
+        before the bytes can reach a caller, email attachment or audit record.
+        """
+        if not isinstance(payment_id, str) or not re.fullmatch(self._RESOURCE_ID, payment_id):
+            raise ValueError("Invalid Dodo payment identifier")
+        if settings.is_production_like() and (
+            settings.normalized_dodo_mode != "live" or self._origin.host != "live.dodopayments.com"
+        ):
+            raise DodoAPIError(503, "production_test_billing_blocked")
+        if not self.api_key:
+            raise DodoAPIError(503, "billing_unconfigured")
+        url = self._origin.copy_with(
+            raw_path=f"/invoices/payments/{payment_id}".encode("ascii")
+        )
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/pdf",
+        }
+        try:
+            async with asyncio.timeout(self.timeout):
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(self.timeout, connect=5.0),
+                    follow_redirects=False,
+                ) as client:
+                    response = await client.get(url, headers=headers)
+        except (httpx.RequestError, TimeoutError) as exc:
+            raise DodoAPIError(503, "provider_unavailable") from exc
+        if response.is_redirect:
+            raise DodoAPIError(502, "unexpected_provider_redirect")
+        if response.is_error:
+            raise DodoAPIError(response.status_code, "provider_error")
+        content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+        content = response.content
+        if (
+            content_type != "application/pdf"
+            or not content.startswith(b"%PDF-")
+            or len(content) > MAX_INVOICE_PDF_BYTES
+        ):
+            raise DodoAPIError(502, "invalid_provider_response")
+        return content
 
     async def get_discount_by_code(self, code: str) -> dict[str, Any]:
         return await self.request("GET", f"/discounts/code/{quote(code, safe='')}")

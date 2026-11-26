@@ -25,6 +25,7 @@ from app.api import (
     admin_operations_routes,
     admin_routes,
     admin_stuck_job_routes,
+    admin_support_action_routes,
     plan_catalog_routes,
 )
 from app.database.models import AdminAuditLog
@@ -44,6 +45,7 @@ AUDITED_SERVICE_CALLS = (
     "admin_stuck_jobs_service.",
     "plan_catalog_service.",
     "entitlement_service.set_",
+    "support_actions.",
 )
 
 # POST endpoints that are read-only previews, not mutations.
@@ -66,6 +68,7 @@ ADMIN_ROUTERS = (
     admin_incident_routes.router,
     admin_operations_routes.router,
     admin_stuck_job_routes.router,
+    admin_support_action_routes.router,
     plan_catalog_routes.router,
 )
 

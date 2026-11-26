@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,13 +34,25 @@ class SupportEmailRequest(BaseModel):
 
 class SupportReceiptRequest(SupportEmailRequest):
     payment_id: str = Field(min_length=1, max_length=255)
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
 
 
 def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, KeyError):
         message = str(exc.args[0]) if exc.args else "Not found"
         return HTTPException(status_code=404, detail=message)
-    if isinstance(exc, support_actions.SupportActionNotEligible):
+    if isinstance(
+        exc,
+        (
+            support_actions.SupportActionNotEligible,
+            support_actions.SupportActionConflict,
+        ),
+    ):
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, support_actions.SupportActionCooldown):
         return HTTPException(
@@ -68,6 +80,30 @@ async def get_admin_payment_receipt(
     """Normalised receipt lookup by local or provider payment id."""
     try:
         return await support_actions.get_payment_receipt(db, user_id=user_id, payment_id=payment_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/admin/receipts/search")
+async def search_admin_receipts(
+    payment_id: str | None = Query(None, min_length=1, max_length=255),
+    subscription_id: str | None = Query(None, min_length=1, max_length=255),
+    user_id: str | None = Query(None, min_length=1, max_length=64),
+    email_hash: str | None = Query(None, min_length=64, max_length=64),
+    limit: int = Query(25, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    _: AdminActor = Depends(require_admin_actor),
+) -> dict[str, Any]:
+    """Exact receipt search by payment, subscription, user or email digest."""
+    try:
+        return await support_actions.search_receipts(
+            db,
+            payment_id=payment_id,
+            subscription_id=subscription_id,
+            user_id=user_id,
+            email_hash=email_hash,
+            limit=limit,
+        )
     except Exception as exc:
         raise _http_error(exc) from exc
 
@@ -128,6 +164,7 @@ async def resend_admin_payment_receipt(
             actor=actor,
             reason=body.reason,
             request=request,
+            idempotency_key=body.idempotency_key,
         )
     except Exception as exc:
         raise _http_error(exc) from exc
