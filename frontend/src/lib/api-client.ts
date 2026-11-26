@@ -5273,6 +5273,99 @@ export interface AdminCollaborationResponse {
   generated_at: string
 }
 
+export interface AdminCareerAdoptionMetrics {
+  users: number
+  runs: number
+  runs_per_user: number
+  repeat_users: number
+  repeat_rate: number
+  after_optimization_users: number
+  after_optimization_rate: number
+  denominator?: number
+  penetration?: number
+}
+
+export interface AdminCareerAdoptionSegment extends AdminCareerAdoptionMetrics {
+  dimension: 'plan' | 'cohort'
+  key: string
+  label: string
+  denominator: number
+  penetration: number
+}
+
+export interface AdminCareerAdoptionFeature {
+  key: 'cover_letters' | 'interview_prep' | 'career_paths'
+  label: string
+  event: string
+  adoption: AdminCareerAdoptionMetrics | null
+  segments: AdminCareerAdoptionSegment[]
+}
+
+export interface AdminCareerAdoptionReconciliationFeature {
+  event_users: number
+  table_users: number
+  events: number
+  table_rows: number
+  matched: number
+  unmatched_events: number
+  unmatched_rows: number
+}
+
+export interface AdminCareerAdoptionResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  date_range: {
+    start: string
+    end: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    cohort: string[] | null
+    timezone: string
+  }
+  minimum_segment_size: number
+  optimization_lookback_days: number
+  audience_users: number
+  suppressed: boolean
+  suppressed_segments: Record<'plan' | 'cohort', number>
+  features: AdminCareerAdoptionFeature[]
+  reconciliation: {
+    source: string
+    suppressed: boolean
+    audience_users?: number
+    optimization_users?: number
+    features: Partial<
+      Record<'cover_letters' | 'interview_prep' | 'career_paths', AdminCareerAdoptionReconciliationFeature>
+    >
+    unattributed_events?: number
+    unattributed_table_rows?: Record<string, number>
+    totals?: {
+      events: number
+      table_rows: number
+      matched: number
+      unmatched_events: number
+      unmatched_rows: number
+      matched_rate: number
+    }
+  }
+  definitions: Record<string, string>
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  generated_at: string
+}
+
+
 // ------------------------------------------------------------------ //
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
@@ -8679,6 +8772,23 @@ class ApiClient {
     if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminCollaborationResponse>(`/admin/analytics/collaboration${suffix}`)
+  }
+
+  async getAdminCareerAdoption(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    cohort?: string
+  }): Promise<AdminCareerAdoptionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCareerAdoptionResponse>(`/admin/analytics/career-adoption${suffix}`)
   }
 
   async getAdminTemplatePerformance(params?: {

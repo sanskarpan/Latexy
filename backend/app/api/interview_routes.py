@@ -19,6 +19,10 @@ from ..database.models import InterviewPrep, Resume
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
+from ..services.career_feature_events import (
+    FEATURE_INTERVIEW_PREP,
+    record_generation_event,
+)
 from ..services.entitlement_service import entitlement_service
 from ..utils.uuid_guard import ensure_uuid
 from ..workers.interview_prep_worker import submit_interview_prep_generation
@@ -196,6 +200,10 @@ async def generate_interview_prep(
             status_code=503,
             detail="Interview prep generation is temporarily unavailable. Please try again.",
         )
+
+    await record_generation_event(
+        db, feature=FEATURE_INTERVIEW_PREP, user_id=user_id
+    )
 
     return GenerateInterviewPrepResponse(
         success=True,
