@@ -404,7 +404,7 @@ class TestTrialHealthEndpoint:
                 created_at=now - timedelta(hours=5),
                 ip_address=f"198.51.100.{30 + index}",
             )
-        for index in range(2):
+        for index in range(5):
             fingerprint = f"{PREFIX}fp_blocked_{index}_{uuid.uuid4().hex}"
             raw_fingerprints.append(fingerprint)
             await _seed_trial(
@@ -469,13 +469,13 @@ class TestTrialHealthEndpoint:
         by_days = {window["days"]: window for window in body["windows"]}
         baseline_by_days = {window["days"]: window for window in baseline["windows"]}
 
-        expected = {7: 30, 30: 35, 90: 39}
+        expected = {7: 33, 30: 38, 90: 42}
         for days, expected_starts in expected.items():
             window = by_days[days]
             before = baseline_by_days[days]
             assert window["trial_starts"] - before["trial_starts"] == expected_starts
             assert window["unique_devices"] - before["unique_devices"] == expected_starts
-            assert window["blocked_devices"] - before["blocked_devices"] == 2
+            assert window["blocked_devices"] - before["blocked_devices"] == 5
             assert (
                 window["usage_distribution"]["total_devices"] - before["usage_distribution"]["total_devices"]
                 == expected_starts
@@ -484,7 +484,7 @@ class TestTrialHealthEndpoint:
         seven = by_days[7]
         assert _reason(seven, "repeat_device_cluster")["devices"] >= 25
         assert _reason(seven, "deep_analysis_limit_reached")["devices"] >= 5
-        assert _reason(seven, "blocked_device")["devices"] >= 2
+        assert _reason(seven, "blocked_device")["devices"] >= 5
         assert seven["conversion"]["attributed_trials"] >= 6
         assert seven["conversion"]["paid_trials"] >= 5
         assert seven["conversion"]["trial_to_paid_pct"] is not None
