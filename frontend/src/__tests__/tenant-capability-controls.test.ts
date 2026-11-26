@@ -23,6 +23,17 @@ function findButton(tree: unknown, text: string) {
 function click(node: Element) { return (node.props.onClick as () => unknown)() }
 const expectedContext = expect.objectContaining({ authToken: 'owner-token', isCurrent: expect.any(Function) })
 const tenant = { id: 'tenant', name: 'Owned tenant', owner_id: 'owner', primary_color: '#19375d', logo_url: null, custom_domain: 'old.example.com', max_members: 50, plan_id: 'agency', slug: 'owned', domain_verified: false }
+const domainHealth = {
+  tenant_id: 'tenant', domain: 'old.example.com', status: 'unverified', verified: false,
+  verified_at: null, last_checked_at: '2026-11-27T00:00:00Z', last_success_at: null,
+  verification_age_days: null, stale_after_days: 30, history: [], warnings: [],
+  expiry: {
+    domain_expires_at: null, certificate_expires_at: null,
+    domain_state: 'unknown', certificate_state: 'unknown',
+    domain_days_until_expiry: null, certificate_days_until_expiry: null,
+  },
+  generated_at: '2026-11-27T00:00:00Z',
+}
 const overviewStats = (submissionCount: number) => ({
   member_count: 2, seats_used: 2, seats_available: 48, seat_limit: 50, seat_utilization: 0.04,
   invited_members: 0, pending_invites_available: true, accepted_members: 2, active_members: 1, active_members_window_days: 30,
@@ -92,6 +103,7 @@ async function harness(configure?: (api: Record<string, ReturnType<typeof vi.fn>
     listMyTenants: vi.fn().mockResolvedValue([tenant]), getMe: vi.fn().mockResolvedValue({ role: 'admin', plan: 'team' }),
     listTenantMembers: vi.fn().mockResolvedValue([{ user_id: 'member', email: 'member@example.com', name: 'Existing member', role: 'member' }]),
     getTenantStats: vi.fn().mockResolvedValue({ member_count: 1 }), listTenantCohorts: vi.fn().mockResolvedValue([]),
+    getTenantDomainHealth: vi.fn().mockResolvedValue(domainHealth),
     updateTenant: vi.fn().mockImplementation(async (_id, patch) => ({ ...tenant, ...patch })),
     verifyTenantDomain: vi.fn().mockResolvedValue({ verified: false }), inviteTenantMember: vi.fn().mockResolvedValue({ email: 'new@example.com' }),
     createTenant: vi.fn().mockResolvedValue(tenant), createTenantCohort: vi.fn().mockResolvedValue({ id: 'cohort', name: 'New cohort' }),
@@ -145,6 +157,42 @@ it('hides denied tenant setup controls even for a team admin and retains existin
   expect(h.api.removeTenantMember).toHaveBeenCalledExactlyOnceWith('tenant', 'member', expectedContext)
 })
 
+it('shows verification age, recent history and warnings from the domain health API', async () => {
+  const h = await harness(api => api.getTenantDomainHealth.mockResolvedValue({
+    ...domainHealth,
+    status: 'stale',
+    verified: true,
+    verified_at: '2026-10-18T00:00:00Z',
+    last_checked_at: '2026-10-18T00:00:00Z',
+    last_success_at: '2026-10-18T00:00:00Z',
+    verification_age_days: 40,
+    warnings: [{
+      code: 'verification_stale',
+      severity: 'warning',
+      message: 'No successful ownership check in 40 days.',
+    }],
+    history: [{
+      id: 'event-1',
+      domain: 'old.example.com',
+      event_type: 'verified',
+      error_class: null,
+      checked_at: '2026-10-18T00:00:00Z',
+    }],
+    expiry: {
+      ...domainHealth.expiry,
+      domain_expires_at: '2026-12-02T00:00:00Z',
+      domain_state: 'expiring',
+      domain_days_until_expiry: 5,
+    },
+  }))
+  const text = label(h.render()).replace(/\s+/g, ' ')
+  expect(text).toContain('Stale verification')
+  expect(text).toContain('No successful ownership check in 40 days.')
+  expect(text).toContain('40 days')
+  expect(text).toContain('Verified')
+  expect(text).toContain('Domain expires:')
+})
+
 it('independently gates F10 setup and F11 domain verification', async () => {
   const h = await harness()
   h.allow(['f10'])
@@ -189,7 +237,7 @@ it.each(['createTenant', 'invite', 'createCohort'])('%s rejects retained F10 cal
 
 it('saves a domain without retransmitting branding and can remove it when setup is denied', async () => {
   const updateTenant = vi.fn().mockResolvedValue({ ...tenant, custom_domain: 'new.example.com' })
-  const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' }, selected: tenant, canRef: { current: (key: string) => key === 'f11' }, customDomain: 'new.example.com', setSavingDomain: vi.fn(), setSelected: vi.fn(), setTenants: vi.fn(), setDnsInfo: vi.fn(), setCustomDomain: vi.fn(), applyTenantTheme: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
+  const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' }, selected: tenant, canRef: { current: (key: string) => key === 'f11' }, customDomain: 'new.example.com', setSavingDomain: vi.fn(), setSelected: vi.fn(), setTenants: vi.fn(), setDnsInfo: vi.fn(), setCustomDomain: vi.fn(), applyTenantTheme: vi.fn(), refreshDomainHealth: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
   await action('saveDomain', scope)()
   expect(updateTenant).toHaveBeenCalledExactlyOnceWith('tenant', { custom_domain: 'new.example.com' }, expectedContext)
   updateTenant.mockClear()
@@ -226,7 +274,7 @@ it('does not apply a domain response after the selected tenant changes', async (
   const setSelected = vi.fn()
   const setTenants = vi.fn()
   const setDnsInfo = vi.fn()
-  const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef, selectedTenantIdRef, selected: tenant, canRef: { current: () => true }, customDomain: 'new.example.com', setSavingDomain: vi.fn(), setSelected, setTenants, setDnsInfo, applyTenantTheme: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
+  const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef, selectedTenantIdRef, selected: tenant, canRef: { current: () => true }, customDomain: 'new.example.com', setSavingDomain: vi.fn(), setSelected, setTenants, setDnsInfo, applyTenantTheme: vi.fn(), refreshDomainHealth: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
   const pending = action('saveDomain', scope)()
   detailRequestRef.current = 2
   selectedTenantIdRef.current = 'other-tenant'
@@ -248,7 +296,7 @@ it.each([['saveBranding', 'saveDomain'], ['saveDomain', 'saveBranding']] as cons
       tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' },
       selected: tenant, canRef: { current: () => true }, name: 'New branding', logoUrl: '', primaryColor: '#19375d', customDomain: 'new.example.com',
       setSaving: vi.fn(), setSavingDomain: vi.fn(), setSelected, setTenants: vi.fn(), setDnsInfo: vi.fn(), setCustomDomain: vi.fn(),
-      applyTenantTheme: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() },
+      applyTenantTheme: vi.fn(), refreshDomainHealth: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() },
     }
     const pending = action(first, scope)()
     const blocked = action(second, scope)()
@@ -266,7 +314,7 @@ it.each([['saveBranding', 'saveDomain'], ['saveDomain', 'saveBranding']] as cons
 it('applies the canonical domain returned by the server to the editable input', async () => {
   const updateTenant = vi.fn().mockResolvedValue({ ...tenant, custom_domain: 'new.example.com' })
   const setCustomDomain = vi.fn()
-  const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' }, selected: tenant, canRef: { current: () => true }, customDomain: ' NEW.EXAMPLE.COM. ', setSavingDomain: vi.fn(), setSelected: vi.fn(), setTenants: vi.fn(), setDnsInfo: vi.fn(), setCustomDomain, applyTenantTheme: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
+  const scope = { tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' }, selected: tenant, canRef: { current: () => true }, customDomain: ' NEW.EXAMPLE.COM. ', setSavingDomain: vi.fn(), setSelected: vi.fn(), setTenants: vi.fn(), setDnsInfo: vi.fn(), setCustomDomain, applyTenantTheme: vi.fn(), refreshDomainHealth: vi.fn(), apiClient: { updateTenant }, toast: { success: vi.fn(), error: vi.fn() } }
   await action('saveDomain', scope)()
   expect(setCustomDomain).toHaveBeenCalledExactlyOnceWith('new.example.com')
 })
@@ -395,7 +443,7 @@ it('keeps the shared mutation lock through selection changes and serializes DNS 
   const scope = {
     tenantPatchPendingRef: { current: false }, detailRequestRef: { current: 1 }, selectedTenantIdRef: { current: 'tenant' },
     selected: tenant, canRef: { current: () => true }, customDomain: 'new.example.com', setVerifyingDomain: vi.fn(), setSavingDomain: vi.fn(),
-    setSelected, setTenants, setDnsInfo, apiClient: { verifyTenantDomain, updateTenant }, toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+    setSelected, setTenants, setDnsInfo, refreshDomainHealth: vi.fn(), apiClient: { verifyTenantDomain, updateTenant }, toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   }
   const pending = action('verifyDomain', scope)()
   scope.detailRequestRef.current += 1; scope.selectedTenantIdRef.current = 'other-tenant'

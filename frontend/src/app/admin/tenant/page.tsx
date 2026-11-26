@@ -20,6 +20,9 @@ import {
   type DomainVerifyResponse,
   type MemberResponse,
   type TenantCohort,
+  type TenantDomainHealthHistoryEntry,
+  type TenantDomainHealthResponse,
+  type TenantDomainHealthStatus,
   type TenantResponse,
   type TenantStats,
   type TenantTrendPeriod,
@@ -59,6 +62,35 @@ function safeHttpUrl(value: string): string | null {
   } catch {
     return null
   }
+}
+
+const DOMAIN_HEALTH_LABELS: Record<TenantDomainHealthStatus, string> = {
+  not_configured: 'No domain',
+  unverified: 'Unverified',
+  healthy: 'Healthy',
+  stale: 'Stale verification',
+  unhealthy: 'Needs attention',
+}
+
+const DOMAIN_HEALTH_TONES: Record<TenantDomainHealthStatus, string> = {
+  not_configured: 'bg-surface-2 text-fg-2',
+  unverified: 'bg-accent-soft text-accent-strong',
+  healthy: 'bg-emerald-500/10 text-emerald-500',
+  stale: 'bg-amber-500/10 text-amber-600',
+  unhealthy: 'bg-err/10 text-err',
+}
+
+function formatHealthTimestamp(value: string | null | undefined): string {
+  if (!value) return 'Never'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString()
+}
+
+function domainEventLabel(event: TenantDomainHealthHistoryEntry['event_type']): string {
+  if (event === 'verified') return 'Verified'
+  if (event === 'failed') return 'Check failed'
+  if (event === 'error') return 'Check unavailable'
+  return 'Domain removed'
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -126,6 +158,8 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
   const [creatingCohort, setCreatingCohort] = useState(false)
   const [inviteCohortId, setInviteCohortId] = useState('')
   const [dnsInfo, setDnsInfo] = useState<DomainVerifyResponse | null>(null)
+  const [domainHealth, setDomainHealth] = useState<TenantDomainHealthResponse | null>(null)
+  const [domainHealthError, setDomainHealthError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tenantListError, setTenantListError] = useState<string | null>(null)
   const [membersLoading, setMembersLoading] = useState(false)
@@ -167,6 +201,8 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
     setPrimaryColor(tenant.primary_color ?? '#19375d')
     setCustomDomain(tenant.custom_domain ?? '')
     setDnsInfo(null)
+    setDomainHealth(null)
+    setDomainHealthError(null)
     setMembers([])
     setStats(null)
     setCohorts([])
@@ -179,10 +215,11 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
 
     const context = requestContext(() => canActForOwner() && requestId === detailRequestRef.current
       && selectedTenantIdRef.current === tenant.id)
-    const [membersResult, statsResult, cohortsResult] = await Promise.allSettled([
+    const [membersResult, statsResult, cohortsResult, healthResult] = await Promise.allSettled([
       apiClient.listTenantMembers(tenant.id, context),
       apiClient.getTenantStats(tenant.id, context),
       apiClient.listTenantCohorts(tenant.id, context),
+      apiClient.getTenantDomainHealth(tenant.id, context),
     ])
     if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
 
@@ -197,8 +234,29 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
       setStatsError(statsResult.reason instanceof Error ? statsResult.reason.message : 'Failed to load tenant stats')
     }
     if (cohortsResult.status === 'fulfilled') setCohorts(cohortsResult.value)
+    if (healthResult.status === 'fulfilled') {
+      setDomainHealth(healthResult.value)
+    } else {
+      setDomainHealthError(healthResult.reason instanceof Error ? healthResult.reason.message : 'Failed to load domain health')
+    }
     setMembersLoading(false)
     setStatsLoading(false)
+  }, [canActForOwner, isCurrentOwner, requestContext])
+
+  const refreshDomainHealth = useCallback(async (tenantId: string, requestId: number) => {
+    try {
+      const health = await apiClient.getTenantDomainHealth(
+        tenantId,
+        requestContext(() => canActForOwner() && requestId === detailRequestRef.current
+          && selectedTenantIdRef.current === tenantId),
+      )
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
+      setDomainHealth(health)
+      setDomainHealthError(null)
+    } catch (error) {
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
+      setDomainHealthError(error instanceof Error ? error.message : 'Failed to load domain health')
+    }
   }, [canActForOwner, isCurrentOwner, requestContext])
 
   const loadTenants = useCallback(async () => {
@@ -293,6 +351,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
       setCustomDomain(updated.custom_domain ?? '')
       setDnsInfo(null)
       applyTenantTheme({ ...updated, logo_url: updated.logo_url ?? null, primary_color: updated.primary_color ?? null, custom_domain: updated.custom_domain ?? null })
+      void refreshDomainHealth(tenantId, requestId)
       toast.success(updated.custom_domain ? 'Domain saved' : 'Domain removed')
     } catch (error) {
       if (!isCurrent()) return
@@ -320,6 +379,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
       setCustomDomain('')
       setDnsInfo(null)
       applyTenantTheme({ ...updated, logo_url: updated.logo_url ?? null, primary_color: updated.primary_color ?? null, custom_domain: null })
+      void refreshDomainHealth(tenantId, requestId)
       toast.success('Domain removed')
     } catch (error) {
       if (!isCurrent()) return
@@ -416,6 +476,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
       }
       if (!isCurrent()) return
       setDnsInfo(info)
+      void refreshDomainHealth(tenantId, requestId)
       if (info.verified) {
         setSelected((current) => current ? { ...current, domain_verified: true } : current)
         toast.success('Domain ownership verified')
@@ -708,6 +769,90 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
                   </p>
                 </div>
               )}
+
+              <div className="mt-4 rounded-[var(--radius-md)] border border-line bg-bg p-4 space-y-2 text-xs text-fg-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-fg">Verification health</p>
+                  {domainHealth && (
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${DOMAIN_HEALTH_TONES[domainHealth.status]}`}>
+                      {DOMAIN_HEALTH_LABELS[domainHealth.status]}
+                    </span>
+                  )}
+                </div>
+                {domainHealthError && (
+                  <p role="alert" className="text-err">{domainHealthError}</p>
+                )}
+                {!domainHealth && !domainHealthError && (
+                  <p className="text-fg-3">Loading domain health…</p>
+                )}
+                {domainHealth && (
+                  <>
+                    <p>
+                      <span className="text-fg-3">Last check: </span>
+                      {formatHealthTimestamp(domainHealth.last_checked_at)}
+                    </p>
+                    <p>
+                      <span className="text-fg-3">Verification age: </span>
+                      {domainHealth.verification_age_days === null
+                        ? 'Not verified yet'
+                        : `${domainHealth.verification_age_days} day${domainHealth.verification_age_days === 1 ? '' : 's'}`}
+                    </p>
+                    {domainHealth.warnings.length > 0 && (
+                      <ul className="space-y-1">
+                        {domainHealth.warnings.map((warning) => (
+                          <li
+                            key={warning.code}
+                            className={`rounded border px-2 py-1 ${warning.severity === 'critical' ? 'border-err/30 bg-err/5 text-err' : 'border-amber-500/30 bg-amber-500/5 text-amber-600'}`}
+                          >
+                            {warning.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div>
+                      <p className="mb-1 text-fg-3">Recent checks</p>
+                      {domainHealth.history.length === 0 ? (
+                        <p className="text-fg-3">No checks recorded yet.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {domainHealth.history.map((entry) => (
+                            <li key={entry.id} className="flex flex-wrap items-baseline justify-between gap-2">
+                              <span>
+                                {domainEventLabel(entry.event_type)}
+                                <span className="text-fg-3"> · {entry.domain}</span>
+                                {entry.error_class && (
+                                  <span className="text-fg-3"> ({entry.error_class})</span>
+                                )}
+                              </span>
+                              <span className="text-fg-3">{formatHealthTimestamp(entry.checked_at)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {domainHealth.expiry.domain_expires_at || domainHealth.expiry.certificate_expires_at ? (
+                      <div className="space-y-1">
+                        {domainHealth.expiry.domain_expires_at && (
+                          <p>
+                            <span className="text-fg-3">Domain expires: </span>
+                            {formatHealthTimestamp(domainHealth.expiry.domain_expires_at)}
+                            <span className="text-fg-3"> · {domainHealth.expiry.domain_state}</span>
+                          </p>
+                        )}
+                        {domainHealth.expiry.certificate_expires_at && (
+                          <p>
+                            <span className="text-fg-3">Certificate expires: </span>
+                            {formatHealthTimestamp(domainHealth.expiry.certificate_expires_at)}
+                            <span className="text-fg-3"> · {domainHealth.expiry.certificate_state}</span>
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-fg-3">DNS/certificate expiry metadata is not available.</p>
+                    )}
+                  </>
+                )}
+              </div>
               {customDomain !== (selected.custom_domain ?? '') && (
                 <p className="mt-2 text-xs text-fg-3">Save the domain before verifying a changed domain.</p>
               )}

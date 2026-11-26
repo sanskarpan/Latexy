@@ -16,6 +16,7 @@ const operations: Operation[] = [
   { name: 'listCohortSubmissions', run: (c, x) => c.listCohortSubmissions('tenant-a', 'cohort-a', x) },
   { name: 'getTenantStats', run: (c, x) => c.getTenantStats('tenant-a', x) },
   { name: 'verifyTenantDomain', run: (c, x) => c.verifyTenantDomain('tenant-a', x) },
+  { name: 'getTenantDomainHealth', run: (c, x) => c.getTenantDomainHealth('tenant-a', x) },
   { name: 'generateInterviewPrep', run: (c, x) => c.generateInterviewPrep({ resume_id: 'resume-a' }, x) },
   { name: 'listInterviewPrep', run: (c, x) => c.listInterviewPrep('resume-a', x) },
   { name: 'deleteInterviewPrep', run: (c, x) => c.deleteInterviewPrep('prep-a', x) },

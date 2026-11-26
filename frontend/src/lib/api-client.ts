@@ -12706,6 +12706,10 @@ class ApiClient {
     }, accountContext)
   }
 
+  async getTenantDomainHealth(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantDomainHealthResponse> {
+    return this.request<TenantDomainHealthResponse>(`/tenants/${tenantId}/domain/health`, {}, accountContext)
+  }
+
   // ── Feature 87 — One-Click Job Applications ──────────────────────────────
 
   async detectJobPlatform(jobUrl: string): Promise<DetectPlatformResponse> {
@@ -13875,6 +13879,55 @@ export interface DomainVerifyResponse {
   txt_record_name: string
   txt_record_value: string
   instructions: string
+}
+
+export type TenantDomainHealthStatus =
+  | 'not_configured'
+  | 'unverified'
+  | 'healthy'
+  | 'stale'
+  | 'unhealthy'
+
+export type TenantDomainErrorClass = 'txt_missing' | 'dns_unavailable'
+
+export interface TenantDomainHealthHistoryEntry {
+  id: string
+  domain: string
+  event_type: 'verified' | 'failed' | 'error' | 'removed'
+  error_class: TenantDomainErrorClass | null
+  checked_at: string
+}
+
+export interface TenantDomainHealthWarning {
+  code: string
+  severity: 'warning' | 'critical'
+  message: string
+  error_class?: TenantDomainErrorClass | null
+}
+
+export interface TenantDomainExpiryHealth {
+  domain_expires_at: string | null
+  certificate_expires_at: string | null
+  domain_state: 'unknown' | 'valid' | 'expiring' | 'expired'
+  certificate_state: 'unknown' | 'valid' | 'expiring' | 'expired'
+  domain_days_until_expiry: number | null
+  certificate_days_until_expiry: number | null
+}
+
+export interface TenantDomainHealthResponse {
+  tenant_id: string
+  domain: string | null
+  status: TenantDomainHealthStatus
+  verified: boolean
+  verified_at: string | null
+  last_checked_at: string | null
+  last_success_at: string | null
+  verification_age_days: number | null
+  stale_after_days: number
+  history: TenantDomainHealthHistoryEntry[]
+  warnings: TenantDomainHealthWarning[]
+  expiry: TenantDomainExpiryHealth
+  generated_at: string
 }
 
 export interface CurrentContextResponse {
