@@ -16,6 +16,7 @@ import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
+import AdminDunningRecovery from '@/components/admin/AdminDunningRecovery'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
 import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
@@ -984,6 +985,11 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         )}
         {tab === 'billing' && <AdminBilling />}
         {tab === 'subscriptions' && <AdminSubscriptions />}
+        {tab === 'subscriptions' && (
+          <div className="mt-8">
+            <AdminDunningRecovery />
+          </div>
+        )}
         {tab === 'email' && <AdminEmailHealth />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}

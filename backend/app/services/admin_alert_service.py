@@ -162,6 +162,41 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
             payload={"count": count},
         )
 
+    async def dunning_recovery() -> dict[str, Any] | None:
+        """Advisory when dunning volume is large enough to need an owner.
+
+        The durable alert is aggregate-only and never changes a subscription.
+        The existing ``billing.past_due`` rule remains the per-case canary; this
+        advisory highlights a recovery backlog that deserves review.
+        """
+
+        count, oldest = (
+            await db.execute(
+                select(
+                    func.count(models.Subscription.id),
+                    func.min(models.Subscription.updated_at),
+                ).where(models.Subscription.status.in_(("past_due", "on_hold")))
+            )
+        ).one()
+        count = int(count or 0)
+        if count < 5:
+            return None
+        age = int((now - oldest).total_seconds()) if oldest is not None else None
+        return _signal(
+            kind="billing.dunning_recovery",
+            severity="medium",
+            owner="Billing",
+            title="Dunning recovery backlog needs review",
+            dedupe_key="billing.dunning_recovery",
+            payload={
+                "count": count,
+                "oldest_age_seconds": age,
+                "advisory": True,
+                "automatic_downgrade": False,
+                "automatic_refund": False,
+            },
+        )
+
     async def stuck_jobs() -> dict[str, Any] | None:
         cutoff = now - timedelta(minutes=15)
         stuck_compilations = int(
@@ -293,6 +328,7 @@ async def collect_signals(db: AsyncSession, now: datetime) -> list[dict[str, Any
         ("billing.webhook_failures", webhook_failures),
         ("billing.failed_payments", failed_payments),
         ("billing.past_due", past_due),
+        ("billing.dunning_recovery", dunning_recovery),
         ("jobs.stuck", stuck_jobs),
         ("queue.backlog", queue_backlog),
         ("spend.caps", spend_signals),

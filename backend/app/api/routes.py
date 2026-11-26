@@ -188,6 +188,7 @@ from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
 from .admin_control_routes import router as admin_control_router
+from .admin_dunning_routes import router as admin_dunning_router
 from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
@@ -225,6 +226,7 @@ router.include_router(landing_conversion_router)
 router.include_router(admin_privacy_breakdown_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
+router.include_router(admin_dunning_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)

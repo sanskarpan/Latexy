@@ -1150,6 +1150,84 @@ class SubscriptionHistory(Base):
     )
 
 
+class SubscriptionStatusHistory(Base):
+    """Append-only provider status observations for dunning recovery.
+
+    The current ``subscriptions.status`` column is a snapshot; this ledger keeps
+    the ordered observations needed to reconstruct past-due/on-hold episodes.
+    Duplicate deliveries share the natural key and are ignored. An older event
+    may be recorded with ``applied=False`` so it is visible to the timeline
+    without regressing the current subscription row. No customer PII, provider
+    payload, token or free-form note is stored here.
+    """
+
+    __tablename__ = "subscription_status_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "provider_event_at",
+            "status",
+            name="uq_subscription_status_history_transition",
+        ),
+        CheckConstraint(
+            "event_type IN ('dunning_started', 'dunning_escalated', "
+            "'recovered', 'cancelled', 'expired', 'failed', "
+            "'status_observed', 'backfill')",
+            name="ck_subscription_status_history_event_type",
+        ),
+        CheckConstraint(
+            "source IN ('billing', 'checkout', 'reconcile', 'admin', 'backfill')",
+            name="ck_subscription_status_history_source",
+        ),
+        Index(
+            "idx_subscription_status_history_subscription_effective",
+            "subscription_id",
+            "provider_event_at",
+        ),
+        Index(
+            "idx_subscription_status_history_user_effective",
+            "user_id",
+            "provider_event_at",
+        ),
+        Index(
+            "idx_subscription_status_history_effective_status",
+            "provider_event_at",
+            "status",
+        ),
+        Index(
+            "idx_subscription_status_history_plan_effective",
+            "plan_id",
+            "provider_event_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True
+    )
+    plan_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    previous_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="billing", server_default="billing"
+    )
+    provider_event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    provider_event_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    applied: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Payment(Base):
     """Payment history."""
 

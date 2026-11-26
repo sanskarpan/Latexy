@@ -21,6 +21,7 @@ from ..core.observability import record_business_event
 from ..core.redis import get_redis_cache_client
 from ..database import models as db_models
 from .dodo_provider import DodoAPIError, DodoProvider
+from .dunning_history_service import record_status_observation
 from .email_service import email_service
 from .posthog_service import posthog_service
 from .referral_service import referral_service
@@ -1203,7 +1204,12 @@ class PaymentService:
             if event is None or event.payload_sha256 != digest:
                 await db.rollback()
                 return {"success": False, "retryable": True, "error": "A newer webhook snapshot is being processed"}
-            result = await self._process_webhook_event(db, event_type, data, envelope)
+            result = await self._process_webhook_event(
+                db,
+                event_type,
+                data,
+                {**envelope, "_latexy_provider_event_id": event_id},
+            )
             if not result.get("success"):
                 if result.get("retryable") is False:
                     # A deterministic mismatch (for example, a payment created
@@ -1355,7 +1361,13 @@ class PaymentService:
                 return {"success": True}
             return {"success": True}
         if event_type.startswith("subscription."):
-            return await self._handle_subscription_event(db, event_type, data, envelope)
+            return await self._handle_subscription_event(
+                db,
+                event_type,
+                data,
+                envelope,
+                provider_event_id=envelope.get("_latexy_provider_event_id"),
+            )
         if event_type.startswith("refund."):
             return await self._handle_refund_event(db, event_type, data)
         # Disputes are retained as durable events for admin reconciliation. They
@@ -1655,7 +1667,13 @@ class PaymentService:
         return {"success": True}
 
     async def _handle_subscription_event(
-        self, db: AsyncSession, event_type: str, data: dict[str, Any], envelope: dict[str, Any],
+        self,
+        db: AsyncSession,
+        event_type: str,
+        data: dict[str, Any],
+        envelope: dict[str, Any],
+        *,
+        provider_event_id: str | None = None,
     ) -> dict[str, Any]:
         intent = await self._resolve_intent(db, data)
         if not intent:
@@ -1707,7 +1725,44 @@ class PaymentService:
         if not product_id:
             return {"success": False, "error": "Subscription event is missing its product"}
         event_at = self._parse_time(envelope.get("timestamp")) or datetime.now(timezone.utc)
+        status = str(data.get("status") or "").lower()
         if intent.provider_event_at and intent.provider_event_at > event_at:
+            # Provider snapshots can arrive out of order. Keep the newer local
+            # state, but retain the older observation in the dunning ledger so
+            # recovery timelines still show the provider's actual order. A
+            # mismatched owner remains a no-op exactly as before.
+            stale_customer = data.get("customer") or {}
+            stale_customer_id = (
+                str(stale_customer.get("customer_id") or "")
+                if isinstance(stale_customer, dict)
+                else ""
+            )
+            stale_metadata = data.get("metadata") or {}
+            stale_owner_mismatch = (
+                intent.provider_customer_id
+                and stale_customer_id
+                and stale_customer_id != intent.provider_customer_id
+            ) or (
+                not isinstance(stale_metadata, dict)
+                or stale_metadata.get("latexy_intent_id") not in {None, intent.id}
+                or stale_metadata.get("latexy_user_id") not in {None, intent.user_id}
+            )
+            if stale_owner_mismatch:
+                return {"success": True}
+            await record_status_observation(
+                db,
+                intent,
+                status=status,
+                reason=(
+                    "payment_failed"
+                    if status in {"past_due", "failed"}
+                    else "provider_status_change"
+                ),
+                source="billing",
+                effective_at=event_at,
+                provider_event_id=provider_event_id,
+                applied=False,
+            )
             return {"success": True}
         customer = data.get("customer") or {}
         customer_id = str(customer.get("customer_id") or "")
@@ -1753,7 +1808,6 @@ class PaymentService:
         else:
             intent.provider_product_id = product_id
         intent.provider_event_at = event_at
-        status = str(data.get("status") or "").lower()
         # Dodo delivers the latest resource snapshot, including on retries of
         # older event types. The payload's status must win over the event name.
         state_event = {
@@ -1845,6 +1899,7 @@ class PaymentService:
             reason="plan_change" if plan_change and next_plan_id else "provider_status_change",
             source="billing",
             effective_at=event_at,
+            provider_event_id=provider_event_id,
         )
         await db.commit()
         posthog_service.capture(
