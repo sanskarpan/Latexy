@@ -19,9 +19,15 @@ import {
 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { useI18n } from '@/components/I18nProvider'
+import {
+  ONBOARDING_FLOW_VERSION,
+  trackOnboardingStep,
+  type OnboardingCompletionSource,
+  type OnboardingStepKey,
+} from '@/lib/analytics/onboarding'
 
 interface OnboardingStep {
-  id: string
+  id: OnboardingStepKey
   title: string
   description: string
   icon: React.ReactNode
@@ -97,6 +103,13 @@ export default function OnboardingFlow({
   const panelRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
   const titleId = 'onboarding-flow-title'
+  // Onboarding telemetry is deliberately low-cardinality: one view per step
+  // entry per open, and at most one terminal completion or skip per open.
+  const stepEnteredAtRef = useRef<number>(Date.now())
+  const lastViewedStepRef = useRef<OnboardingStepKey | null>(null)
+  const completionRecordedRef = useRef(false)
+  const skipRecordedRef = useRef(false)
+  const skipFlowRef = useRef<(source: OnboardingCompletionSource) => void>(() => {})
 
   // Focus management, focus trap, Escape-to-close, and body scroll lock.
   // Keyed on isOpen so it engages on open and cleans up fully on close.
@@ -135,7 +148,7 @@ export default function OnboardingFlow({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        onSkip()
+        skipFlowRef.current('escape')
         return
       }
       if (e.key !== 'Tab') return
@@ -169,7 +182,7 @@ export default function OnboardingFlow({
       document.body.style.overscrollBehavior = previousOverscroll
       previouslyFocusedRef.current?.focus?.()
     }
-  }, [isOpen, onSkip])
+  }, [isOpen])
 
   const steps: OnboardingStep[] = [
     {
@@ -298,7 +311,7 @@ export default function OnboardingFlow({
               <Link
                 key={o.label}
                 href={o.href}
-                onClick={onComplete}
+                onClick={() => completeFlow('link')}
                 className="block space-y-2 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4 transition hover:border-accent"
               >
                 <span className="grid place-items-center w-8 h-8 rounded-[var(--radius-sm)] bg-accent-soft text-accent-strong">
@@ -312,13 +325,13 @@ export default function OnboardingFlow({
 
           <div className="space-y-2 pt-1">
             {can('b01') && can('c01') && <button
-              onClick={onComplete}
+              onClick={() => completeFlow('cta')}
               className="w-full rounded-[var(--radius-md)] bg-accent py-3 text-base font-semibold text-accent-fg transition hover:brightness-110"
             >
               {t('onboarding.createFirst')}
             </button>}
             <button
-              onClick={onSkip}
+              onClick={() => skipFlow('skip')}
               className="w-full py-1.5 text-sm text-fg-2 transition hover:text-fg"
             >
               {t('onboarding.skipExplore')}
@@ -329,8 +342,45 @@ export default function OnboardingFlow({
     },
   ]
 
+  const currentStepId = steps[currentStep]?.id
+
+  // Emit one view event per step entry. The ref guard keeps unrelated
+  // re-renders and dev StrictMode double-effects from inflating views.
+  useEffect(() => {
+    if (!isOpen) {
+      lastViewedStepRef.current = null
+      completionRecordedRef.current = false
+      skipRecordedRef.current = false
+      return
+    }
+    if (!currentStepId || lastViewedStepRef.current === currentStepId) return
+    lastViewedStepRef.current = currentStepId
+    stepEnteredAtRef.current = Date.now()
+    trackOnboardingStep({
+      action: 'onboarding_step_viewed',
+      stepKey: currentStepId,
+      flowVersion: ONBOARDING_FLOW_VERSION,
+    })
+  }, [currentStepId, isOpen])
+
+  const recordStepEvent = (
+    action: 'onboarding_step_completed' | 'onboarding_step_skipped',
+    source: OnboardingCompletionSource,
+  ) => {
+    if (!currentStepId) return
+    const duration = Math.max(0, Date.now() - stepEnteredAtRef.current)
+    trackOnboardingStep({
+      action,
+      stepKey: currentStepId,
+      flowVersion: ONBOARDING_FLOW_VERSION,
+      durationMs: duration,
+      completionSource: source,
+    })
+  }
+
   const nextStep = () => {
     if (currentStep < steps.length - 1) {
+      recordStepEvent('onboarding_step_completed', 'next')
       setCompletedSteps((prev) => new Set([...prev, currentStep]))
       setCurrentStep(currentStep + 1)
     }
@@ -346,12 +396,31 @@ export default function OnboardingFlow({
     setCurrentStep(stepIndex)
   }
 
+  const completeFlow = (source: OnboardingCompletionSource) => {
+    if (!completionRecordedRef.current) {
+      completionRecordedRef.current = true
+      recordStepEvent('onboarding_step_completed', source)
+    }
+    onComplete()
+  }
+
+  const skipFlow = (source: OnboardingCompletionSource) => {
+    if (!skipRecordedRef.current) {
+      skipRecordedRef.current = true
+      recordStepEvent('onboarding_step_skipped', source)
+    }
+    onSkip()
+  }
+  // The focus-trap effect above is keyed only on isOpen, so give it the
+  // latest skip handler without re-registering document listeners.
+  skipFlowRef.current = skipFlow
+
   if (!isOpen) return null
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-[var(--overlay)] p-4"
-      onClick={onSkip}
+      onClick={() => skipFlow('backdrop')}
     >
       <motion.div
         ref={panelRef}
@@ -376,7 +445,7 @@ export default function OnboardingFlow({
               </h2>
             </div>
             <button
-              onClick={onSkip}
+              onClick={() => skipFlow('skip')}
               className="text-sm text-fg-3 transition hover:text-fg-2"
             >
               {t('onboarding.skip')}
@@ -460,7 +529,7 @@ export default function OnboardingFlow({
             </button>
           ) : (
             <button
-              onClick={onComplete}
+              onClick={() => completeFlow('cta')}
               className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110"
             >
               Get started

@@ -889,6 +889,137 @@ export interface AdminOperationsHealthResponse {
   workers?: AdminWorkerHealth
 }
 
+export interface AdminArtifactCountBytes {
+  count: number
+  bytes: number
+}
+
+export interface AdminArtifactKeySummary {
+  key: string
+  bytes: number
+  last_modified: string | null
+  age_seconds: number | null
+}
+
+export interface AdminArtifactManifestReport {
+  total: AdminArtifactCountBytes
+  states: Record<string, AdminArtifactCountBytes>
+  age_buckets: Record<string, AdminArtifactCountBytes>
+  references: {
+    live_finalizations: number
+    accepted_canonical_paths: number
+    unaccepted_canonical_paths: number
+    legal_hold_manifests: number
+    legal_hold_compilations: number
+  }
+  oldest_created_at: string | null
+  newest_created_at: string | null
+}
+
+export interface AdminArtifactStorageReport {
+  status: 'ok' | 'refused'
+  prefix: string
+  complete: boolean
+  pages_scanned: number
+  next_cursor: string | null
+  scanned: AdminArtifactCountBytes
+  states: Record<string, AdminArtifactCountBytes>
+  age_buckets: Record<string, AdminArtifactCountBytes>
+  orphan_candidates: AdminArtifactCountBytes & { keys: AdminArtifactKeySummary[] }
+  detail?: string
+}
+
+export interface AdminArtifactGrowthReport {
+  basis: string
+  added_24h: AdminArtifactCountBytes
+  added_7d: AdminArtifactCountBytes
+  added_30d: AdminArtifactCountBytes
+  last_sweep_manifest_bytes: number | null
+  change_since_last_sweep_bytes: number | null
+  last_sweep_at: string | null
+}
+
+export interface AdminArtifactTelemetry {
+  at?: string
+  scanned?: number
+  deleted?: number
+  protected?: number
+  failed?: number
+  failed_keys?: string[]
+  manifest_count?: number
+  manifest_bytes?: number
+  candidate_count?: number
+  candidate_bytes?: number
+  deleted_bytes?: number
+  duration_ms?: number
+  next_cursor_present?: boolean
+  dry_run?: boolean
+  skipped?: string
+}
+
+export interface AdminArtifactLifecycleReport {
+  generated_at: string
+  aggregate_only: boolean
+  minimum_cohort_size: number
+  suppression: {
+    applied: boolean
+    suppressed_groups: number
+    aggregate_only: boolean
+    minimum_cohort_size: number
+    detail: string
+  }
+  grace_seconds: number
+  manifests: AdminArtifactManifestReport
+  storage: AdminArtifactStorageReport
+  growth: AdminArtifactGrowthReport
+  last_sweep: AdminArtifactTelemetry | null
+  last_manual_cleanup: AdminArtifactTelemetry | null
+  failed_deletions: {
+    last_20_sweeps_failed: number
+    failed_last_7d: number
+    failed_keys: string[]
+    events: Array<{ at?: string; failed: number; action: string }>
+  }
+  safety: {
+    protects_referenced: boolean
+    protects_unaccepted: boolean
+    protects_legal_hold: boolean
+    reads_object_contents: boolean
+    scheduled_sweep_telemetry: boolean
+  }
+}
+
+export interface AdminArtifactCleanupRequest {
+  reason: string
+  dry_run: boolean
+  confirm?: true
+  cursor?: string
+  limit?: number
+  min_age_hours?: number
+}
+
+export interface AdminArtifactCleanupResponse {
+  dry_run: boolean
+  generated_at: string
+  scanned: AdminArtifactCountBytes
+  candidates: AdminArtifactCountBytes & { keys: AdminArtifactKeySummary[] }
+  would_delete: AdminArtifactCountBytes
+  deleted: AdminArtifactCountBytes
+  failed: AdminArtifactCountBytes & { keys: string[] }
+  protected: Record<string, AdminArtifactCountBytes>
+  next_cursor: string | null
+  grace_seconds: number
+  min_age_hours: number
+  duration_ms?: number
+  safety: {
+    protects_referenced: boolean
+    protects_unaccepted: boolean
+    protects_legal_hold: boolean
+    reads_object_contents: boolean
+    database_bound: boolean
+  }
+}
+
 export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
 
 export interface AdminQueueThroughputPoint {
@@ -1364,6 +1495,162 @@ export interface AdminCompileErrorsResponse {
   generated_at: string
 }
 
+export interface AdminDocumentComplexityBucket {
+  bucket: string
+  lower_bound: number | null
+  upper_bound: number | null
+  count: number
+  pct: number
+}
+
+export interface AdminDocumentComplexityPageSummary {
+  samples: number
+  missing: number
+  mean: number | null
+  p50: number | null
+  p90: number | null
+  p95: number | null
+  p99: number | null
+  max: number | null
+  buckets: AdminDocumentComplexityBucket[]
+}
+
+export interface AdminDocumentComplexitySectionSummary {
+  samples: number
+  missing: number
+  mean: number | null
+  p50: number | null
+  p90: number | null
+  p95: number | null
+  p99: number | null
+  max: number | null
+  buckets: AdminDocumentComplexityBucket[]
+}
+
+export interface AdminDocumentComplexityLatencySummary {
+  samples: number
+  missing: number
+  mean_seconds: number | null
+  p50_seconds: number | null
+  p95_seconds: number | null
+  p99_seconds: number | null
+  max_seconds: number | null
+  buckets: AdminDocumentComplexityBucket[]
+}
+
+export interface AdminDocumentComplexityFailureClass {
+  error_class: AdminCompileErrorClassKey
+  label: string
+  count: number
+  share: number
+  sparse: boolean
+}
+
+export interface AdminDocumentComplexityFailureSummary {
+  failed_compilations: number
+  class_total: number
+  reconciled: boolean
+  classes: AdminDocumentComplexityFailureClass[]
+}
+
+export interface AdminDocumentComplexityOverflowThreshold {
+  pages: number
+  label: string
+  count: number
+  share: number
+}
+
+export interface AdminDocumentComplexityOverflowSummary {
+  page_samples: number
+  max_pages: number | null
+  thresholds: AdminDocumentComplexityOverflowThreshold[]
+  pdf_limit_failures: number
+}
+
+export interface AdminDocumentComplexitySegment {
+  dimension: 'plan' | 'compiler' | 'template'
+  value: string
+  label: string
+  users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  other_compilations: number
+  page_count: AdminDocumentComplexityPageSummary
+  sections: AdminDocumentComplexitySectionSummary
+  latency: AdminDocumentComplexityLatencySummary
+  failure_classes: AdminDocumentComplexityFailureSummary
+  overflow: AdminDocumentComplexityOverflowSummary
+  sparse: boolean
+}
+
+export interface AdminDocumentComplexityResponse {
+  days: number
+  presets: number[]
+  window: { start: string; end: string }
+  timezone: string
+  filters: {
+    plan: string | null
+    compiler: string | null
+    template: string | null
+  }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    filtered_suppressed: boolean
+    hidden_by_dimension: { plan: number; compiler: number; template: number }
+    by_dimension: { plan: number; compiler: number; template: number }
+  }
+  totals: {
+    compilations: number
+    completed_compilations: number
+    failed_compilations: number
+    other_compilations: number
+    distinct_users: number
+    page_count_samples: number
+    page_count_missing: number
+    section_count_samples: number
+    section_count_missing: number
+    latency_samples: number
+    latency_missing: number
+  }
+  page_count: AdminDocumentComplexityPageSummary
+  sections: AdminDocumentComplexitySectionSummary
+  latency: AdminDocumentComplexityLatencySummary
+  failure_classes: AdminDocumentComplexityFailureSummary
+  overflow: AdminDocumentComplexityOverflowSummary
+  by_plan: AdminDocumentComplexitySegment[]
+  by_compiler: AdminDocumentComplexitySegment[]
+  by_template: AdminDocumentComplexitySegment[]
+  segmentation: {
+    dimensions: Array<'plan' | 'compiler' | 'template'>
+    maximum_segment_rows: number
+    omitted_by_dimension: { plan: number; compiler: number; template: number }
+  }
+  missing_dimensions: { plan: number; compiler: number; template: number }
+  reconciliation: {
+    source_rows: number
+    authenticated_compilations: number
+    completed_compilations: number
+    failed_compilations: number
+    other_compilations: number
+    reconciled: boolean
+    anonymous_excluded: number
+    failure_classes_reconciled: boolean
+    hidden_by_suppression: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminTemplatePerformanceRow {
   rank: number
   template_id: string
@@ -1549,6 +1836,197 @@ export interface AdminContentLibraryResponse {
     macro_values_suppressed: boolean
   }
   definitions: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminReferralFunnelStage {
+  key: string
+  label: string
+  count: number | null
+}
+
+export interface AdminReferralFunnel {
+  captured: number | null
+  qualified: number | null
+  paid: number | null
+  currently_qualified: number | null
+  reversed: number | null
+  qualified_conversion_pct: number | null
+  paid_conversion_pct: number | null
+  paid_conversion_rate: number | null
+  reversal_pct: number | null
+  suppressed: boolean
+  stages: AdminReferralFunnelStage[]
+}
+
+export interface AdminReferralRewardStatusRow {
+  status: string
+  label: string
+  rewards: number
+  value_days: number
+  suppressed: boolean
+}
+
+export interface AdminReferralRewardSummary {
+  statuses: AdminReferralRewardStatusRow[]
+  total_rewards: number | null
+  total_value_days: number | null
+  issued: number | null
+  pending: number | null
+  reversed: number | null
+  unavailable: number | null
+  issued_value_days: number | null
+  pending_value_days: number | null
+  reversed_value_days: number | null
+  payout_status: string
+  payout_basis: string
+  suppressed_statuses: number
+  suppressed: boolean
+}
+
+export interface AdminReferralRejectionReason {
+  reason: string
+  label: string
+  count: number
+  suppressed: boolean
+}
+
+export interface AdminReferralRejectionReasons {
+  items: AdminReferralRejectionReason[]
+  suppressed_reasons: number
+  suppressed: boolean
+  basis: string
+}
+
+export interface AdminReferralQualifyBucket {
+  key: string
+  label: string
+  count: number
+  suppressed: boolean
+}
+
+export interface AdminReferralTimeToQualify {
+  basis: string
+  sample_size: number | null
+  average_hours: number | null
+  median_hours: number | null
+  p90_hours: number | null
+  average_days: number | null
+  median_days: number | null
+  p90_days: number | null
+  buckets: AdminReferralQualifyBucket[]
+  suppressed_buckets?: number
+  suppressed: boolean
+}
+
+export interface AdminReferralFraudSignal {
+  key: string
+  label: string
+  priority: string
+  threshold: string
+  referrers: number
+  captured: number
+  qualified: number
+  reversed: number
+  refunded: number
+  suppressed: boolean
+}
+
+export interface AdminReferralFraudQueueItem {
+  signal: string
+  label: string
+  priority: string
+  referrers: number
+  recommended_action: string
+  automatic_action: boolean
+}
+
+export interface AdminReferralFraudReview {
+  method: string
+  signals: AdminReferralFraudSignal[]
+  queue: AdminReferralFraudQueueItem[]
+  signal_count: number | null
+  suppressed_signals: number
+  may_overlap: boolean
+  manual_review_required: boolean
+  automatic_payout: boolean
+  automatic_punishment: boolean
+  suppressed: boolean
+}
+
+export interface AdminReferralPlanRow {
+  plan: string
+  captured: number
+  qualified: number
+  paid: number
+  reversed: number
+  rewards: number
+  paid_conversion_pct: number
+}
+
+export interface AdminReferralSummaryResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    applied: boolean
+    distinct_referred_users: number | null
+    suppressed_groups: number
+    rule: string
+  }
+  funnel: AdminReferralFunnel
+  reward_summary: AdminReferralRewardSummary
+  rejection_reasons: AdminReferralRejectionReasons
+  time_to_qualify: AdminReferralTimeToQualify
+  fraud_review: AdminReferralFraudReview
+  by_plan: AdminReferralPlanRow[]
+  activity: {
+    captured_in_range: number | null
+    qualified_in_range: number | null
+    reversed_in_range: number | null
+    rewards_issued_in_range: number | null
+    rewards_reversed_in_range: number | null
+  }
+  reconciliation: {
+    source: string
+    counts: Record<string, number>
+    qualified_without_qualified_at: number | null
+    qualified_without_reward: number | null
+    missing_payments: number | null
+    invalid_time_to_qualify: number | null
+    reconciled: boolean | null
+  }
+  payout: {
+    status: string
+    basis: string
+    automatic_payout: boolean
+  }
+  programme_issue: number
+  data_sources: string[]
+  privacy: {
+    aggregate_only: boolean
+    minimum_users: number
+    excluded_fields: string[]
+    reads_consent_gated_analytics: boolean
+  }
+  automation: {
+    automatic_payout: boolean
+    automatic_punishment: boolean
+    manual_review_required: boolean
+  }
+  notes: string[]
   generated_at: string
 }
 
@@ -2092,6 +2570,261 @@ export interface AdminCheckoutFunnel {
   notes: string[]
 }
 
+export interface AdminRevenueReviewFlag {
+  flag_id: string
+  kind: string
+  severity: 'high' | 'medium' | 'low'
+  title: string
+  detail: string
+  coupon_id: string | null
+  coupon_code: string | null
+  affected_count: number
+  requires_human_review: boolean
+  automated_action: 'none'
+}
+
+export interface AdminCouponPerformanceTotals {
+  coupons: number
+  active_coupons: number
+  expired_coupons: number
+  exhausted_coupons: number
+  reservations: number
+  redemptions: number
+  released: number
+  paid_redemptions: number
+  unlinked_redemptions: number
+  expired_redemptions: number
+  repeated_reservation_events: number
+  repeated_reservation_users: number
+  used_count_total: number
+  capacity_total: number
+  redemption_rate_pct: number
+  conversion_pct: number
+  capacity_used_pct: number
+  distinct_users: number
+}
+
+export interface AdminCouponPerformanceRow {
+  coupon_id: string
+  code: string | null
+  discount_percent: number | null
+  applicable_plans: string[]
+  distinct_users: number
+  reservations: number
+  redemptions: number
+  released: number
+  paid_redemptions: number
+  expired_redemptions: number
+  repeated_reservation_users: number
+  repeated_reservation_events: number
+  redemption_rate_pct: number
+  conversion_pct: number
+}
+
+export interface AdminCouponReconciliationCheck {
+  key: string
+  label: string
+  ok: boolean
+  expected: number
+  actual: number
+  difference: number
+}
+
+export interface AdminCouponPerformance {
+  totals: AdminCouponPerformanceTotals
+  by_coupon: AdminCouponPerformanceRow[]
+  suppressed_coupons: number
+  review_flags: AdminRevenueReviewFlag[]
+  suppressed_review_flags: number
+  reconciliation: {
+    balanced: boolean
+    redemption_rows: number
+    reserved_rows: number
+    redeemed_rows: number
+    released_rows: number
+    active_redemptions: number
+    used_count_total: number
+    used_count_difference: number
+    missing_subscription_count: number
+    window_unlinked_redemptions: number
+    checks: AdminCouponReconciliationCheck[]
+  }
+}
+
+export interface AdminStudentFunnelStep {
+  key: 'student_requested' | 'student_verified' | 'student_paid'
+  label: string
+  count: number
+  from_previous: number
+  from_start: number
+}
+
+export interface AdminStudentPerformance {
+  applicable: boolean
+  requested_users: number
+  verified_users: number
+  paid_users: number
+  steps: AdminStudentFunnelStep[]
+  conversion: {
+    requested_to_verified: number
+    verified_to_paid: number
+    requested_to_paid: number
+  }
+  failures: {
+    total_events: number
+    distinct_users: number
+    by_reason: { reason: string; label: string; count: number }[]
+    repeated_failure_users: number | null
+    repeated_failure_users_suppressed: boolean
+  }
+  by_plan: { plan_id: string; users: number; conversion_pct: number }[]
+  suppressed_segments: number
+  review_flags: AdminRevenueReviewFlag[]
+  reconciliation: {
+    requested_at_least_verified: boolean
+    verified_at_least_paid: boolean
+    paid_without_verification: number
+    checks: AdminCouponReconciliationCheck[]
+  }
+}
+
+export interface AdminCouponStudentPerformance {
+  generated_at: string
+  period: { days: number; start: string; end: string; timezone: string }
+  filters: {
+    days: number
+    start: string | null
+    end: string | null
+    plan: string | null
+    timezone: string
+  }
+  minimum_segment_size: number
+  coupon: AdminCouponPerformance
+  student: AdminStudentPerformance
+  review_flags: AdminRevenueReviewFlag[]
+  suppressed_review_flags: number
+  privacy: {
+    aggregate_only: boolean
+    student_emails_returned: boolean
+    verification_tokens_returned: boolean
+    account_ids_returned: boolean
+    documents_returned: boolean
+    event_metadata_returned: boolean
+    minimum_segment_size: number
+  }
+  definitions: Record<string, string>
+  notes: string[]
+}
+
+export interface AdminSharePortfolioShareSummary {
+  active_share_links: number
+  viewed_share_links: number | null
+  views: number | null
+  unique_viewers: number | null
+  repeat_views: number | null
+  repeat_view_rate_pct: number | null
+  share_link_view_rate_pct: number | null
+  views_per_viewed_link: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminSharePortfolioSharePayload {
+  summary: AdminSharePortfolioShareSummary
+  conversion: {
+    definition: string
+    numerator: number | null
+    denominator: number
+    rate_pct: number | null
+    suppressed: boolean
+  }
+  by_referrer: Array<{ referrer: string; views: number; unique_viewers: number }>
+  by_country: Array<{ country_code: string; views: number; unique_viewers: number }>
+  by_resume: Array<{ resume_id: string; views: number; unique_viewers: number }>
+  suppressed_groups: { referrer: number; country: number; resume: number }
+  truncated_groups: { referrer: number; country: number; resume: number }
+  truncated_events: boolean
+}
+
+export interface AdminSharePortfolioFunnelStep {
+  step: 'portfolio_views' | 'contact' | 'signup'
+  label: string
+  count: number | null
+  unique_viewers: number | null
+  denominator: string
+  denominator_value: number | null
+  conversion_from_previous_pct: number | null
+  conversion_from_start_pct: number | null
+  suppressed: boolean
+}
+
+export interface AdminSharePortfolioPortfolioSummary {
+  views: number | null
+  unique_viewers: number | null
+  contact_events: number | null
+  unique_contact_viewers: number | null
+  signups: number | null
+  unique_signup_viewers: number | null
+  contact_rate_pct: number | null
+  signup_rate_pct: number | null
+  view_to_signup_rate_pct: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminSharePortfolioPortfolioRow {
+  portfolio_username: string
+  views: number
+  unique_viewers: number
+  contact_events: number | null
+  unique_contact_viewers: number | null
+  signups: number | null
+  unique_signup_viewers: number | null
+  contact_rate_pct: number | null
+  signup_rate_pct: number | null
+  suppressed_cells: string[]
+}
+
+export interface AdminSharePortfolioPortfolioPayload {
+  summary: AdminSharePortfolioPortfolioSummary
+  funnel: {
+    steps: AdminSharePortfolioFunnelStep[]
+    denominators: Record<string, { label: string; value: number | null }>
+    definition: string
+  }
+  by_referrer: Array<{ referrer: string; views: number; unique_viewers: number }>
+  by_country: Array<{ country_code: string; views: number; unique_viewers: number }>
+  by_portfolio: AdminSharePortfolioPortfolioRow[]
+  suppressed_groups: { referrer: number; country: number; portfolio: number }
+  truncated_groups: { referrer: number; country: number; portfolio: number }
+  truncated_events: boolean
+}
+
+export interface AdminSharePortfolioResponse {
+  period: { start: string; end: string; days: number; timezone: string }
+  filters: { plan: string | null; portfolio: string | null; resume_id: string | null }
+  minimum_cohort_size: number
+  share: AdminSharePortfolioSharePayload
+  portfolio: AdminSharePortfolioPortfolioPayload | null
+  notes: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminSharePortfolioResumeResponse {
+  period: { start: string; end: string; days: number; timezone: string }
+  filters: { plan: string | null; portfolio: string | null; resume_id: string | null }
+  minimum_cohort_size: number
+  resume_id: string
+  share: AdminSharePortfolioSharePayload
+  notes: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminSharePortfolioPortfolioResponse
+  extends Omit<AdminSharePortfolioResponse, 'portfolio'> {
+  portfolio_username: string
+  portfolio: AdminSharePortfolioPortfolioPayload
+}
 export interface AdminSubscriptionSummary {
   active_at_start: number
   active_at_end: number
@@ -2934,6 +3667,92 @@ export interface AdminLandingConversionResponse {
   generated_at: string
 }
 
+export interface AdminOnboardingStepRow {
+  step_key: string
+  label: string
+  step_index: number | null
+  views: number | null
+  unique_viewers: number | null
+  completions: number | null
+  unique_completers: number | null
+  skips: number | null
+  unique_skippers: number | null
+  abandoned_accounts: number | null
+  drop_off_rate: number | null
+  completion_rate: number | null
+  skip_rate: number | null
+  median_duration_seconds: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminOnboardingSegmentRow {
+  dimension: 'plan' | 'provider'
+  key: string
+  label: string
+  accounts: number | null
+  views: number | null
+  completions: number | null
+  skips: number | null
+  drop_off_rate: number | null
+  completion_rate: number | null
+  skip_rate: number | null
+  median_duration_seconds: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+  steps: AdminOnboardingStepRow[]
+}
+
+export interface AdminOnboardingSummary {
+  accounts: number | null
+  views: number | null
+  step_completions: number | null
+  completions: number | null
+  skips: number | null
+  terminal_accounts: number | null
+  abandoned_accounts: number | null
+  completion_rate: number | null
+  skip_rate: number | null
+  drop_off_rate: number | null
+  median_duration_seconds: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminOnboardingReconciliation {
+  completed_accounts: number | null
+  skipped_accounts: number | null
+  terminal_accounts: number | null
+  preference_on_accounts: number | null
+  reconciled_accounts: number | null
+  missing_preference_accounts: number | null
+  preference_without_terminal_accounts: number | null
+  reconciled_rate: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+  definition: string
+}
+
+export interface AdminOnboardingAnalyticsResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_cohort_size: number
+  flow_version: string | null
+  available_flow_versions: Array<{ flow_version: string; events: number }>
+  summary: AdminOnboardingSummary
+  steps: AdminOnboardingStepRow[]
+  completion_reconciliation: AdminOnboardingReconciliation
+  by_plan: AdminOnboardingSegmentRow[]
+  by_provider: AdminOnboardingSegmentRow[]
+  suppressed_segments: Record<'plan' | 'provider', number>
+  suppressed_rows: number
+  suppressed_cells: number
+  truncated_segments: Record<'plan' | 'provider', number>
+  truncated_events: boolean
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminPrivacyBreakdownRow {
   value: string
   label: string
@@ -3112,6 +3931,165 @@ export interface AdminLinterRulesResponse {
     aggregate_only: boolean
     per_user_rows: boolean
     stored_fields: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
+export interface AdminEditorModePlanBreakdown {
+  plan: string
+  label: string
+  selections: number
+  users: number
+}
+
+export interface AdminEditorModeModeBreakdown {
+  mode: string
+  label: string
+  selections: number
+  users: number
+}
+
+export interface AdminEditorModeAdoptionRow {
+  mode: string
+  label: string
+  selections: number
+  users: number
+  documents: number
+  share_pct: number
+  by_plan: AdminEditorModePlanBreakdown[]
+}
+
+export interface AdminEditorModePlanRow {
+  plan: string
+  label: string
+  selections: number
+  users: number
+  documents: number
+  share_pct: number
+  by_mode: AdminEditorModeModeBreakdown[]
+}
+
+export interface AdminEditorModePlanModeRow {
+  plan: string
+  plan_label: string
+  mode: string
+  mode_label: string
+  selections: number
+  users: number
+  documents: number
+  share_pct: number
+}
+
+export interface AdminEditorModeCompileRow {
+  mode: string
+  label: string
+  compilations: number | null
+  completed: number | null
+  failed: number | null
+  cancelled: number | null
+  other: number | null
+  success_rate_pct: number | null
+  p50_seconds: number | null
+  p95_seconds: number | null
+  mean_seconds: number | null
+  samples: number | null
+  sparse: boolean
+  users: number | null
+  documents: number | null
+  suppressed: boolean
+}
+
+export interface AdminEditorModeAutoCompile {
+  toggles: number | null
+  enabled: number | null
+  disabled: number | null
+  users: number | null
+  documents: number | null
+  suppressed: boolean
+}
+
+export interface AdminEditorModeSyncTex {
+  events: number | null
+  users: number | null
+  documents: number | null
+  by_direction: Array<{ direction: string; label: string; count: number }>
+  suppressed: boolean
+}
+
+export interface AdminEditorModeUsageResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  filters: { plan: string | null }
+  minimum_cohort_size: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    suppressed_mode_rows: number
+    suppressed_plan_rows: number
+    suppressed_plan_mode_rows: number
+    suppressed_day_rows: number
+    suppressed_compile_modes: number
+    adoption_totals_visible: boolean
+    compile_totals_visible: boolean
+    auto_compile_visible: boolean
+    synctex_visible: boolean
+    rule: string
+  }
+  summary: {
+    mode_selections: number | null
+    mode_users: number | null
+    documents: number | null
+    auto_compile_toggles: number | null
+    auto_compile_users: number | null
+    synctex_events: number | null
+    synctex_users: number | null
+    compilations: number | null
+    attributed_compilations: number | null
+    unknown_mode_compilations: number | null
+    completed_compilations: number | null
+    failed_compilations: number | null
+    success_rate_pct: number | null
+    p50_seconds: number | null
+    p95_seconds: number | null
+    auto_compile_enabled_toggles: number | null
+    auto_compile_disabled_toggles: number | null
+    synctex_source_to_pdf: number | null
+    synctex_pdf_to_source: number | null
+  }
+  adoption_by_mode: AdminEditorModeAdoptionRow[]
+  adoption_by_plan: AdminEditorModePlanRow[]
+  adoption_by_plan_mode: AdminEditorModePlanModeRow[]
+  mode_adoption: AdminEditorModeAdoptionRow[]
+  mode_adoption_by_plan: AdminEditorModePlanRow[]
+  compile_by_mode: AdminEditorModeCompileRow[]
+  compile_outcomes_by_mode: AdminEditorModeCompileRow[]
+  auto_compile: AdminEditorModeAutoCompile
+  auto_compile_usage: AdminEditorModeAutoCompile
+  synctex: AdminEditorModeSyncTex
+  synctex_usage: AdminEditorModeSyncTex
+  trend: Array<{ date: string; mode_selections: number; users: number }>
+  reconciliation: {
+    editor_events: number | null
+    mode_selections: number | null
+    auto_compile_toggles: number | null
+    synctex_events: number | null
+    compilations: number | null
+    attributed_compilations: number | null
+    unattributed_compilations: number | null
+    invalid_rows: number
+    truncated_events: boolean
+    truncated_compilations: boolean
+    max_event_rows: number
+    max_compilation_rows: number
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    stored_event_fields: string[]
+    document_identifier: string
+    consent_gate: string
     content_fields_excluded: string[]
   }
   notes: string[]
@@ -3384,6 +4362,161 @@ export interface AdminTrialHealthResponse {
     attributed_trials_90d: number | null
     paid_trials_90d: number | null
     unattributed_trials_90d: number | null
+  }
+  notes: string[]
+}
+
+export interface AdminTeamSeatAging {
+  pending: number
+  over_7_days: number
+  over_14_days: number
+  over_30_days: number
+  oldest_pending_days: number
+}
+
+export interface AdminTeamSeatCurrent {
+  owners: number
+  seats: number
+  accepted_ever: number
+  active: number
+  pending: number
+  removed: number
+  other: number
+  seat_cap: number
+  seat_capacity: number
+  utilization_pct: number | null
+  over_capacity: number
+  at_or_over_cap: boolean
+  aging_invites: AdminTeamSeatAging
+}
+
+export interface AdminTeamSeatInvitations {
+  invited: number
+  accepted_ever: number
+  active_now: number
+  pending_now: number
+  removed_now: number
+  other_now: number
+  invite_to_accept_pct: number | null
+  invite_to_active_pct: number | null
+  median_accept_hours: number | null
+  accept_samples: number
+  median_accept_suppressed: boolean
+}
+
+export interface AdminTeamSeatSubscription {
+  plan_id: string
+  status: string
+  current_period_end: string | null
+  created_at: string | null
+}
+
+export interface AdminTeamSeatTenantRef {
+  tenant_id: string
+  tenant_name: string
+  tenant_plan_id: string
+  tenant_max_members: number
+}
+
+export interface AdminTeamSeatOwner {
+  owner_user_id: string
+  owner_plan: string
+  owner_subscription_status: string
+  team_plan_active: boolean
+  subscription: AdminTeamSeatSubscription | null
+  tenant: AdminTeamSeatTenantRef | null
+  current: AdminTeamSeatCurrent
+  invitations: AdminTeamSeatInvitations | null
+  invitation_suppressed: boolean
+}
+
+export interface AdminTeamSeatTenantMembers {
+  active_members: number
+  member_cap: number
+  utilization_pct: number | null
+  at_or_over_cap: boolean
+}
+
+export interface AdminTeamSeatTenant {
+  tenant_id: string
+  tenant_name: string
+  tenant_plan_id: string
+  tenant_max_members: number
+  team_owners: number
+  team_seat_cap: number
+  current: AdminTeamSeatCurrent | null
+  invitations: AdminTeamSeatInvitations | null
+  seat_section_suppressed: boolean
+  tenant_members: AdminTeamSeatTenantMembers | null
+  member_section_suppressed: boolean
+}
+
+export interface AdminTeamSeatResponse {
+  generated_at: string
+  days: number
+  date_range: {
+    start: string
+    end: string
+    start_date: string
+    end_date: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    owner_id: string | null
+    tenant_id: string | null
+    tenant_name: string | null
+    days: number
+    start_date: string
+    end_date: string
+    timezone: string
+  }
+  minimum_group_size: number
+  suppressed: boolean
+  suppression: {
+    minimum_group_size: number
+    rule: string
+    summary_suppressed: boolean
+    invitation_section_suppressed: boolean
+    suppressed_owner_rows: number
+    suppressed_tenant_rows: number
+    suppressed_invitation_sections: number
+    suppressed_seat_sections: number
+  }
+  summary: {
+    current: AdminTeamSeatCurrent | null
+    invitations: AdminTeamSeatInvitations | null
+    team_plan_owners: number
+    inactive_plan_owners_with_seats: number
+    owners_at_or_over_cap: number
+  }
+  owners: AdminTeamSeatOwner[]
+  tenants: AdminTeamSeatTenant[]
+  reconciliation: {
+    source_tables: string[]
+    seats_scanned: number
+    seats_after_filters: number
+    rows_truncated: boolean
+    owner_rows_published: number
+    tenant_rows_published: number
+    owners_with_multiple_tenants: number
+    subscriptions_scanned: number
+    unassigned_owners: number
+    unassigned_seats: number
+    tenant_attributed_seats: number
+    period_invitations: number
+    period_bucket_total: number
+    checks: Array<{ key: string; ok: boolean }>
+    all_checks_passed: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    invitee_emails_included: boolean
+    invitee_user_ids_included: boolean
+    owner_user_ids_included: boolean
+    tenant_ids_included: boolean
+    fields_read: string[]
+    fields_excluded: string[]
   }
   notes: string[]
 }
@@ -4252,6 +5385,241 @@ export interface AdminFeatureAdoptionResponse {
   definitions: Record<string, string>
   generated_at: string
 }
+
+export interface AdminCollaborationCommentMetrics {
+  total: number
+  resolved: number
+  resolution_rate: number | null
+  resolution_denominator: number
+  distinct_authors: number
+}
+
+export interface AdminCollaborationMentionMetrics {
+  total: number
+  delivered: number
+  pending: number
+  delivery_rate: number | null
+  delivery_denominator: number
+  delivery_attempts: number
+  distinct_mentioned_users: number
+}
+
+export interface AdminCollaborationReviewCommentMetrics {
+  total: number
+  resolved: number
+  resolution_rate: number | null
+  resolution_denominator: number
+  distinct_reviewers: number
+  distinct_review_links: number
+}
+
+export interface AdminCollaborationReviewLinkMetrics {
+  opens: number
+  distinct_links_opened: number
+}
+
+export interface AdminCollaborationTimeToFirstReview {
+  eligible_submissions: number
+  reviewed_submissions: number
+  denominator: number
+  median_hours: number | null
+  p90_hours: number | null
+  suppressed: boolean
+  suppression_threshold: number
+}
+
+export interface AdminCollaborationActivity {
+  comments: AdminCollaborationCommentMetrics
+  mentions: AdminCollaborationMentionMetrics
+  review_comments: AdminCollaborationReviewCommentMetrics
+  review_links: AdminCollaborationReviewLinkMetrics
+  time_to_first_review: AdminCollaborationTimeToFirstReview
+}
+
+export interface AdminCollaborationTenantRow {
+  tenant_id: string
+  name: string
+  slug: string
+  plan_id: string
+  active: boolean
+  suppressed: boolean
+  suppression_reason: string | null
+  member_count: number | null
+  cohort_count: number | null
+  cohort_member_count: number | null
+  submitted_resume_count: number | null
+  activity: AdminCollaborationActivity | null
+}
+
+export interface AdminCollaborationCohortRow {
+  cohort_id: string
+  name: string
+  suppressed: boolean
+  suppression_reason: string | null
+  member_count: number | null
+  submission_count: number | null
+  activity: AdminCollaborationActivity | null
+}
+
+export interface AdminCollaborationTenantReconciliation {
+  member_count: number | null
+  cohort_count: number | null
+  visible_cohort_count: number | null
+  suppressed_cohort_count: number | null
+  cohort_member_count: number | null
+  visible_cohort_member_count: number | null
+  suppressed_cohort_member_count: number | null
+  submitted_resume_count: number | null
+  visible_cohort_submission_count: number | null
+  suppressed_cohort_submission_count: number | null
+}
+
+export interface AdminCollaborationSelectedTenant extends AdminCollaborationTenantRow {
+  cohorts: AdminCollaborationCohortRow[]
+  suppressed_cohort_count: number | null
+  reconciliation: AdminCollaborationTenantReconciliation | null
+}
+
+export interface AdminCollaborationReconciliation {
+  tenant_count: number
+  active_tenant_count: number
+  visible_tenant_count: number
+  suppressed_tenant_count: number
+  tenant_member_count: number
+  visible_tenant_member_count: number
+  suppressed_tenant_member_count: number
+  distinct_tenant_members: number
+  cohort_count: number
+  visible_cohort_count: number
+  suppressed_cohort_count: number
+  cohort_member_count: number
+  visible_cohort_member_count: number
+  suppressed_cohort_member_count: number
+  cohort_submission_count: number
+  visible_cohort_submission_count: number
+  suppressed_cohort_submission_count: number
+}
+
+export interface AdminCollaborationResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  date_range: {
+    start: string
+    end: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    tenant_id: string | null
+    timezone: string
+  }
+  minimum_group_size: number
+  summary: AdminCollaborationActivity
+  tenants: AdminCollaborationTenantRow[]
+  suppressed_tenants: number
+  reconciliation: AdminCollaborationReconciliation
+  selected_tenant: AdminCollaborationSelectedTenant | null
+  definitions: Record<string, string>
+  generated_at: string
+}
+
+export interface AdminCareerAdoptionMetrics {
+  users: number
+  runs: number
+  runs_per_user: number
+  repeat_users: number
+  repeat_rate: number
+  after_optimization_users: number
+  after_optimization_rate: number
+  denominator?: number
+  penetration?: number
+}
+
+export interface AdminCareerAdoptionSegment extends AdminCareerAdoptionMetrics {
+  dimension: 'plan' | 'cohort'
+  key: string
+  label: string
+  denominator: number
+  penetration: number
+}
+
+export interface AdminCareerAdoptionFeature {
+  key: 'cover_letters' | 'interview_prep' | 'career_paths'
+  label: string
+  event: string
+  adoption: AdminCareerAdoptionMetrics | null
+  segments: AdminCareerAdoptionSegment[]
+}
+
+export interface AdminCareerAdoptionReconciliationFeature {
+  event_users: number
+  table_users: number
+  events: number
+  table_rows: number
+  matched: number
+  unmatched_events: number
+  unmatched_rows: number
+}
+
+export interface AdminCareerAdoptionResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: string
+  date_range: {
+    start: string
+    end: string
+    days: number
+    timezone: string
+  }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    cohort: string[] | null
+    timezone: string
+  }
+  minimum_segment_size: number
+  optimization_lookback_days: number
+  audience_users: number
+  suppressed: boolean
+  suppressed_segments: Record<'plan' | 'cohort', number>
+  features: AdminCareerAdoptionFeature[]
+  reconciliation: {
+    source: string
+    suppressed: boolean
+    audience_users?: number
+    optimization_users?: number
+    features: Partial<
+      Record<'cover_letters' | 'interview_prep' | 'career_paths', AdminCareerAdoptionReconciliationFeature>
+    >
+    unattributed_events?: number
+    unattributed_table_rows?: Record<string, number>
+    totals?: {
+      events: number
+      table_rows: number
+      matched: number
+      unmatched_events: number
+      unmatched_rows: number
+      matched_rate: number
+    }
+  }
+  definitions: Record<string, string>
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  generated_at: string
+}
+
 
 // ------------------------------------------------------------------ //
 //  API client class                                                   //
@@ -7368,6 +8736,23 @@ class ApiClient {
     return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
   }
 
+  async getAdminOnboardingAnalytics(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    flow_version?: string
+  }): Promise<AdminOnboardingAnalyticsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.flow_version) qs.set('flow_version', params.flow_version)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminOnboardingAnalyticsResponse>(
+      `/admin/analytics/onboarding${suffix}`,
+    )
+  }
+
   async getAdminPrivacyBreakdowns(params?: {
     days?: number
     start_date?: string
@@ -7401,6 +8786,23 @@ class ApiClient {
     return this.request<AdminLinterRulesResponse>(`/admin/linter/rules?${qs}`)
   }
 
+  async getAdminEditorModeUsage(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+  }): Promise<AdminEditorModeUsageResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminEditorModeUsageResponse>(
+      `/admin/analytics/editor-modes${suffix}`,
+    )
+  }
+
   async getAdminTrialAttribution(params?: {
     days?: number
     start_date?: string
@@ -7424,6 +8826,23 @@ class ApiClient {
     return this.request<AdminPlanHealthResponse>(
       `/admin/analytics/plan-health?days=${encodeURIComponent(String(days))}`,
     )
+  }
+
+  async getAdminTeamSeatUtilization(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    owner_id?: string
+    tenant_id?: string
+  }): Promise<AdminTeamSeatResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.owner_id) qs.set('owner_id', params.owner_id)
+    if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTeamSeatResponse>(`/admin/analytics/team-seats${suffix}`)
   }
 
   async getAdminAiCost(params?: {
@@ -7531,6 +8950,23 @@ class ApiClient {
     return this.request<AdminCompileErrorsResponse>(`/admin/analytics/compile-errors${suffix}`)
   }
 
+  async getAdminDocumentComplexity(params?: {
+    days?: number
+    plan?: string
+    compiler?: string
+    template?: string
+  }): Promise<AdminDocumentComplexityResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.compiler) qs.set('compiler', params.compiler)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminDocumentComplexityResponse>(
+      `/admin/analytics/document-complexity${suffix}`,
+    )
+  }
+
   async getAdminFilteredTimeseries(params: {
     days?: number
     metric: AdminTimeseriesMetric
@@ -7576,6 +9012,38 @@ class ApiClient {
     if (params?.feature) qs.set('feature', params.feature)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminFeatureAdoptionResponse>(`/admin/analytics/feature-adoption${suffix}`)
+  }
+
+  async getAdminCollaborationAnalytics(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    tenant_id?: string
+  }): Promise<AdminCollaborationResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCollaborationResponse>(`/admin/analytics/collaboration${suffix}`)
+  }
+
+  async getAdminCareerAdoption(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    cohort?: string
+  }): Promise<AdminCareerAdoptionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCareerAdoptionResponse>(`/admin/analytics/career-adoption${suffix}`)
   }
 
   async getAdminTemplatePerformance(params?: {
@@ -7666,6 +9134,42 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Content library adoption CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminReferralSummary(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+  }): Promise<AdminReferralSummaryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminReferralSummaryResponse>(`/admin/referrals/summary${suffix}`)
+  }
+
+  async downloadAdminReferralSummaryCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/referrals/summary/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Referral analytics CSV failed (${response.status})`)
     }
     return response.blob()
   }
@@ -7847,6 +9351,19 @@ class ApiClient {
     return this.request<AdminQueueMetricsResponse>('/admin/operations/queues')
   }
 
+  async getAdminArtifactLifecycle(): Promise<AdminArtifactLifecycleReport> {
+    return this.request<AdminArtifactLifecycleReport>('/admin/operations/artifacts/lifecycle')
+  }
+
+  async runAdminArtifactCleanup(
+    body: AdminArtifactCleanupRequest,
+  ): Promise<AdminArtifactCleanupResponse> {
+    return this.request<AdminArtifactCleanupResponse>('/admin/operations/artifacts/cleanup', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   async getAdminStuckJobs(params?: {
     min_age_minutes?: number
     limit?: number
@@ -7914,6 +9431,71 @@ class ApiClient {
     return this.request<AdminCheckoutFunnel>(`/admin/billing/checkout-funnel?${qs}`)
   }
 
+  async getAdminCouponStudentPerformance(params?: {
+    days?: number
+    start?: string
+    end?: string
+    plan?: string
+  }): Promise<AdminCouponStudentPerformance> {
+    const qs = new URLSearchParams({ days: String(params?.days ?? 30) })
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    if (params?.plan) qs.set('plan', params.plan)
+    return this.request<AdminCouponStudentPerformance>(
+      `/admin/revenue/coupon-student-performance?${qs}`,
+    )
+  }
+
+  async getAdminSharePortfolio(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    portfolio?: string
+    resume_id?: string
+  }): Promise<AdminSharePortfolioResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.portfolio) qs.set('portfolio', params.portfolio)
+    if (params?.resume_id) qs.set('resume_id', params.resume_id)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSharePortfolioResponse>(
+      `/admin/analytics/share-portfolio${suffix}`,
+    )
+  }
+
+  async getAdminSharePortfolioResume(
+    resumeId: string,
+    params?: { days?: number; start_date?: string; end_date?: string; plan?: string },
+  ): Promise<AdminSharePortfolioResumeResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSharePortfolioResumeResponse>(
+      `/admin/analytics/share-portfolio/resumes/${encodeURIComponent(resumeId)}${suffix}`,
+    )
+  }
+
+  async getAdminSharePortfolioPortfolio(
+    username: string,
+    params?: { days?: number; start_date?: string; end_date?: string; plan?: string },
+  ): Promise<AdminSharePortfolioPortfolioResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSharePortfolioPortfolioResponse>(
+      `/admin/analytics/share-portfolio/portfolios/${encodeURIComponent(username)}${suffix}`,
+    )
+  }
   async getAdminSubscriptionAnalytics(params?: {
     days?: number
     start?: string
@@ -9681,6 +11263,25 @@ class ApiClient {
     return this.request<TenantStats>(`/tenants/${tenantId}/stats`, {}, accountContext)
   }
 
+  async getTenantBilling(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantBilling> {
+    return this.request<TenantBilling>(`/tenants/${tenantId}/billing`, {}, accountContext)
+  }
+
+  async recordTenantUpgradeIntent(
+    tenantId: string,
+    targetPlanId: string | null,
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<TenantUpgradeIntentResponse> {
+    return this.request<TenantUpgradeIntentResponse>(
+      `/tenants/${tenantId}/billing/upgrade-intent`,
+      {
+        method: 'POST',
+        body: JSON.stringify(targetPlanId ? { target_plan_id: targetPlanId } : {}),
+      },
+      accountContext,
+    )
+  }
+
   async verifyTenantDomain(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<DomainVerifyResponse> {
     return this.request<DomainVerifyResponse>(`/tenants/${tenantId}/domain/verify`, {
       method: 'POST',
@@ -10695,8 +12296,127 @@ export interface MemberResponse {
   joined_at: string
 }
 
+export interface TenantTrendPoint {
+  date: string
+  members_joined: number
+  submissions: number
+  active_members: number
+}
+
+export type TenantTrendPeriod = 7 | 30 | 90
+
+export interface TenantActivationStats {
+  submitted: number
+  opened: number
+  downloaded: number
+  submitting_members: number
+  activation_rate: number
+}
+
+export interface TenantSuppressionStats {
+  minimum_cohort_size: number
+  suppressed_cohorts: number
+  cohort_breakdown_visible: boolean
+  note: string
+}
+
 export interface TenantStats {
+  /** Retained for older callers; equal to seats_used. */
   member_count: number
+  seats_used: number
+  seats_available: number
+  seat_limit: number
+  seat_utilization: number
+  invited_members: number
+  pending_invites_available: boolean
+  accepted_members: number
+  active_members: number
+  active_members_window_days: number
+  cohort_count: number
+  cohort_member_count: number
+  cohorts_with_submissions: number
+  submission_count: number
+  activation: TenantActivationStats
+  trends: Record<'7' | '30' | '90', TenantTrendPoint[]>
+  suppression: TenantSuppressionStats
+  generated_at: string
+}
+
+export interface TenantBillingPlan {
+  plan_id: string
+  name: string
+  max_seats: number
+  tenant_status: 'active' | 'inactive'
+  status_source: 'tenant_record'
+}
+
+export interface TenantBillingSeats {
+  active: number
+  invited: number | null
+  available: number
+  used: number
+  max: number
+  utilization_percent: number
+  over_capacity: number
+  invited_available: boolean
+  invited_reason?: string | null
+  basis: 'active_and_invited' | 'active_only'
+}
+
+export interface TenantBillingInviteConversion {
+  available: boolean
+  reason?: string | null
+  minimum_cohort_size: number
+  accepted: number | null
+  invited: number | null
+  conversion_percent: number | null
+}
+
+export interface TenantBillingSubscription {
+  available: boolean
+  status: string | null
+  renewal_at: string | null
+  reason?: string | null
+  detail?: string | null
+}
+
+export interface TenantBillingUpgrade {
+  cta_visible: boolean
+  threshold_percent: number
+  threshold_seats: number
+  utilization_percent: number
+  target_plan_id: string | null
+  target_plan_name: string | null
+  cta_label: string | null
+  reason: string
+}
+
+export interface TenantBillingMapping {
+  seats: { status: string; source: string }
+  subscription: { status: string; reason: string }
+  team_seats: { status: string; reason: string; detail?: string }
+}
+
+export interface TenantBilling {
+  tenant_id: string
+  generated_at: string
+  plan: TenantBillingPlan
+  seats: TenantBillingSeats
+  invite_conversion: TenantBillingInviteConversion
+  subscription: TenantBillingSubscription
+  upgrade: TenantBillingUpgrade
+  mapping: TenantBillingMapping
+}
+
+export interface TenantUpgradeIntentResponse {
+  recorded: boolean
+  action: string
+  tenant_id: string
+  target_plan_id: string | null
+  target_plan_name: string | null
+  threshold_percent: number
+  utilization_percent: number
+  message: string
 }
 
 export interface TenantInvitationResponse {

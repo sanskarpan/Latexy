@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..core.logging import get_logger
 from ..database.models import Compilation, CoverLetter, JobFinalization
+from ..services.compile_complexity import normalize_page_count
 from ..services.storage_service import compilation_pdf_key
 
 logger = get_logger(__name__)
@@ -1011,6 +1012,11 @@ async def commit_success(
             compilation.artifact_branch = manifest.branch
             compilation.artifact_accepted = manifest.branch == "draft"
         compilation.pdf_size = pdf_size
+        # Persist only the compiler-reported page count, normalized to the
+        # bounded column domain. No document text or PDF content is stored.
+        page_count = normalize_page_count(bounded_payload.get("page_count"))
+        if page_count is not None:
+            compilation.page_count = page_count
         row.compilation_id = compilation.id
 
     row.state = FinalizationState.COMPLETED.value

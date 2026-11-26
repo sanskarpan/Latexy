@@ -39,6 +39,7 @@ from ..services.auto_fit_service import (
     profile_for_intensity,
     remove_auto_fit,
 )
+from ..services.compile_complexity import normalize_page_count
 from ..services.compile_error_taxonomy import (
     classify_compile_error,
     normalize_compile_error_class,
@@ -1427,6 +1428,10 @@ async def _update_compilation_record(
                     terminal_result=terminal_result,
                 )
             )
+            # Persist only the bounded count reported in the terminal result.
+            resolved_page_count = normalize_page_count(
+                (terminal_result or {}).get("page_count")
+            )
 
             # Read before uploading so anonymous/preview jobs without a
             # Compilation row never create an unowned object.
@@ -1623,6 +1628,7 @@ async def _update_compilation_record(
                         error_message=error_message,
                         pdf_path=pdf_path,
                         pdf_size=len(pdf_bytes),
+                        page_count=resolved_page_count,
                     )
                 )
                 await session.commit()

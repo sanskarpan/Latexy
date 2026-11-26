@@ -95,6 +95,19 @@ from .consent_analytics_routes import router as consent_analytics_router
 router.include_router(consent_analytics_router)
 router.include_router(admin_consent_analytics_router)
 
+# Privacy-safe editor mode, auto-compile and SyncTeX usage (issue #2077).
+from .editor_mode_telemetry_routes import router as editor_mode_telemetry_router
+
+router.include_router(editor_mode_telemetry_router)
+
+# Onboarding step completion and drop-off reporting. Kept in a dedicated module
+# so ingestion can never reach document models or free-form event metadata.
+from .onboarding_analytics_routes import admin_router as admin_onboarding_analytics_router
+from .onboarding_analytics_routes import router as onboarding_analytics_router
+
+router.include_router(onboarding_analytics_router)
+router.include_router(admin_onboarding_analytics_router)
+
 # First-party UTM/referrer capture and aggregate growth reporting. Kept in a
 # dedicated module so the public capture path cannot reach document models.
 from .traffic_source_routes import admin_router as admin_traffic_source_router
@@ -182,13 +195,18 @@ from .admin_activity_routes import router as admin_activity_router
 from .admin_ai_credential_mix_routes import router as admin_ai_credential_mix_router
 from .admin_ai_latency_retry_routes import router as admin_ai_latency_retry_router
 from .admin_alert_routes import router as admin_alert_router
+from .admin_artifact_lifecycle_routes import router as admin_artifact_lifecycle_router
 from .admin_ats_score_routes import router as admin_ats_score_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
+from .admin_career_adoption_routes import router as admin_career_adoption_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
+from .admin_collaboration_routes import router as admin_collaboration_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
 from .admin_control_routes import router as admin_control_router
+from .admin_document_complexity_routes import router as admin_document_complexity_router
 from .admin_dunning_routes import router as admin_dunning_router
+from .admin_editor_mode_routes import router as admin_editor_mode_router
 from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
@@ -198,10 +216,13 @@ from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
 from .admin_plan_health_routes import router as admin_plan_health_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
+from .admin_referral_analytics_routes import router as admin_referral_analytics_router
+from .admin_revenue_lifecycle_routes import router as admin_revenue_lifecycle_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
 from .admin_support_action_routes import router as admin_support_action_router
+from .admin_team_seat_routes import router as admin_team_seat_router
 from .admin_template_performance_routes import router as admin_template_performance_router
 from .admin_trial_health_routes import router as admin_trial_health_router
 from .landing_conversion_routes import router as landing_conversion_router
@@ -213,10 +234,14 @@ router.include_router(admin_ai_latency_retry_router)
 router.include_router(admin_ai_credential_mix_router)
 router.include_router(admin_feature_adoption_router)
 router.include_router(admin_billing_reconciliation_router)
+router.include_router(admin_career_adoption_router)
 router.include_router(admin_checkout_funnel_router)
+router.include_router(admin_collaboration_router)
 router.include_router(admin_compile_error_router)
+router.include_router(admin_document_complexity_router)
 router.include_router(admin_content_library_router)
 router.include_router(admin_operations_router)
+router.include_router(admin_artifact_lifecycle_router)
 router.include_router(admin_optimization_acceptance_router)
 router.include_router(admin_ats_score_router)
 router.include_router(admin_plan_health_router)
@@ -226,13 +251,17 @@ router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
 router.include_router(admin_privacy_breakdown_router)
+router.include_router(admin_revenue_lifecycle_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
+router.include_router(admin_team_seat_router)
 router.include_router(admin_dunning_router)
+router.include_router(admin_editor_mode_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
 router.include_router(admin_trial_health_router)
+router.include_router(admin_referral_analytics_router)
 
 # Signed Resend delivery/bounce/complaint evidence. Kept outside the admin
 # surface: the provider must reach it without an account session, and the Svix
@@ -323,6 +352,13 @@ from .portfolio_routes import router as portfolio_router
 
 router.include_router(portfolio_router)
 
+# Consent-gated public portfolio capture and aggregate admin reporting (issue #2082).
+from .admin_share_portfolio_routes import router as admin_share_portfolio_router
+from .portfolio_analytics_routes import router as portfolio_analytics_router
+
+router.include_router(portfolio_analytics_router)
+router.include_router(admin_share_portfolio_router)
+
 # Include Career Path routes (Feature 80)
 from .career_routes import admin_router as career_admin_router
 from .career_routes import router as career_router
@@ -353,6 +389,11 @@ router.include_router(public_api_router)
 from .tenant_routes import router as tenant_router
 
 router.include_router(tenant_router)
+
+# Include tenant billing/seat utilization routes (read-only + audited CTA)
+from .tenant_billing_routes import router as tenant_billing_router
+
+router.include_router(tenant_billing_router)
 
 # Include Team billing seat routes (Feature 32)
 from .team_routes import router as team_router

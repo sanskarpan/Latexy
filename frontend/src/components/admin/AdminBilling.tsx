@@ -10,7 +10,9 @@ import {
   type AdminRefundList,
 } from '@/lib/api-client'
 import AdminRevenueBreakdown from './AdminRevenueBreakdown'
+import AdminCouponStudentPerformance from './AdminCouponStudentPerformance'
 import AdminPlanHealth from './AdminPlanHealth'
+import AdminTeamSeatUtilization from './AdminTeamSeatUtilization'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
 import AdminCheckoutFunnel from './AdminCheckoutFunnel'
 
@@ -1142,7 +1144,11 @@ export default function AdminBilling() {
         onGranularity={setGranularity}
       />
 
+      <AdminCouponStudentPerformance />
+
       <AdminPlanHealth />
+
+      <AdminTeamSeatUtilization />
 
       <WebhookHealth
         data={webhooks}

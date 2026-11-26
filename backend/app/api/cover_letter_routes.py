@@ -23,6 +23,10 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
+from ..services.career_feature_events import (
+    FEATURE_COVER_LETTERS,
+    record_generation_event,
+)
 from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..utils.uuid_guard import ensure_uuid
 from ..workers.cover_letter_worker import submit_cover_letter_generation
@@ -399,6 +403,9 @@ async def generate_cover_letter(
                 job_id,
                 extra={"error_type": type(exc).__name__},
             )
+            await record_generation_event(
+                db, feature=FEATURE_COVER_LETTERS, user_id=user_id
+            )
             return GenerateCoverLetterResponse(
                 success=True,
                 job_id=job_id,
@@ -426,6 +433,10 @@ async def generate_cover_letter(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to start cover letter generation. Please try again.",
         )
+
+    await record_generation_event(
+        db, feature=FEATURE_COVER_LETTERS, user_id=user_id
+    )
 
     return GenerateCoverLetterResponse(
         success=True,

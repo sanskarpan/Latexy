@@ -20,6 +20,14 @@ from ..core.logging import get_logger
 from ..core.observability import record_business_event
 from ..core.redis import get_redis_cache_client
 from ..database import models as db_models
+from .coupon_student_analytics_service import (
+    record_coupon_redemption_status,
+    record_coupon_reserved,
+    record_student_failure,
+    record_student_paid,
+    record_student_requested,
+    record_student_verified,
+)
 from .dodo_provider import DodoAPIError, DodoProvider
 from .dunning_history_service import record_status_observation
 from .email_service import email_service
@@ -144,17 +152,21 @@ class PaymentService:
             html_body=f"<p>Verify your student email to continue to checkout.</p><p><a href=\"{url}\">Verify student email</a></p>",
             text_body=f"Verify your Latexy student plan: {url}",
         )
+        await record_student_requested(db, user_id=user_id)
         return {"success": True, "verification_required": True, "message": "Verification email sent to your student address.",
                 "verification_preview_url": url if not settings.EMAIL_ENABLED else None}
 
     async def verify_student_subscription(self, db: AsyncSession, token: str) -> dict[str, Any]:
         redis = await get_redis_cache_client()
         lock = f"latexy:student-verify:{hashlib.sha256(token.encode()).hexdigest()}"
+        data: dict[str, Any] | None = None
         if not await redis.set(lock, "1", nx=True, ex=120):
+            await record_student_failure(db, user_id=None, reason="in_progress")
             return {"success": False, "error": "Student verification is already in progress"}
         try:
             raw = await redis.get(f"student_plan_verify:{token}")
             if not raw:
+                await record_student_failure(db, user_id=None, reason="expired_or_invalid")
                 return {"success": False, "error": "Student verification link is invalid or expired"}
             data = json.loads(raw)
             from .plan_catalog_service import plan_catalog_service
@@ -163,22 +175,38 @@ class PaymentService:
             # owner and target SKU here before any provider checkout call.
             await plan_catalog_service.require_new_purchase(db, "student", user_id=data["user_id"])
             if not self.is_available():
+                await record_student_failure(
+                    db, user_id=data.get("user_id"), reason="admission_denied"
+                )
                 return {"success": False, "error": self._base_status["message"]}
+            await record_student_verified(db, user_id=data.get("user_id"))
             result = await self.create_subscription(
                 db, data["user_id"], "student", data["customer_email"], data["customer_name"],
                 student_email=data["student_email"], student_verified=True,
             )
             if result.get("success"):
                 await redis.delete(f"student_plan_verify:{token}")
+            else:
+                await record_student_failure(
+                    db, user_id=data.get("user_id"), reason="checkout_failed"
+                )
             return result
         except HTTPException:
             # Preserve the typed admission denial and the verification token.
             # A temporary product restriction is not a malformed verification.
             await db.rollback()
+            await record_student_failure(
+                db, user_id=(data.get("user_id") if isinstance(data, dict) else None),
+                reason="admission_denied",
+            )
             raise
         except Exception as exc:
             logger.error("Student billing verification failed", extra={"error_type": type(exc).__name__})
             await db.rollback()
+            await record_student_failure(
+                db, user_id=(data.get("user_id") if isinstance(data, dict) else None),
+                reason="verification_failed",
+            )
             return {"success": False, "error": "Failed to verify student subscription"}
         finally:
             await redis.delete(lock)
@@ -292,6 +320,9 @@ class PaymentService:
                 redeemed_at=None,
             ))
         await db.flush()
+        await record_coupon_reserved(
+            db, user_id=user_id, coupon_id=str(coupon.id), plan_id=plan_id,
+        )
         return True, ""
 
     async def _set_coupon_reservation_status(
@@ -317,9 +348,17 @@ class PaymentService:
             redemption.status = "released"
             redemption.subscription_id = None
             redemption.redeemed_at = None
+            await record_coupon_redemption_status(
+                db, user_id=redemption.user_id, coupon_id=str(redemption.coupon_id),
+                status="released",
+            )
         elif status == "redeemed":
             redemption.status = "redeemed"
             redemption.redeemed_at = datetime.now(timezone.utc)
+            await record_coupon_redemption_status(
+                db, user_id=redemption.user_id, coupon_id=str(redemption.coupon_id),
+                status="redeemed",
+            )
 
     async def _get_live_subscription(self, db: AsyncSession, user_id: str) -> Subscription | None:
         rank = case({state: i for i, state in enumerate(LIVE_SUBSCRIPTION_STATUSES)}, value=Subscription.status,
@@ -1630,6 +1669,8 @@ class PaymentService:
         attribution_subscription_id = str(intent.id)
         attribution_plan_id = intent.plan_id
         await db.commit()
+        if not was_duplicate and resolve_plan_family(intent.plan_id) == "student":
+            await record_student_paid(db, user_id=str(intent.user_id))
         record_business_event("payment", "success")
         if not was_duplicate:
             posthog_service.capture(

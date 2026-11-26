@@ -113,6 +113,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { reportLinterIssues } from '@/lib/linter-telemetry'
+import { editorModeTelemetry } from '@/lib/editor-mode-telemetry'
 import { useSpellCheck } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
@@ -2651,8 +2652,19 @@ export default function ResumeEditPage() {
     }
     if (mode === 'pdf') setRightTab('preview')
     setEditorMode(mode)
+    editorModeTelemetry.selectMode(mode, { documentId: resumeId, route: window.location.pathname })
     try { localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode) } catch { /* optional preference */ }
   }, [engineSupported, preferredEditorMode, editorMode, resumeId, setRightTab])
+
+  const handleToggleAutoCompile = useCallback(() => {
+    const next = !autoCompile
+    toggleAutoCompile()
+    editorModeTelemetry.toggleAutoCompile(next, {
+      mode: editorMode,
+      documentId: resumeId,
+      route: window.location.pathname,
+    })
+  }, [autoCompile, editorMode, resumeId, toggleAutoCompile])
 
   const handleSave = async () => {
     const ownerAtStart = offlinePdfOwnerId
@@ -3094,14 +3106,24 @@ export default function ResumeEditPage() {
     setSyncFromLine(line)
     setSyncFromRequestId((value) => value + 1)
     if (isMobile) editorRef.current?.highlightLine(line)
-  }, [isMobile])
+    editorModeTelemetry.synctex('pdf_to_source', {
+      mode: editorMode,
+      documentId: resumeId,
+      route: window.location.pathname,
+    })
+  }, [editorMode, isMobile, resumeId])
 
   const handleSourceToPdf = useCallback(() => {
     if (!canRef.current('c10')) return
     if (cursorLine === null || cursorLine < 1 || !pdfSyncReady) return
     setSourceSyncLine(cursorLine)
     setSourceSyncRequestId((value) => value + 1)
-  }, [cursorLine, pdfSyncReady])
+    editorModeTelemetry.synctex('source_to_pdf', {
+      mode: editorMode,
+      documentId: resumeId,
+      route: window.location.pathname,
+    })
+  }, [cursorLine, editorMode, pdfSyncReady, resumeId])
 
   const handlePdfToSource = useCallback(() => {
     if (!canRef.current('c10')) return
@@ -4138,7 +4160,7 @@ export default function ResumeEditPage() {
           <div className="mx-1 h-3.5 w-px bg-line" />
 
           {can('c05') && <CapabilityGate feature="c06"><button
-            onClick={toggleAutoCompile}
+            onClick={handleToggleAutoCompile}
             title="Refresh the preview automatically after editing"
             aria-label={editorMode === 'source' ? 'Auto-compile on change' : 'Automatic preview'}
             aria-pressed={autoCompile}
@@ -4443,6 +4465,11 @@ export default function ResumeEditPage() {
                 setCursorLine(line)
                 setSourceSyncLine(line)
                 setSourceSyncRequestId((value) => value + 1)
+                editorModeTelemetry.synctex('source_to_pdf', {
+                  mode: editorMode,
+                  documentId: resumeId,
+                  route: window.location.pathname,
+                })
               }}
               onAutoCompile={can('c05') && can('c06') && autoCompile ? queuePreview : undefined}
               autoCompileEnabled={can('c05') && can('c06') && autoCompile && canEditDocument && !isLoading && isOnline && autoCompileIdentityReady}

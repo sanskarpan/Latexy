@@ -13,7 +13,7 @@ describe('tenant admin load recovery', () => {
   it('retains partial detail results and rejects stale tenant responses', () => {
     expect(SOURCE).toContain('Promise.allSettled')
     expect(SOURCE).toContain('requestId !== detailRequestRef.current')
-    expect(SOURCE).toContain('statsError ? (')
+    expect(SOURCE).toContain('error={statsError}')
     expect(SOURCE).toContain('membersError && (')
     expect(SOURCE).not.toContain("toast.error('Failed to load tenant data')")
   })

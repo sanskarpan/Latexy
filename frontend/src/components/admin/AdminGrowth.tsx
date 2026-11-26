@@ -18,10 +18,13 @@ import {
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import AdminTrafficSources from '@/components/admin/AdminTrafficSources'
 import AdminLandingConversion from '@/components/admin/AdminLandingConversion'
+import AdminOnboardingAnalytics from '@/components/admin/AdminOnboardingAnalytics'
 import AdminPrivacyBreakdowns from '@/components/admin/AdminPrivacyBreakdowns'
+import AdminReferralAnalytics from '@/components/admin/AdminReferralAnalytics'
 import AdminTrialAttribution from '@/components/admin/AdminTrialAttribution'
 import AdminTrialHealth from '@/components/admin/AdminTrialHealth'
 import AdminCredentialMix from '@/components/admin/AdminCredentialMix'
+import AdminSharePortfolio from '@/components/admin/AdminSharePortfolio'
 import { formatDateTime, formatMoney, formatNumber, percentage } from './admin-format'
 
 const RANGES = [7, 30, 90] as const
@@ -1352,9 +1355,12 @@ export default function AdminGrowth() {
       {activation?.signup_funnel && <SignupFunnel data={activation.signup_funnel} />}
       <AdminTrafficSources days={days} />
       <AdminLandingConversion days={days} />
+      <AdminOnboardingAnalytics days={days} />
       <AdminPrivacyBreakdowns days={days} />
       <AdminTrialAttribution days={days} />
+      <AdminSharePortfolio />
       <AdminTrialHealth />
+      <AdminReferralAnalytics days={days} />
       {retention && <Retention data={retention} />}
       {cost && (
         <Cost

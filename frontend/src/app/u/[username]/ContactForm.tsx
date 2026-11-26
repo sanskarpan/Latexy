@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react'
 
 import { apiClient } from '@/lib/api-client'
+import { recordPortfolioContact } from '@/lib/analytics/portfolio'
 
 type ContactStatus =
   | { kind: 'idle' }
@@ -22,6 +23,7 @@ export default function ContactForm({ username }: { username: string }) {
     setStatus({ kind: 'idle' })
     try {
       await apiClient.sendPortfolioContact(username, { name, email, message })
+      void recordPortfolioContact(username)
       setName('')
       setEmail('')
       setMessage('')
