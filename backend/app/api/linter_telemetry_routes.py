@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
-from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
@@ -68,8 +67,6 @@ async def ingest_linter_telemetry(
             "accepted": result["accepted"],
             "rejected": result["rejected"],
             "deduplicated": result["deduplicated"],
-            "user_id": sanitize_for_log(user_id),
-            "request_id": sanitize_for_log(getattr(request.state, "request_id", None)),
         },
     )
     return result
