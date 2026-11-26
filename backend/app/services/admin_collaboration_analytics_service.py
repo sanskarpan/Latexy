@@ -618,6 +618,8 @@ class AdminCollaborationAnalyticsService:
             for cohort_id, count in (
                 await db.execute(
                     select(models.WorkspaceMember.workspace_id, func.count(models.WorkspaceMember.user_id))
+                    .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
+                    .where(models.Workspace.tenant_id.is_not(None))
                     .group_by(models.WorkspaceMember.workspace_id)
                 )
             ).all()
@@ -627,6 +629,8 @@ class AdminCollaborationAnalyticsService:
             for cohort_id, count in (
                 await db.execute(
                     select(models.WorkspaceResume.workspace_id, func.count(models.WorkspaceResume.resume_id))
+                    .join(models.Workspace, models.Workspace.id == models.WorkspaceResume.workspace_id)
+                    .where(models.Workspace.tenant_id.is_not(None))
                     .group_by(models.WorkspaceResume.workspace_id)
                 )
             ).all()
