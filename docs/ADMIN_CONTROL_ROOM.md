@@ -184,6 +184,27 @@ signup month, with `signup_month`/date-range and plan filters. Responses contain
 aggregates only; cohorts below five subscribers are omitted. Currency is
 explicit and amounts use minor units (`paise` for INR).
 
+## Dunning and past-due recovery
+
+`0091_dunning_history` creates the append-only `subscription_status_history`
+ledger. Provider status observations are written in the same transaction as the
+current subscription row. The natural key
+`(subscription_id, provider_event_at, status)` makes duplicate deliveries
+idempotent; an out-of-order event is retained with `applied = false` so it can
+inform chronology without regressing the live state. Updates are rejected by a
+database trigger. The table stores only a user/subscription UUID, plan/status
+identifiers, allowlisted event/reason/source, provider timestamps and an event
+ID. It has no email, name, document, provider payload, token or free-form note.
+
+The admin endpoint is `GET /admin/billing/dunning-recovery` (admin role only;
+`/admin/subscriptions/dunning` is a stable alias). It returns current
+past-due/on-hold/paused counts, recovery and cancellation rates, median time to
+active/cancel, plan and signup-cohort breakdowns, cohort/date/plan filters and
+reconciliation checks. Plan/cohort slices below five users are suppressed. The
+report is read-only: it never downgrades, refunds or grants access. A durable
+`billing.dunning_recovery` advisory appears when at least five past-due/on-hold
+subscriptions are open; acknowledging it uses the existing audited alert route.
+
 ## Database role hardening
 
 Migration `0077_admin_control_room` installs the append-only trigger, but table

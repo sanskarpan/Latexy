@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_plan_config, settings
 from ..database import models
+from .dunning_history_service import record_subscription_status
 
 User = models.User
 Subscription = models.Subscription
@@ -155,6 +156,7 @@ async def record_subscription_transition(
     source: str = "billing",
     effective_at: datetime | None = None,
     event_type: str | None = None,
+    provider_event_id: str | None = None,
 ) -> bool:
     """Insert one history row in the caller's transaction.
 
@@ -195,6 +197,17 @@ async def record_subscription_transition(
         .on_conflict_do_nothing(constraint="uq_subscription_history_transition")
     )
     result = await db.execute(stmt)
+    # Keep the dunning ledger in the same transaction. This recorder is a
+    # no-op for transitions that neither enter nor leave a dunning state.
+    await record_subscription_status(
+        db,
+        subscription,
+        previous_status=before.status if before else None,
+        reason=reason,
+        source=source,
+        effective_at=effective_at,
+        provider_event_id=provider_event_id,
+    )
     return bool(result.rowcount)
 
 

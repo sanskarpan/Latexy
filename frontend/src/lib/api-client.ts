@@ -1867,6 +1867,109 @@ export interface AdminSubscriptionAnalyticsResponse {
   generated_at: string
 }
 
+export interface AdminDunningSummary {
+  dunning_cases: number
+  dunning_users: number
+  recovered: number
+  recovered_to_active: number
+  recovered_to_cancel_scheduled: number
+  cancelled: number
+  open_cases: number
+  other_outcomes: number
+  recovery_rate: number
+  cancel_rate: number
+  median_time_to_active_seconds: number | null
+  median_time_to_cancel_seconds: number | null
+  median_time_to_recovery_seconds: number | null
+  past_due: number
+  on_hold: number
+  paused: number
+  past_due_count: number
+  on_hold_count: number
+  open_now: number
+  open_now_users: number
+}
+
+export interface AdminDunningBreakdownRow {
+  plan_id?: string
+  cohort?: string
+  users: number
+  open_now: number
+  dunning_cases: number | null
+  dunning_users: number | null
+  recovered: number | null
+  recovered_to_active: number
+  recovered_to_cancel_scheduled: number
+  cancelled: number | null
+  open_cases: number | null
+  other_outcomes: number
+  recovery_rate: number | null
+  cancel_rate: number | null
+  median_time_to_active_seconds: number | null
+  median_time_to_cancel_seconds: number | null
+  median_time_to_recovery_seconds: number | null
+  suppressed: boolean
+}
+
+export interface AdminDunningRecoveryResponse {
+  period_days: number
+  period_start: string
+  period_end: string
+  minimum_cohort_size: number
+  filters: {
+    days: number
+    start: string
+    end: string
+    signup_month: string | null
+    signup_from: string | null
+    signup_to: string | null
+    plan: string | null
+    timezone: string
+  }
+  available_signup_months: Array<{ month: string; users: number }>
+  summary: AdminDunningSummary
+  by_plan: AdminDunningBreakdownRow[]
+  cohorts: AdminDunningBreakdownRow[]
+  suppressed: boolean
+  suppressed_groups: number
+  advisory: {
+    active: boolean
+    severity: string
+    title: string
+    message: string
+    recommended_action: string
+    open_now?: number
+    dunning_cases?: number
+    open_cases?: number
+    recovery_rate?: number
+  }
+  reconciliation: {
+    history_rows: number
+    dunning_cases: number
+    recovered: number
+    cancelled: number
+    open_cases: number
+    other_outcomes: number
+    by_plan_cases: number
+    cohort_cases: number
+    current_open: number
+    checks: Array<{
+      key: string
+      label: string
+      ok: boolean
+      detail: string
+    }>
+  }
+  guardrails: {
+    read_only: boolean
+    automatic_downgrade: boolean
+    automatic_refund: boolean
+    provider_order: string
+    manual_actions: string
+  }
+  generated_at: string
+}
+
 export interface AdminBillingWebhook {
   id: string
   provider: string
@@ -7104,6 +7207,29 @@ class ApiClient {
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminSubscriptionAnalyticsResponse>(
       `/admin/subscriptions/analytics${suffix}`,
+    )
+  }
+
+  async getAdminDunningRecovery(params?: {
+    days?: number
+    start?: string
+    end?: string
+    signup_month?: string
+    signup_from?: string
+    signup_to?: string
+    plan?: string
+  }): Promise<AdminDunningRecoveryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    if (params?.signup_month) qs.set('signup_month', params.signup_month)
+    if (params?.signup_from) qs.set('signup_from', params.signup_from)
+    if (params?.signup_to) qs.set('signup_to', params.signup_to)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminDunningRecoveryResponse>(
+      `/admin/billing/dunning-recovery${suffix}`,
     )
   }
 
