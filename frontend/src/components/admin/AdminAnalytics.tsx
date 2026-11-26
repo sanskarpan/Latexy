@@ -439,6 +439,9 @@ export default function AdminAnalytics() {
               <a href="/admin?tab=replays" className="rounded-[var(--radius-md)] bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
                 Replay library
               </a>
+              <a href="/admin?tab=quality" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                Quality triage
+              </a>
               <a href={posthogLinks.replays} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
                 Open session replays
               </a>

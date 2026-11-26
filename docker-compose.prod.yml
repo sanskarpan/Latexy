@@ -39,6 +39,7 @@ services:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?set NEXT_PUBLIC_APP_URL to the public origin, e.g. https://latexy.xyz}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?set NEXT_PUBLIC_WS_URL to the public WebSocket origin, e.g. wss://latexy.xyz}
+        NEXT_PUBLIC_APP_RELEASE: ${NEXT_PUBLIC_APP_RELEASE:-}
         BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL to the public origin, e.g. https://latexy.xyz}
         BUILD_VERSION: ${BUILD_VERSION:-local}
     environment:

@@ -13,6 +13,7 @@ import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
+import AdminQualityTriage from '@/components/admin/AdminQualityTriage'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
@@ -983,6 +984,11 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
           </div>
         )}
         {tab === 'replays' && <AdminReplayBrowser />}
+        {tab === 'quality' && (
+          <div className="mb-6">
+            <AdminQualityTriage />
+          </div>
+        )}
         {tab === 'quality' && <AdminTemplatePerformance />}
         {tab === 'quality' && (
           <div className="mt-6">
