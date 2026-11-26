@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.egress_guard import guarded_async_client
 from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..database.models import (
@@ -43,6 +44,14 @@ from ..middleware.tenant_middleware import (
     resolve_tenant_origin_hostname,
 )
 from ..services.email_service import email_service
+from ..services.tenant_domain_health_service import (
+    EVENT_ERROR,
+    EVENT_FAILED,
+    EVENT_REMOVED,
+    EVENT_VERIFIED,
+    load_domain_health,
+    record_domain_event,
+)
 from ..services.tenant_overview_service import build_tenant_overview
 from ..utils.uuid_guard import ensure_uuid
 
@@ -185,6 +194,48 @@ class MemberResponse(BaseModel):
     name: Optional[str]
     role: str
     joined_at: datetime
+
+
+class DomainHealthHistoryEntry(BaseModel):
+    id: str
+    domain: str
+    event_type: Literal["verified", "failed", "error", "removed"]
+    error_class: Optional[Literal["txt_missing", "dns_unavailable"]] = None
+    checked_at: datetime
+
+
+class DomainHealthWarning(BaseModel):
+    code: str
+    severity: Literal["warning", "critical"]
+    message: str
+    error_class: Optional[Literal["txt_missing", "dns_unavailable"]] = None
+
+
+class DomainExpiryHealth(BaseModel):
+    domain_expires_at: Optional[datetime]
+    certificate_expires_at: Optional[datetime]
+    domain_state: Literal["unknown", "valid", "expiring", "expired"]
+    certificate_state: Literal["unknown", "valid", "expiring", "expired"]
+    domain_days_until_expiry: Optional[int]
+    certificate_days_until_expiry: Optional[int]
+
+
+class TenantDomainHealthResponse(BaseModel):
+    tenant_id: str
+    domain: Optional[str]
+    status: Literal[
+        "not_configured", "unverified", "healthy", "stale", "unhealthy"
+    ]
+    verified: bool
+    verified_at: Optional[datetime]
+    last_checked_at: Optional[datetime]
+    last_success_at: Optional[datetime]
+    verification_age_days: Optional[int]
+    stale_after_days: int
+    history: List[DomainHealthHistoryEntry]
+    warnings: List[DomainHealthWarning]
+    expiry: DomainExpiryHealth
+    generated_at: datetime
 
 
 class InviteRequest(BaseModel):
@@ -613,6 +664,19 @@ async def update_tenant(
     if "custom_domain" in update_data and new_domain != previous_domain:
         # DNS proof is bound to the exact hostname and cannot carry over.
         tenant.domain_verified_at = None
+        # Expiry facts belong to the previous hostname; keeping them would make
+        # a newly configured domain inherit stale DNS/certificate metadata.
+        tenant.domain_expires_at = None
+        tenant.domain_certificate_expires_at = None
+        if previous_domain:
+            # The history row deliberately keeps the old hostname so an audit
+            # trail survives both replacement and removal.
+            record_domain_event(
+                db,
+                tenant_id=tenant_id,
+                domain=previous_domain,
+                event_type=EVENT_REMOVED,
+            )
 
     for field, value in update_data.items():
         setattr(tenant, field, value)
@@ -998,16 +1062,22 @@ async def verify_domain(
     """
     Verify DNS ownership. Until the expected TXT value resolves publicly, the
     custom hostname remains inactive in tenant middleware.
+
+    Every attempt is recorded in the tenant-scoped history, including provider
+    failures, so the owner/admin can tell "not checked" apart from "check
+    failed". The TXT value is only returned to the authorized caller performing
+    setup; it is never written to the history table or the health response.
     """
     tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db, lock=False)
     if not tenant.custom_domain:
         raise HTTPException(
             status_code=400, detail="No custom_domain set for this tenant"
         )
+    now = datetime.now(timezone.utc)
     txt_record = f"latexy-verify={tenant.id}"
     record_name = f"_latexy.{tenant.custom_domain}"
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with guarded_async_client(timeout=8.0) as client:
             response = await client.get(
                 "https://cloudflare-dns.com/dns-query",
                 params={"name": record_name, "type": "TXT"},
@@ -1022,6 +1092,20 @@ async def verify_domain(
             }
             verified = txt_record in values
     except (httpx.HTTPError, ValueError, TypeError) as exc:
+        record_domain_event(
+            db,
+            tenant_id=tenant_id,
+            domain=tenant.custom_domain,
+            event_type=EVENT_ERROR,
+            error_class="dns_unavailable",
+            checked_at=now,
+        )
+        await db.commit()
+        logger.warning(
+            "Tenant domain verification provider failure tenant=%s error=%s",
+            tenant_id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=503,
             detail="DNS verification is temporarily unavailable. Please retry.",
@@ -1031,9 +1115,18 @@ async def verify_domain(
         not verified and tenant.domain_verified_at is not None
     )
     if verification_changed:
-        tenant.domain_verified_at = datetime.now(timezone.utc) if verified else None
-        await db.commit()
-        await db.refresh(tenant)
+        tenant.domain_verified_at = now if verified else None
+    record_domain_event(
+        db,
+        tenant_id=tenant_id,
+        domain=tenant.custom_domain,
+        event_type=EVENT_VERIFIED if verified else EVENT_FAILED,
+        error_class=None if verified else "txt_missing",
+        checked_at=now,
+    )
+    await db.commit()
+    await db.refresh(tenant)
+    if verification_changed:
         await invalidate_tenant_cache(
             slug=tenant.slug, current_domain=tenant.custom_domain
         )
@@ -1048,3 +1141,22 @@ async def verify_domain(
             f"with value '{txt_record}'. Propagation may take up to 48 hours."
         ),
     }
+
+
+@router.get(
+    "/{tenant_id}/domain/health", response_model=TenantDomainHealthResponse
+)
+async def get_domain_health(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> TenantDomainHealthResponse:
+    """Owner/admin custom-domain status, recent history and expiry warnings.
+
+    The response is scoped to this tenant and intentionally omits TXT values,
+    DNS answer payloads and certificate material. "Unknown" expiry stays
+    explicit rather than being reported as healthy.
+    """
+    tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db, lock=False)
+    payload = await load_domain_health(db, tenant)
+    return TenantDomainHealthResponse(**payload)
