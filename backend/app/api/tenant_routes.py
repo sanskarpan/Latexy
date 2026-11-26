@@ -43,6 +43,7 @@ from ..middleware.tenant_middleware import (
     resolve_tenant_origin_hostname,
 )
 from ..services.email_service import email_service
+from ..services.tenant_overview_service import build_tenant_overview
 from ..utils.uuid_guard import ensure_uuid
 
 logger = logging.getLogger(__name__)
@@ -209,8 +210,49 @@ class InvitationResponse(BaseModel):
     message: str
 
 
+class TenantTrendPoint(BaseModel):
+    date: str
+    members_joined: int
+    submissions: int
+    active_members: int
+
+
+class TenantActivationStats(BaseModel):
+    submitted: int
+    opened: int
+    downloaded: int
+    submitting_members: int
+    activation_rate: float
+
+
+class TenantSuppressionStats(BaseModel):
+    minimum_cohort_size: int
+    suppressed_cohorts: int
+    cohort_breakdown_visible: bool
+    note: str
+
+
 class TenantStats(BaseModel):
+    # ``member_count`` remains for older clients; the fields below are the
+    # aggregate-only overview payload.
     member_count: int
+    seats_used: int
+    seats_available: int
+    seat_limit: int
+    seat_utilization: float
+    invited_members: int
+    pending_invites_available: bool
+    accepted_members: int
+    active_members: int
+    active_members_window_days: int
+    cohort_count: int
+    cohort_member_count: int
+    cohorts_with_submissions: int
+    submission_count: int
+    activation: TenantActivationStats
+    trends: dict[str, List[TenantTrendPoint]]
+    suppression: TenantSuppressionStats
+    generated_at: datetime
 
 
 class CurrentContextResponse(BaseModel):
@@ -934,18 +976,17 @@ async def tenant_stats(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ) -> TenantStats:
-    """Aggregate stats for a tenant (member count, resumes, compilations)."""
-    await _require_tenant_owner_or_admin(tenant_id, user_id, db)
+    """Aggregate owner/admin overview: seats, activation, submissions and trends.
 
-    # Member count
-    member_count_result = await db.execute(
-        select(func.count()).where(TenantMember.tenant_id == tenant_id)
+    Reads are aggregate-only and tenant-scoped. Explicit cohort submissions are
+    the only document-derived signal; personal documents are never inferred as
+    institution-owned. Cohort rows below five members are never itemised.
+    """
+    tenant = await _require_tenant_owner_or_admin(
+        tenant_id, user_id, db, lock=False
     )
-    member_count = member_count_result.scalar() or 0
-
-    # Personal documents do not become institution-owned when their author
-    # joins a tenant. Never aggregate private resume activity by membership.
-    return TenantStats(member_count=member_count)
+    payload = await build_tenant_overview(db, tenant)
+    return TenantStats(**payload)
 
 
 @router.post("/{tenant_id}/domain/verify", status_code=200)
