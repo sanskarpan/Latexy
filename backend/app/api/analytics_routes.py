@@ -30,6 +30,7 @@ from ..middleware.auth_middleware import (
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.analytics_service import analytics_service
+from ..services.client_environment import country_from_request, with_server_country
 from ..services.landing_conversion_service import classify_device_class
 
 logger = get_logger(__name__)
@@ -234,7 +235,7 @@ async def track_event(
             event_type=request.event_type,
             user_id=user_id,
             device_fingerprint=request.device_fingerprint,
-            metadata=request.metadata,
+            metadata=with_server_country(request.metadata, http_request),
             ip_address=ip_address,
             user_agent=user_agent
         )
@@ -529,6 +530,7 @@ async def track_page_view(
             experiment=experiment,
             variant=variant,
             device_class=device_class or classify_device_class(user_agent),
+            country=country_from_request(http_request),
             ip_address=ip_address,
             user_agent=user_agent
         )
@@ -569,6 +571,7 @@ async def track_feature_usage(
             user_id=user_id,
             device_fingerprint=device_fingerprint,
             feature=feature,
+            country=country_from_request(http_request),
             ip_address=ip_address,
             user_agent=user_agent
         )
