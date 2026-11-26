@@ -23,6 +23,7 @@ import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
 import AdminGdpr from '@/components/admin/AdminGdpr'
+import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -34,12 +35,13 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
 const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analytics', label: 'Analytics' },
+  { id: 'operations', label: 'Operations' },
   { id: 'product', label: 'Product' },
   { id: 'replays', label: 'Replays' },
   { id: 'quality', label: 'Quality' },
@@ -952,6 +954,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         className="focus:outline-none"
       >
         {tab === 'analytics' && <AdminAnalytics />}
+        {tab === 'operations' && <AdminIncidentTimeline />}
         {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'quality' && <AdminTemplatePerformance />}

@@ -775,7 +775,7 @@ export interface AdminOperationsSummary {
   active_users_24h: number
 }
 
-export type AdminAttentionSeverity = 'critical' | 'high' | 'low'
+export type AdminAttentionSeverity = 'critical' | 'high' | 'medium' | 'low'
 
 export interface AdminAttentionItem {
   key: string
@@ -986,6 +986,88 @@ export interface AdminAlertList {
   total: number
   limit: number
   offset: number
+}
+
+export type AdminIncidentSeverity = 'critical' | 'high' | 'medium' | 'low'
+export type AdminIncidentStatus = 'open' | 'resolved'
+
+export interface AdminIncidentRelatedAlert {
+  id: string
+  dedupe_key: string
+  kind: string
+  severity: AdminIncidentSeverity
+  owner: string
+  title: string
+  state: 'open' | 'acknowledged' | 'snoozed' | 'resolved'
+  occurrence_count: number
+  last_seen_at: string | null
+}
+
+export interface AdminIncident {
+  id: string
+  status: AdminIncidentStatus
+  severity: AdminIncidentSeverity
+  title: string
+  summary: string
+  services: string[]
+  owner: string
+  links: string[]
+  related_alert_keys: string[]
+  related_alerts: AdminIncidentRelatedAlert[]
+  deploy_sha: string | null
+  deploy_url: string | null
+  started_at: string
+  ended_at: string | null
+  duration_seconds: number | null
+  created_by: string | null
+  updated_by: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminIncidentList {
+  generated_at: string
+  items: AdminIncident[]
+  total: number
+  limit: number
+  offset: number
+  active_count: number
+  filters: {
+    service: string[]
+    severity: string | null
+    status: string | null
+    start_date: string | null
+    end_date: string | null
+  }
+}
+
+export interface AdminIncidentInput {
+  title?: string
+  summary: string
+  severity: AdminIncidentSeverity
+  services: string[]
+  owner: string
+  links?: string[]
+  related_alert_keys?: string[]
+  deploy_sha?: string | null
+  deploy_url?: string | null
+  started_at?: string | null
+  reason?: string
+}
+
+export interface AdminIncidentUpdateInput {
+  title?: string
+  summary?: string
+  severity?: AdminIncidentSeverity
+  services?: string[]
+  owner?: string
+  links?: string[]
+  related_alert_keys?: string[]
+  deploy_sha?: string | null
+  deploy_url?: string | null
+  started_at?: string | null
+  status?: AdminIncidentStatus | 'active'
+  reason?: string
 }
 
 export interface AdminKpiTrendPoint {
@@ -6516,6 +6598,75 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(body),
     })
+  }
+
+  async getAdminIncidents(params?: {
+    service?: string
+    severity?: AdminIncidentSeverity
+    status?: AdminIncidentStatus | 'active'
+    start_date?: string
+    end_date?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminIncidentList> {
+    const qs = new URLSearchParams()
+    if (params?.service) qs.set('service', params.service)
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminIncidentList>(`/admin/operations/incidents${suffix}`)
+  }
+
+  async getAdminIncident(id: string): Promise<AdminIncident> {
+    return this.request<AdminIncident>(`/admin/operations/incidents/${encodeURIComponent(id)}`)
+  }
+
+  async createAdminIncident(body: AdminIncidentInput): Promise<AdminIncident> {
+    return this.request<AdminIncident>('/admin/operations/incidents', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminIncident(id: string, body: AdminIncidentUpdateInput): Promise<AdminIncident> {
+    return this.request<AdminIncident>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async resolveAdminIncident(
+    id: string,
+    body: { reason?: string; ended_at?: string } = {},
+  ): Promise<AdminIncident> {
+    return this.request<AdminIncident>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}/resolve`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async reopenAdminIncident(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<AdminIncident> {
+    return this.request<AdminIncident>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}/reopen`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminIncident(id: string, reason?: string): Promise<{ deleted: boolean; id: string }> {
+    const qs = new URLSearchParams()
+    if (reason) qs.set('reason', reason)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<{ deleted: boolean; id: string }>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}${suffix}`,
+      { method: 'DELETE' },
+    )
   }
 
   async getAdminOperationsHealth(): Promise<AdminOperationsHealthResponse> {
