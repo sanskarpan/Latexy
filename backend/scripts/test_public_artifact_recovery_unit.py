@@ -51,7 +51,7 @@ class _FakeSettings:
 
 class _ConfigModule(types.ModuleType):
     def __getattr__(self, name):
-        if name == "QUOTA_DIMENSIONS":
+        if name in {"QUOTA_DIMENSIONS", "PLAN_FAMILY_ALIASES"}:
             return {}
         if name.startswith(("get_", "resolve_", "is_")):
             return lambda *args, **kwargs: None
