@@ -889,6 +889,137 @@ export interface AdminOperationsHealthResponse {
   workers?: AdminWorkerHealth
 }
 
+export interface AdminArtifactCountBytes {
+  count: number
+  bytes: number
+}
+
+export interface AdminArtifactKeySummary {
+  key: string
+  bytes: number
+  last_modified: string | null
+  age_seconds: number | null
+}
+
+export interface AdminArtifactManifestReport {
+  total: AdminArtifactCountBytes
+  states: Record<string, AdminArtifactCountBytes>
+  age_buckets: Record<string, AdminArtifactCountBytes>
+  references: {
+    live_finalizations: number
+    accepted_canonical_paths: number
+    unaccepted_canonical_paths: number
+    legal_hold_manifests: number
+    legal_hold_compilations: number
+  }
+  oldest_created_at: string | null
+  newest_created_at: string | null
+}
+
+export interface AdminArtifactStorageReport {
+  status: 'ok' | 'refused'
+  prefix: string
+  complete: boolean
+  pages_scanned: number
+  next_cursor: string | null
+  scanned: AdminArtifactCountBytes
+  states: Record<string, AdminArtifactCountBytes>
+  age_buckets: Record<string, AdminArtifactCountBytes>
+  orphan_candidates: AdminArtifactCountBytes & { keys: AdminArtifactKeySummary[] }
+  detail?: string
+}
+
+export interface AdminArtifactGrowthReport {
+  basis: string
+  added_24h: AdminArtifactCountBytes
+  added_7d: AdminArtifactCountBytes
+  added_30d: AdminArtifactCountBytes
+  last_sweep_manifest_bytes: number | null
+  change_since_last_sweep_bytes: number | null
+  last_sweep_at: string | null
+}
+
+export interface AdminArtifactTelemetry {
+  at?: string
+  scanned?: number
+  deleted?: number
+  protected?: number
+  failed?: number
+  failed_keys?: string[]
+  manifest_count?: number
+  manifest_bytes?: number
+  candidate_count?: number
+  candidate_bytes?: number
+  deleted_bytes?: number
+  duration_ms?: number
+  next_cursor_present?: boolean
+  dry_run?: boolean
+  skipped?: string
+}
+
+export interface AdminArtifactLifecycleReport {
+  generated_at: string
+  aggregate_only: boolean
+  minimum_cohort_size: number
+  suppression: {
+    applied: boolean
+    suppressed_groups: number
+    aggregate_only: boolean
+    minimum_cohort_size: number
+    detail: string
+  }
+  grace_seconds: number
+  manifests: AdminArtifactManifestReport
+  storage: AdminArtifactStorageReport
+  growth: AdminArtifactGrowthReport
+  last_sweep: AdminArtifactTelemetry | null
+  last_manual_cleanup: AdminArtifactTelemetry | null
+  failed_deletions: {
+    last_20_sweeps_failed: number
+    failed_last_7d: number
+    failed_keys: string[]
+    events: Array<{ at?: string; failed: number; action: string }>
+  }
+  safety: {
+    protects_referenced: boolean
+    protects_unaccepted: boolean
+    protects_legal_hold: boolean
+    reads_object_contents: boolean
+    scheduled_sweep_telemetry: boolean
+  }
+}
+
+export interface AdminArtifactCleanupRequest {
+  reason: string
+  dry_run: boolean
+  confirm?: true
+  cursor?: string
+  limit?: number
+  min_age_hours?: number
+}
+
+export interface AdminArtifactCleanupResponse {
+  dry_run: boolean
+  generated_at: string
+  scanned: AdminArtifactCountBytes
+  candidates: AdminArtifactCountBytes & { keys: AdminArtifactKeySummary[] }
+  would_delete: AdminArtifactCountBytes
+  deleted: AdminArtifactCountBytes
+  failed: AdminArtifactCountBytes & { keys: string[] }
+  protected: Record<string, AdminArtifactCountBytes>
+  next_cursor: string | null
+  grace_seconds: number
+  min_age_hours: number
+  duration_ms?: number
+  safety: {
+    protects_referenced: boolean
+    protects_unaccepted: boolean
+    protects_legal_hold: boolean
+    reads_object_contents: boolean
+    database_bound: boolean
+  }
+}
+
 export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
 
 export interface AdminQueueThroughputPoint {
@@ -7845,6 +7976,19 @@ class ApiClient {
 
   async getAdminOperationsQueues(): Promise<AdminQueueMetricsResponse> {
     return this.request<AdminQueueMetricsResponse>('/admin/operations/queues')
+  }
+
+  async getAdminArtifactLifecycle(): Promise<AdminArtifactLifecycleReport> {
+    return this.request<AdminArtifactLifecycleReport>('/admin/operations/artifacts/lifecycle')
+  }
+
+  async runAdminArtifactCleanup(
+    body: AdminArtifactCleanupRequest,
+  ): Promise<AdminArtifactCleanupResponse> {
+    return this.request<AdminArtifactCleanupResponse>('/admin/operations/artifacts/cleanup', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   async getAdminStuckJobs(params?: {
