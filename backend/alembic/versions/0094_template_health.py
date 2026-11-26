@@ -18,7 +18,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "0094_template_health"
-down_revision = "0092_document_complexity"
+down_revision = "0093_admin_saved_views"
 branch_labels = None
 depends_on = None
 
