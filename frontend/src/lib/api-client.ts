@@ -3870,6 +3870,83 @@ export interface AdminConsentAnalyticsResponse {
   generated_at: string
 }
 
+export interface AdminFlagExposureMetricCell {
+  numerator: number | null
+  denominator: number | null
+  rate_pct: number | null
+  suppressed: boolean
+}
+
+export interface AdminFlagExposureMetric {
+  key: string
+  label: string
+  kind: 'outcome' | 'guardrail'
+  direction: 'up' | 'down'
+  definition: string
+  treatment: AdminFlagExposureMetricCell
+  control: AdminFlagExposureMetricCell
+  difference_pp: number | null
+  comparable: boolean
+}
+
+export interface AdminFlagExposureGroup {
+  variant: 'treatment' | 'control'
+  label: string
+  exposure_events: number | null
+  sample_size: number | null
+  right_censored_subjects: number | null
+  suppressed: boolean
+  suppression_reason: string | null
+}
+
+export interface AdminFlagExposureWindow {
+  days: number
+  start_date: string
+  end_date: string
+  groups: {
+    treatment: AdminFlagExposureGroup
+    control: AdminFlagExposureGroup
+  }
+  metrics: AdminFlagExposureMetric[]
+  guardrails: AdminFlagExposureMetric[]
+  suppressed: boolean
+}
+
+export interface AdminFlagExposureFlag {
+  key: string
+  label: string
+  description: string | null
+  enabled: boolean
+  outcome_horizon_days: number
+  minimum_group_size: number
+  windows: Record<string, AdminFlagExposureWindow>
+}
+
+export interface AdminFlagExposureDefinition {
+  key: string
+  label: string
+  kind: 'outcome' | 'guardrail'
+  direction: 'up' | 'down'
+  definition: string
+}
+
+export interface AdminFlagExposureResponse {
+  flags: AdminFlagExposureFlag[]
+  windows: number[]
+  minimum_group_size: number
+  outcome_horizon_days: number
+  metric_definitions: AdminFlagExposureDefinition[]
+  guardrail_metric_keys: string[]
+  claim: {
+    causality: 'descriptive_only'
+    preregistered_metric: string | null
+    preregistered_metrics: Record<string, string>
+    message: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminLinterRuleRoute {
   route: string
   issues_detected: number
@@ -8779,6 +8856,10 @@ class ApiClient {
     if (params?.end_date) qs.set('end_date', params.end_date)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminConsentAnalyticsResponse>(`/admin/analytics/consent${suffix}`)
+  }
+
+  async getAdminFlagExposure(): Promise<AdminFlagExposureResponse> {
+    return this.request<AdminFlagExposureResponse>('/admin/analytics/flag-exposure')
   }
 
   async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {
