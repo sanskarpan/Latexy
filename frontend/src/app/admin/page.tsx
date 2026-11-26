@@ -13,6 +13,7 @@ import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
+import AdminAccessReview from '@/components/admin/AdminAccessReview'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
@@ -44,7 +45,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'access' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -60,6 +61,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'access', label: 'Access Review' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
@@ -1009,6 +1011,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'email' && <AdminEmailHealth />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
+        {tab === 'access' && <AdminAccessReview />}
         {tab === 'audit' && (
           <div className="space-y-10">
             <AdminAudit />
