@@ -1022,6 +1022,105 @@ export interface AdminArtifactCleanupResponse {
 
 export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
 
+export type AdminRetentionDataClass =
+  | 'pdfs'
+  | 'job_finalizations'
+  | 'analytics'
+  | 'audit'
+  | 'exports'
+
+export interface AdminRetentionCounts {
+  total: number
+  older_than_policy: number
+  eligible: number
+  protected_active_jobs: number
+  protected_legal_hold: number
+  protected_immutable: number
+  already_scrubbed: number
+  recent: number
+  inside_24h: number
+  outside_24h: number
+}
+
+export interface AdminRetentionRun {
+  id: string
+  data_class: AdminRetentionDataClass
+  mode: 'dry_run' | 'purge'
+  status: 'running' | 'completed' | 'refused' | 'failed'
+  dry_run: boolean
+  retention_hours: number
+  effective_hours: number
+  cutoff_at: string
+  started_at: string
+  finished_at: string | null
+  counts: {
+    scanned: number
+    eligible: number
+    protected_active_jobs: number
+    protected_legal_hold: number
+    protected_immutable: number
+    recent: number
+  }
+  affected: number
+  would_affect: number
+  limit: number
+  has_more: boolean
+  detail: Record<string, unknown>
+  replayed: boolean
+}
+
+export interface AdminRetentionClass {
+  data_class: AdminRetentionDataClass
+  label: string
+  description: string
+  configured_hours: number
+  effective_hours: number
+  floor_hours: number
+  schedule_hours: number
+  enabled: boolean
+  version: number
+  purge_mode: 'delete' | 'scrub' | 'immutable'
+  purge_supported: boolean
+  policy_updated_at: string
+  exceptions: string[]
+  counts: AdminRetentionCounts
+  boundary: {
+    cutoff_at: string
+    boundary_age_hours: number
+    inside_24h: number
+    outside_24h: number
+  }
+  next_run_at: string | null
+  schedule_due: boolean
+  last_run: AdminRetentionRun | null
+}
+
+export interface AdminRetentionOverview {
+  generated_at: string
+  aggregate_only: boolean
+  per_user_breakdown: boolean
+  minimum_cohort_size: number
+  boundary_window_hours: number
+  classes: AdminRetentionClass[]
+}
+
+export interface AdminRetentionPolicyUpdate {
+  retention_hours: number
+  schedule_hours: number
+  enabled: boolean
+  expected_version: number
+  reason: string
+  confirm: true
+}
+
+export interface AdminRetentionRunRequest {
+  reason: string
+  limit?: number
+  idempotency_key?: string
+}
+
+
+
 export interface AdminQueueThroughputPoint {
   sampled_at: string
   depth: number
@@ -9362,6 +9461,43 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  }
+
+  async getAdminRetentionOverview(): Promise<AdminRetentionOverview> {
+    return this.request<AdminRetentionOverview>('/admin/operations/retention')
+  }
+
+  async updateAdminRetentionPolicy(
+    dataClass: AdminRetentionDataClass,
+    body: AdminRetentionPolicyUpdate,
+  ): Promise<AdminRetentionClass> {
+    return this.request<AdminRetentionClass>(
+      `/admin/operations/retention/${encodeURIComponent(dataClass)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async runAdminRetentionDryRun(
+    dataClass: AdminRetentionDataClass,
+    body: AdminRetentionRunRequest,
+  ): Promise<AdminRetentionRun> {
+    return this.request<AdminRetentionRun>(
+      `/admin/operations/retention/${encodeURIComponent(dataClass)}/dry-run`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async runAdminRetentionPurge(
+    dataClass: AdminRetentionDataClass,
+    body: AdminRetentionRunRequest,
+  ): Promise<AdminRetentionRun> {
+    return this.request<AdminRetentionRun>(
+      `/admin/operations/retention/${encodeURIComponent(dataClass)}/purge`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...body, confirm: true }),
+      },
+    )
   }
 
   async getAdminStuckJobs(params?: {

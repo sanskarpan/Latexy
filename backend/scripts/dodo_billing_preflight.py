@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0092_document_complexity"
+EXPECTED_HEAD = "0096_retention_controls"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -35,6 +35,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0087_email_delivery_events", "0088_admin_incidents",
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
     "0092_document_complexity",
+    "0096_retention_controls",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -59,6 +60,7 @@ BILLING_COLUMNS_ADDED_BY_REVISION = {
         },
     },
     "0092_document_complexity": {},
+    "0096_retention_controls": {},
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -294,6 +296,7 @@ CAPABILITY_SCHEMA_COLUMNS = {
         },
     },
     "0092_document_complexity": {},
+    "0096_retention_controls": {},
 }
 
 

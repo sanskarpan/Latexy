@@ -33,6 +33,7 @@ import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
+import AdminRetentionControls from '@/components/admin/AdminRetentionControls'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -973,6 +974,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
           <div className="space-y-6">
             <AdminIncidentTimeline />
             <AdminArtifactLifecycle />
+            <AdminRetentionControls />
           </div>
         )}
         {tab === 'product' && (

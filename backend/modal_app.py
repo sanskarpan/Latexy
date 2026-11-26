@@ -779,8 +779,13 @@ def scheduled_cleanup_expired_jobs() -> None:
     # then silently swallow, leaving the storage fix inert.
     _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_expired_jobs_task
+    from app.workers.retention_worker import run_due_retention_previews_task
 
     cleanup_expired_jobs_task.apply(throw=False)
+    # Due retention policies get a dry-run preview only; purges remain explicit
+    # admin actions. Piggybacking on this schedule avoids Modal's five-schedule
+    # budget while still updating next/last preview timestamps in production.
+    run_due_retention_previews_task.apply(throw=False)
 
 
 @app.function(
