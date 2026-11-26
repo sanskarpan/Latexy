@@ -137,6 +137,10 @@ export interface RecordOptimizationRequest {
   optimized_latex: string
   changes_made?: Array<{ section: string; change_type: string; reason: string }>
   ats_score?: number
+  ats_score_before?: number
+  ats_score_after?: number
+  industry?: string
+  profile?: string
   tokens_used?: number
   job_description?: string
 }
@@ -1174,6 +1178,122 @@ export interface AdminCompileLatencyResponse {
   generated_at: string
 }
 
+export interface AdminAiLatencyRetrySummary {
+  attempts: number
+  runs: number
+  successes: number
+  errors: number
+  timeouts: number
+  cancelled: number
+  retried_attempts: number
+  first_attempt_successes: number
+  retry_rate_pct: number
+  success_rate_pct: number
+  error_rate_pct: number
+  timeout_rate_pct: number
+  failure_rate_pct: number
+  first_attempt_success_rate_pct: number
+  latency_samples: number
+  p50_ms: number | null
+  p95_ms: number | null
+  p99_ms: number | null
+  mean_ms: number | null
+  max_ms: number | null
+  sparse: boolean
+  sample_status: 'ok' | 'insufficient_samples'
+}
+
+export interface AdminAiLatencyRetryBucket extends AdminAiLatencyRetrySummary {
+  dimension: 'provider' | 'model' | 'feature' | 'plan'
+  value: string
+  label: string
+  provider?: string
+  model?: string
+}
+
+export interface AdminAiLatencyRetryDimensionCardinality {
+  groups: number
+  returned_groups: number
+  returned_attempts: number
+  truncated_groups: number
+  truncated_attempts: number
+  truncated: boolean
+  max_groups: number
+}
+
+export interface AdminAiLatencyRetryResponse {
+  days: number
+  window: { start: string; end: string }
+  filters: {
+    plan: string | null
+    feature: string | null
+    provider: string | null
+    model: string | null
+  }
+  duration_unit: 'milliseconds'
+  sparse_threshold: number
+  max_groups: number
+  overall: AdminAiLatencyRetrySummary
+  by_provider: AdminAiLatencyRetryBucket[]
+  by_model: AdminAiLatencyRetryBucket[]
+  by_feature: AdminAiLatencyRetryBucket[]
+  by_plan: AdminAiLatencyRetryBucket[]
+  retry_reasons: Array<{
+    reason: string
+    label: string
+    attempts: number
+    runs: number
+    share_pct: number
+  }>
+  statuses: Array<{
+    status: string
+    attempts: number
+    runs: number
+    share_pct: number
+  }>
+  missing_dimensions: { provider: number; model: number; feature: number; plan: number }
+  cardinality: Record<
+    'provider' | 'model' | 'feature' | 'plan',
+    AdminAiLatencyRetryDimensionCardinality
+  >
+  totals: {
+    attempts: number
+    runs: number
+    latency_samples: number
+    retried_attempts: number
+    errors: number
+    timeouts: number
+    successes: number
+  }
+  reconciliation: {
+    total_attempts: number
+    dimension_attempts: Record<'provider' | 'model' | 'feature' | 'plan', number>
+    dimension_reconciled: Record<'provider' | 'model' | 'feature' | 'plan', boolean>
+    retry_reason_attempts: number
+    retried_attempts: number
+    retry_reasons_reconcile: boolean
+    status_attempts: number
+    statuses_reconcile: boolean
+    all_dimensions_reconcile: boolean
+    note: string
+  }
+  suppression: {
+    minimum_group_size: number
+    user_dimension_included: boolean
+    user_suppression_applicable: boolean
+    suppressed_groups: number
+    rule: string
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    per_row_records: boolean
+    content_fields_read: string[]
+    fields_excluded: string[]
+  }
+  generated_at: string
+}
+
 export type AdminCompileErrorClassKey =
   | 'syntax'
   | 'missing_package'
@@ -1463,6 +1583,102 @@ export interface AdminOptimizationAcceptancePlanRow extends AdminOptimizationAcc
 
 export interface AdminOptimizationAcceptanceSourceRow extends AdminOptimizationAcceptanceMetrics {
   source: string
+}
+
+export interface AdminAtsScoreDistributionMetrics {
+  runs: number
+  users: number
+  mean_before: number | null
+  mean_after: number | null
+  median_before: number | null
+  median_after: number | null
+  mean_delta: number | null
+  median_delta: number | null
+  median_improvement: number | null
+  median_positive_delta: number | null
+  p25_delta: number | null
+  p75_delta: number | null
+  improved: number
+  unchanged: number
+  declined: number
+  improvement_rate_pct: number
+}
+
+export interface AdminAtsScoreDistributionBucket {
+  bucket: string
+  lower_bound: number
+  upper_bound: number
+  upper_inclusive: boolean
+  before_count: number
+  before_pct: number
+  after_count: number
+  after_pct: number
+}
+
+export interface AdminAtsScoreIndustryRow extends AdminAtsScoreDistributionMetrics {
+  industry: string
+}
+
+export interface AdminAtsScoreProfileRow extends AdminAtsScoreDistributionMetrics {
+  profile: string
+}
+
+export interface AdminAtsScorePlanRow extends AdminAtsScoreDistributionMetrics {
+  plan: string
+}
+
+export interface AdminAtsScoreDistributionResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    industry: string[] | null
+    profile: string[] | null
+    plan: string[] | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  minimum_runs: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    filtered_suppressed: boolean
+    suppressed_rows: number
+    by_dimension: Record<'industry' | 'profile' | 'plan', number>
+  }
+  totals: AdminAtsScoreDistributionMetrics
+  distribution: AdminAtsScoreDistributionBucket[]
+  by_industry: AdminAtsScoreIndustryRow[]
+  by_profile: AdminAtsScoreProfileRow[]
+  by_plan: AdminAtsScorePlanRow[]
+  excluded: {
+    missing_baseline: number
+    invalid_scores: number
+    auto_save_rows_excluded: boolean
+  }
+  reconciliation: {
+    source: 'optimizations'
+    rows_scanned: number
+    baseline_runs: number
+    missing_baseline: number
+    invalid_scores: number
+    reconciled: boolean
+    hidden_by_suppression: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
 }
 
 export interface AdminOptimizationAcceptanceResponse {
@@ -1972,6 +2188,109 @@ export interface AdminSubscriptionAnalyticsResponse {
       ok: boolean
       detail: string
     }>
+  }
+  generated_at: string
+}
+
+export interface AdminDunningSummary {
+  dunning_cases: number
+  dunning_users: number
+  recovered: number
+  recovered_to_active: number
+  recovered_to_cancel_scheduled: number
+  cancelled: number
+  open_cases: number
+  other_outcomes: number
+  recovery_rate: number
+  cancel_rate: number
+  median_time_to_active_seconds: number | null
+  median_time_to_cancel_seconds: number | null
+  median_time_to_recovery_seconds: number | null
+  past_due: number
+  on_hold: number
+  paused: number
+  past_due_count: number
+  on_hold_count: number
+  open_now: number
+  open_now_users: number
+}
+
+export interface AdminDunningBreakdownRow {
+  plan_id?: string
+  cohort?: string
+  users: number
+  open_now: number
+  dunning_cases: number | null
+  dunning_users: number | null
+  recovered: number | null
+  recovered_to_active: number
+  recovered_to_cancel_scheduled: number
+  cancelled: number | null
+  open_cases: number | null
+  other_outcomes: number
+  recovery_rate: number | null
+  cancel_rate: number | null
+  median_time_to_active_seconds: number | null
+  median_time_to_cancel_seconds: number | null
+  median_time_to_recovery_seconds: number | null
+  suppressed: boolean
+}
+
+export interface AdminDunningRecoveryResponse {
+  period_days: number
+  period_start: string
+  period_end: string
+  minimum_cohort_size: number
+  filters: {
+    days: number
+    start: string
+    end: string
+    signup_month: string | null
+    signup_from: string | null
+    signup_to: string | null
+    plan: string | null
+    timezone: string
+  }
+  available_signup_months: Array<{ month: string; users: number }>
+  summary: AdminDunningSummary
+  by_plan: AdminDunningBreakdownRow[]
+  cohorts: AdminDunningBreakdownRow[]
+  suppressed: boolean
+  suppressed_groups: number
+  advisory: {
+    active: boolean
+    severity: string
+    title: string
+    message: string
+    recommended_action: string
+    open_now?: number
+    dunning_cases?: number
+    open_cases?: number
+    recovery_rate?: number
+  }
+  reconciliation: {
+    history_rows: number
+    dunning_cases: number
+    recovered: number
+    cancelled: number
+    open_cases: number
+    other_outcomes: number
+    by_plan_cases: number
+    cohort_cases: number
+    current_open: number
+    checks: Array<{
+      key: string
+      label: string
+      ok: boolean
+      detail: string
+    }>
+  }
+  guardrails: {
+    read_only: boolean
+    automatic_downgrade: boolean
+    automatic_refund: boolean
+    provider_order: string
+    manual_actions: string
   }
   generated_at: string
 }
@@ -3065,6 +3384,120 @@ export interface AdminTrialHealthResponse {
     attributed_trials_90d: number | null
     paid_trials_90d: number | null
     unattributed_trials_90d: number | null
+  }
+  notes: string[]
+}
+
+export interface AdminPlanHealthCohort {
+  cohort: string
+  users: number
+  subscriptions: number
+  active_subscriptions: number
+  retained_pct: number
+}
+
+export interface AdminPlanHealthMetric {
+  plan_id: 'weekly' | 'lifetime'
+  interval: 'week' | 'lifetime'
+  active_subscriptions: number
+  past_due_subscriptions: number
+  new_subscriptions: number
+  cancelled_subscriptions: number
+  refunded_subscriptions: number
+  by_status: Array<{ status: string; count: number }>
+  revenue: {
+    currency: string
+    gross_minor: number
+    gross: number
+    refunded_minor: number
+    refunded: number
+    net_minor: number
+    net: number
+    payments_count: number
+  }
+  refunds: {
+    currency: string
+    count: number
+    amount_minor: number
+    amount: number
+    amount_rate_pct: number
+    by_status: Array<{ status: string; count: number }>
+  }
+  chargebacks: {
+    currency: string
+    count: number
+    open_count: number
+    amount_minor: number
+    amount: number
+    amount_rate_pct: number
+  }
+  renewal: {
+    renewals: number
+    cancellations: number
+    renewal_rate_pct: number
+    churn_rate_pct: number
+  }
+  retention: {
+    months: number
+    minimum_cohort_size: number
+    cohorts: AdminPlanHealthCohort[]
+    suppressed_cohorts: number
+    tracked_subscriptions: number
+    retained_subscriptions: number
+    retention_pct: number
+  }
+  lifetime_sales: number | null
+  lifetime_refunds: number | null
+  lifetime_refund_rate_pct: number | null
+  risk_flags: AdminPlanHealthRiskFlag[]
+}
+
+export interface AdminPlanHealthRiskFlag {
+  code: string
+  plan_id: 'weekly' | 'lifetime'
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  title: string
+  detail: string
+  metric: string
+  value: number
+  threshold: number
+  sample_size: number
+  advisory: boolean
+  requires_human_review: boolean
+  auto_action: 'none'
+}
+
+export interface AdminPlanHealthResponse {
+  generated_at: string
+  window_days: number
+  window_start: string
+  window_end: string
+  currency: string
+  plans: { weekly: AdminPlanHealthMetric; lifetime: AdminPlanHealthMetric }
+  risk_flags: AdminPlanHealthRiskFlag[]
+  minimum_cohort_size: number
+  advisory: {
+    flags_are_advisory: boolean
+    requires_human_review: boolean
+    automatic_refund: boolean
+    automatic_downgrade: boolean
+    automatic_cancellation: boolean
+    automatic_grant: boolean
+    customer_identifiers_included: boolean
+  }
+  reconciliation: {
+    balanced: boolean
+    checks: Array<{
+      key: string
+      ok: boolean
+      expected_minor: number | null
+      actual_minor: number | null
+    }>
+    scanned_subscriptions: number
+    scanned_payments: number
+    scanned_refunds: number
+    rows_truncated: boolean
+    unlinked_chargebacks: number
   }
   notes: string[]
 }
@@ -6987,6 +7420,12 @@ class ApiClient {
     return this.request<AdminTrialHealthResponse>('/admin/analytics/trial-health')
   }
 
+  async getAdminPlanHealth(days = 30): Promise<AdminPlanHealthResponse> {
+    return this.request<AdminPlanHealthResponse>(
+      `/admin/analytics/plan-health?days=${encodeURIComponent(String(days))}`,
+    )
+  }
+
   async getAdminAiCost(params?: {
     days?: number
     plan?: string
@@ -7054,6 +7493,25 @@ class ApiClient {
     if (params?.template) qs.set('template', params.template)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminCompileLatencyResponse>(`/admin/analytics/compile-latency${suffix}`)
+  }
+
+  async getAdminAiLatencyRetry(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    provider?: string
+    model?: string
+  }): Promise<AdminAiLatencyRetryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.model) qs.set('model', params.model)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAiLatencyRetryResponse>(
+      `/admin/analytics/ai-latency-retry${suffix}`,
+    )
   }
 
   async getAdminCompileErrors(params?: {
@@ -7210,6 +7668,27 @@ class ApiClient {
       throw new Error(`Content library adoption CSV failed (${response.status})`)
     }
     return response.blob()
+  }
+
+  async getAdminAtsScoreDistribution(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    industry?: string
+    profile?: string
+    plan?: string
+  }): Promise<AdminAtsScoreDistributionResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.industry) qs.set('industry', params.industry)
+    if (params?.profile) qs.set('profile', params.profile)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAtsScoreDistributionResponse>(
+      `/admin/analytics/ats-score-distribution${suffix}`,
+    )
   }
 
   async getAdminOptimizationAcceptance(params?: {
@@ -7455,6 +7934,29 @@ class ApiClient {
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminSubscriptionAnalyticsResponse>(
       `/admin/subscriptions/analytics${suffix}`,
+    )
+  }
+
+  async getAdminDunningRecovery(params?: {
+    days?: number
+    start?: string
+    end?: string
+    signup_month?: string
+    signup_from?: string
+    signup_to?: string
+    plan?: string
+  }): Promise<AdminDunningRecoveryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    if (params?.signup_month) qs.set('signup_month', params.signup_month)
+    if (params?.signup_from) qs.set('signup_from', params.signup_from)
+    if (params?.signup_to) qs.set('signup_to', params.signup_to)
+    if (params?.plan) qs.set('plan', params.plan)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminDunningRecoveryResponse>(
+      `/admin/billing/dunning-recovery${suffix}`,
     )
   }
 

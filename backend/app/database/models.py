@@ -746,7 +746,15 @@ class Optimization(Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer)
     optimization_time: Mapped[Optional[float]] = mapped_column(Float)
+    # Legacy post-score column kept for older readers. New writers set both
+    # ats_score_after and ats_score; ats_score_before stays NULL when no
+    # comparable baseline was captured for the run.
     ats_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ats_score_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ats_score_after: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Bounded classification keys only — never resume or job-description text.
+    industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    profile: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     changes_made: Mapped[Optional[dict]] = mapped_column(JSONB)
     # Layer 3: embedding of the job description used for this optimization
     job_desc_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
@@ -1137,6 +1145,84 @@ class SubscriptionHistory(Base):
         String(24), nullable=False, default="billing", server_default="billing"
     )
     effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SubscriptionStatusHistory(Base):
+    """Append-only provider status observations for dunning recovery.
+
+    The current ``subscriptions.status`` column is a snapshot; this ledger keeps
+    the ordered observations needed to reconstruct past-due/on-hold episodes.
+    Duplicate deliveries share the natural key and are ignored. An older event
+    may be recorded with ``applied=False`` so it is visible to the timeline
+    without regressing the current subscription row. No customer PII, provider
+    payload, token or free-form note is stored here.
+    """
+
+    __tablename__ = "subscription_status_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "provider_event_at",
+            "status",
+            name="uq_subscription_status_history_transition",
+        ),
+        CheckConstraint(
+            "event_type IN ('dunning_started', 'dunning_escalated', "
+            "'recovered', 'cancelled', 'expired', 'failed', "
+            "'status_observed', 'backfill')",
+            name="ck_subscription_status_history_event_type",
+        ),
+        CheckConstraint(
+            "source IN ('billing', 'checkout', 'reconcile', 'admin', 'backfill')",
+            name="ck_subscription_status_history_source",
+        ),
+        Index(
+            "idx_subscription_status_history_subscription_effective",
+            "subscription_id",
+            "provider_event_at",
+        ),
+        Index(
+            "idx_subscription_status_history_user_effective",
+            "user_id",
+            "provider_event_at",
+        ),
+        Index(
+            "idx_subscription_status_history_effective_status",
+            "provider_event_at",
+            "status",
+        ),
+        Index(
+            "idx_subscription_status_history_plan_effective",
+            "plan_id",
+            "provider_event_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True
+    )
+    plan_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    previous_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="billing", server_default="billing"
+    )
+    provider_event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    provider_event_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    applied: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1586,6 +1672,79 @@ class AdminIncident(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class LLMCallAttempt(Base):
+    """Append-only, privacy-safe telemetry for one LLM provider attempt.
+
+    Only aggregate dimensions, bounded outcome classes and latency are stored.
+    Prompts, documents, provider error text, API keys and user identifiers never
+    enter this table. ``run_ref`` is an opaque hash used only to count distinct
+    runs for reconciliation.
+    """
+
+    __tablename__ = "llm_call_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('success', 'error', 'timeout', 'cancelled')",
+            name="ck_llm_call_attempts_status",
+        ),
+        CheckConstraint(
+            "retry_reason IN ('none', 'timeout', 'rate_limit', 'connection', "
+            "'provider_error', 'empty_output', 'truncated', 'invalid_response', "
+            "'cancelled', 'unknown')",
+            name="ck_llm_call_attempts_retry_reason",
+        ),
+        CheckConstraint(
+            "error_class IS NULL OR error_class IN ('timeout', 'rate_limit', "
+            "'connection', 'provider_error', 'invalid_response', 'cancelled', "
+            "'unknown')",
+            name="ck_llm_call_attempts_error_class",
+        ),
+        CheckConstraint(
+            "attempt_number >= 1",
+            name="ck_llm_call_attempts_attempt_number",
+        ),
+        CheckConstraint(
+            "latency_ms IS NULL OR latency_ms >= 0",
+            name="ck_llm_call_attempts_latency",
+        ),
+        Index("idx_llm_attempts_occurred", "occurred_at"),
+        Index("idx_llm_attempts_provider_occurred", "provider", "occurred_at"),
+        Index("idx_llm_attempts_model_occurred", "provider", "model", "occurred_at"),
+        Index("idx_llm_attempts_feature_occurred", "feature", "occurred_at"),
+        Index("idx_llm_attempts_plan_occurred", "plan", "occurred_at"),
+        Index("idx_llm_attempts_run", "run_ref"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    provider: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="unknown", server_default="unknown"
+    )
+    model: Mapped[str] = mapped_column(
+        String(160), nullable=False, default="unknown", server_default="unknown"
+    )
+    feature: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="unknown", server_default="unknown"
+    )
+    plan: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="unknown", server_default="unknown"
+    )
+    run_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    attempt_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="success", server_default="success"
+    )
+    retry_reason: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="none", server_default="none"
+    )
+    error_class: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
 
 class CeleryQueueSnapshot(Base):

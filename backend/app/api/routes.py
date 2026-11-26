@@ -180,12 +180,15 @@ router.include_router(reference_router)
 # Include Admin routes (feature flags + public config)
 from .admin_activity_routes import router as admin_activity_router
 from .admin_ai_credential_mix_routes import router as admin_ai_credential_mix_router
+from .admin_ai_latency_retry_routes import router as admin_ai_latency_retry_router
 from .admin_alert_routes import router as admin_alert_router
+from .admin_ats_score_routes import router as admin_ats_score_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
 from .admin_control_routes import router as admin_control_router
+from .admin_dunning_routes import router as admin_dunning_router
 from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
@@ -193,6 +196,7 @@ from .admin_incident_routes import router as admin_incident_router
 from .admin_linter_routes import router as admin_linter_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
+from .admin_plan_health_routes import router as admin_plan_health_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
@@ -205,6 +209,7 @@ from .landing_conversion_routes import router as landing_conversion_router
 router.include_router(admin_router)
 router.include_router(admin_control_router)
 router.include_router(admin_activity_router)
+router.include_router(admin_ai_latency_retry_router)
 router.include_router(admin_ai_credential_mix_router)
 router.include_router(admin_feature_adoption_router)
 router.include_router(admin_billing_reconciliation_router)
@@ -213,6 +218,8 @@ router.include_router(admin_compile_error_router)
 router.include_router(admin_content_library_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_optimization_acceptance_router)
+router.include_router(admin_ats_score_router)
+router.include_router(admin_plan_health_router)
 router.include_router(admin_incident_router)
 router.include_router(admin_linter_router)
 router.include_router(admin_stuck_job_router)
@@ -221,6 +228,7 @@ router.include_router(landing_conversion_router)
 router.include_router(admin_privacy_breakdown_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
+router.include_router(admin_dunning_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)

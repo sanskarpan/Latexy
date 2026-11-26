@@ -329,7 +329,8 @@ def optimize_and_compile_task(
             paid_stage_retry_safe = False
             stage_output, semantic_candidate_document = run_semantic_optimization(
                 job_id=job_id, source=latex_content, job_description=job_description,
-                user_id=user_id, metadata=metadata or {}, api_key=api_key, model=model,
+                user_id=user_id, metadata={**(metadata or {}), "user_plan": user_plan},
+                api_key=api_key, model=model,
                 redis=queue_redis, cancelled=lambda: is_cancelled(job_id), publish=publish_event,
                 target_sections=target_sections, custom_instructions=custom_instructions,
                 direction_fields={"level": optimization_level, "persona": persona, "industry": industry,

@@ -288,6 +288,8 @@ def run_semantic_optimization(
         cancelled=cancelled,
         owner_scope=user_id,
         client_factory=client_factory,
+        plan=str((metadata or {}).get("user_plan") or "unknown"),
+        run_id=job_id,
     )
     pool = None
     try:

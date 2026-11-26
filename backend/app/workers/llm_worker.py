@@ -18,6 +18,7 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.observability import record_llm_call
 from ..core.tracing import traced
+from ..services.llm_attempt_recording import record_llm_attempt_best_effort
 from ..services.llm_service import llm_service, parse_delimited_optimization
 from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_event, publish_job_result
 from ..workers.job_lifecycle import admit_worker
@@ -127,6 +128,8 @@ def optimize_resume_task(
     prompt_build_seconds: float | None = None
     provider_call_seconds: float | None = None
     total_start = time.perf_counter()
+    current_attempt = 1
+    current_attempt_started = total_start
 
     start_time = time.time()
     if getattr(settings, "RESUME_COMPACT_PATCHES_ENABLED", False) is True:
@@ -143,6 +146,7 @@ def optimize_resume_task(
             publish_event(job_id, "job.progress", {
                 "percent": 10, "stage": "llm_optimization", "message": "Reviewing supported resume bullets",
             })
+            compact_started = time.perf_counter()
             try:
                 compact = optimize_snapshot(
                     snapshot, client_factory=openai.OpenAI, api_key=api_key, model=effective_model,
@@ -153,12 +157,35 @@ def optimize_resume_task(
                 if is_cancelled(job_id):
                     raise CompactOptimizationCancelled("Optimization cancelled")
             except CompactOptimizationError as exc:
+                record_llm_attempt_best_effort(
+                    provider=provider,
+                    model=effective_model,
+                    feature="resume_optimization",
+                    plan=user_plan,
+                    run_id=job_id,
+                    attempt_number=1,
+                    status="cancelled" if isinstance(exc, CompactOptimizationCancelled) else "error",
+                    retry_reason="none",
+                    latency_ms=(time.perf_counter() - compact_started) * 1000,
+                    exc=exc,
+                )
                 result = {"success": False, "job_id": job_id, "error": str(exc),
                           "cancelled": isinstance(exc, CompactOptimizationCancelled)}
                 return _terminal_failure(result, {
                     "stage": "llm_optimization", "error_code": "compact_optimization_error",
                     "error_message": str(exc), "retryable": False,
                 })
+            record_llm_attempt_best_effort(
+                provider=provider,
+                model=effective_model,
+                feature="resume_optimization",
+                plan=user_plan,
+                run_id=job_id,
+                attempt_number=1,
+                status="success",
+                retry_reason="none",
+                latency_ms=(time.perf_counter() - compact_started) * 1000,
+            )
             publish_event(job_id, "llm.complete", {
                 "full_content": compact.latex, "tokens_total": compact.tokens,
                 "optimization_engine": "literal_patch_v1", "source_revision": compact.source_revision,
@@ -230,7 +257,11 @@ def optimize_resume_task(
         MAX_ATTEMPTS = 2
         optimized_latex = latex_content
         changes_made: list[Dict] = []
+        current_attempt = 1
+        current_attempt_started = provider_call_start
         for attempt in range(1, MAX_ATTEMPTS + 1):
+            current_attempt = attempt
+            current_attempt_started = time.perf_counter()
             accumulated = ""
             token_count = 0
             finish_reason: Optional[str] = None
@@ -288,6 +319,17 @@ def optimize_resume_task(
 
                         # Check cancellation every 20 tokens to avoid hammering Redis
                         if token_count % 20 == 0 and is_cancelled(job_id):
+                            record_llm_attempt_best_effort(
+                                provider=provider,
+                                model=model_name,
+                                feature="resume_optimization",
+                                plan=user_plan,
+                                run_id=job_id,
+                                attempt_number=attempt,
+                                status="cancelled",
+                                retry_reason="none",
+                                latency_ms=(time.perf_counter() - current_attempt_started) * 1000,
+                            )
                             content_events.flush()
                             return _terminal_failure(
                                 {"success": False, "job_id": job_id, "cancelled": True},
@@ -295,6 +337,18 @@ def optimize_resume_task(
                             )
 
             if finish_reason == "length":
+                record_llm_attempt_best_effort(
+                    provider=provider,
+                    model=model_name,
+                    feature="resume_optimization",
+                    plan=user_plan,
+                    run_id=job_id,
+                    attempt_number=attempt,
+                    status="error",
+                    retry_reason="truncated" if attempt < MAX_ATTEMPTS else "none",
+                    error_class="invalid_response",
+                    latency_ms=(time.perf_counter() - current_attempt_started) * 1000,
+                )
                 logger.warning(
                     "[%s] attempt %s/%s: LLM output reached the token limit",
                     job_id,
@@ -324,8 +378,31 @@ def optimize_resume_task(
             ]
 
             if "<<<LATEX>>>" in accumulated:
+                record_llm_attempt_best_effort(
+                    provider=provider,
+                    model=model_name,
+                    feature="resume_optimization",
+                    plan=user_plan,
+                    run_id=job_id,
+                    attempt_number=attempt,
+                    status="success",
+                    retry_reason="none",
+                    latency_ms=(time.perf_counter() - current_attempt_started) * 1000,
+                )
                 break  # got real delimited output — done
 
+            record_llm_attempt_best_effort(
+                provider=provider,
+                model=model_name,
+                feature="resume_optimization",
+                plan=user_plan,
+                run_id=job_id,
+                attempt_number=attempt,
+                status="error",
+                retry_reason="empty_output" if attempt < MAX_ATTEMPTS else "none",
+                error_class="invalid_response",
+                latency_ms=(time.perf_counter() - current_attempt_started) * 1000,
+            )
             logger.warning(
                 f"[{job_id}] attempt {attempt}/{MAX_ATTEMPTS}: LLM output missing "
                 f"<<<LATEX>>> markers ({len(accumulated)} chars, {token_count} tokens accumulated)"
@@ -418,6 +495,17 @@ def optimize_resume_task(
 
     except SoftTimeLimitExceeded:
         elapsed = time.time() - start_time
+        record_llm_attempt_best_effort(
+            provider=provider,
+            model=model_name,
+            feature="resume_optimization",
+            plan=user_plan,
+            run_id=job_id,
+            attempt_number=current_attempt,
+            status="timeout",
+            retry_reason="none",
+            latency_ms=(time.perf_counter() - current_attempt_started) * 1000,
+        )
         record_llm_call(provider, model_name, "error", total_seconds=time.perf_counter() - total_start)
         logger.error(f"LLM task {task_id} exceeded soft time limit for job {job_id}", exc_info=True)
         logger.warning(
@@ -440,6 +528,18 @@ def optimize_resume_task(
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
         retryable = has_retries_left
+        record_llm_attempt_best_effort(
+            provider=provider,
+            model=model_name,
+            feature="resume_optimization",
+            plan=user_plan,
+            run_id=job_id,
+            attempt_number=current_attempt,
+            status="error",
+            retry_reason=None if has_retries_left else "none",
+            latency_ms=(time.perf_counter() - current_attempt_started) * 1000,
+            exc=exc,
+        )
         if has_retries_left:
             publish_event(job_id, "job.failed", {
                 "stage": "llm_optimization",

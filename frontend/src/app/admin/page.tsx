@@ -16,12 +16,14 @@ import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
+import AdminDunningRecovery from '@/components/admin/AdminDunningRecovery'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
 import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
+import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -956,7 +958,12 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         tabIndex={0}
         className="focus:outline-none"
       >
-        {tab === 'analytics' && <AdminAnalytics />}
+        {tab === 'analytics' && (
+          <div className="space-y-6">
+            <AdminAnalytics />
+            <AdminAtsScoreDistribution />
+          </div>
+        )}
         {tab === 'operations' && <AdminIncidentTimeline />}
         {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
@@ -978,6 +985,11 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         )}
         {tab === 'billing' && <AdminBilling />}
         {tab === 'subscriptions' && <AdminSubscriptions />}
+        {tab === 'subscriptions' && (
+          <div className="mt-8">
+            <AdminDunningRecovery />
+          </div>
+        )}
         {tab === 'email' && <AdminEmailHealth />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
