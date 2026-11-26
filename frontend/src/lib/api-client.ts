@@ -2825,6 +2825,137 @@ export interface AdminSharePortfolioPortfolioResponse
   portfolio_username: string
   portfolio: AdminSharePortfolioPortfolioPayload
 }
+
+export type AdminIntegrationProviderKey =
+  | 'github'
+  | 'dropbox'
+  | 'google_drive'
+  | 'zotero'
+  | 'mendeley'
+
+export type AdminIntegrationTelemetryState =
+  | 'ok'
+  | 'missing_telemetry'
+  | 'no_current_connections'
+  | 'no_activity'
+  | 'suppressed'
+
+export interface AdminIntegrationSummary {
+  connected_accounts: number | null
+  providers_with_connections: number | null
+  connect_started: number | null
+  connected: number | null
+  disconnected: number | null
+  oauth_success_rate_pct: number | null
+  sync_succeeded: number | null
+  sync_failed: number | null
+  sync_success_rate_pct: number | null
+  sync_failure_rate_pct: number | null
+  distinct_users: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+  last_activity_at: string | null
+  telemetry_state: AdminIntegrationTelemetryState | 'suppressed'
+}
+
+export interface AdminIntegrationDisconnectReason {
+  reason: string
+  label: string
+  count: number
+}
+
+export interface AdminIntegrationErrorClass {
+  error_class: string
+  label: string
+  count: number
+}
+
+export interface AdminIntegrationOperationRow {
+  operation: string
+  label: string
+  count: number
+}
+
+export interface AdminIntegrationPlanRow {
+  plan: string
+  plan_label: string
+  connected_accounts: number
+  connect_started: number
+  connected: number
+  disconnected: number
+  oauth_success_rate_pct: number | null
+  sync_succeeded: number
+  sync_failed: number
+  sync_success_rate_pct: number | null
+  sync_failure_rate_pct: number | null
+  sync_enabled_resources: number
+  distinct_users: number
+  last_activity_at: string | null
+  telemetry_state: AdminIntegrationTelemetryState
+  telemetry_state_label: string
+}
+
+export interface AdminIntegrationReconciliation {
+  current_connected_accounts: number | null
+  period_net_connection_events: number | null
+  telemetry_users: number | null
+  sync_enabled_resources: number | null
+  connection_source: string
+  sync_status_source: string | null
+  telemetry_state: AdminIntegrationTelemetryState
+  telemetry_state_label: string
+}
+
+export interface AdminIntegrationProvider {
+  provider: AdminIntegrationProviderKey
+  label: string
+  suppressed: boolean
+  suppressed_cells: string[]
+  connected_accounts: number | null
+  connect_started: number | null
+  connected: number | null
+  disconnected: number | null
+  oauth_success_rate_pct: number | null
+  sync_succeeded: number | null
+  sync_failed: number | null
+  sync_success_rate_pct: number | null
+  sync_failure_rate_pct: number | null
+  distinct_users: number | null
+  last_activity_at: string | null
+  telemetry_state: AdminIntegrationTelemetryState
+  telemetry_state_label: string
+  disconnect_reasons: AdminIntegrationDisconnectReason[]
+  sync_error_classes: AdminIntegrationErrorClass[]
+  sync_failed_by_operation: AdminIntegrationOperationRow[]
+  by_plan: AdminIntegrationPlanRow[]
+  plan_breakdown_suppressed: boolean
+  suppressed_plan_rows: number
+  reconciliation: AdminIntegrationReconciliation
+}
+
+export interface AdminIntegrationsResponse {
+  period: { start: string; end: string; days: number; timezone: string }
+  filters: {
+    plan: string | null
+    provider: AdminIntegrationProviderKey | null
+  }
+  minimum_cohort_size: number
+  summary: AdminIntegrationSummary
+  providers: AdminIntegrationProvider[]
+  reconciliation: {
+    connection_rows_truncated: boolean
+    event_rows_truncated: boolean
+    unattributed_events: number
+    invalid_rows: number
+    visible_providers: number
+    suppressed_providers: number
+    connected_accounts_source: string
+    telemetry_source: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminSubscriptionSummary {
   active_at_start: number
   active_at_end: number
@@ -9496,6 +9627,26 @@ class ApiClient {
       `/admin/analytics/share-portfolio/portfolios/${encodeURIComponent(username)}${suffix}`,
     )
   }
+
+  async getAdminIntegrations(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    provider?: AdminIntegrationProviderKey
+  }): Promise<AdminIntegrationsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.provider) qs.set('provider', params.provider)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminIntegrationsResponse>(
+      `/admin/analytics/integrations${suffix}`,
+    )
+  }
+
   async getAdminSubscriptionAnalytics(params?: {
     days?: number
     start?: string
