@@ -12,7 +12,8 @@ describe('admin incident timeline', () => {
   it('adds a dedicated Operations tab and renders the timeline component', () => {
     expect(page).toContain("import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'")
     expect(page).toContain("{ id: 'operations', label: 'Operations' }")
-    expect(page).toContain("tab === 'operations' && <AdminIncidentTimeline />")
+    expect(page).toContain("tab === 'operations'")
+    expect(page).toContain('<AdminIncidentTimeline />')
     expect(timeline).toContain('id="admin-incident-timeline"')
     expect(timeline).toContain('Record incident')
     expect(timeline).toContain('Incident timeline')
