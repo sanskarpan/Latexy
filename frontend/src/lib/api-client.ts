@@ -2934,6 +2934,92 @@ export interface AdminLandingConversionResponse {
   generated_at: string
 }
 
+export interface AdminOnboardingStepRow {
+  step_key: string
+  label: string
+  step_index: number | null
+  views: number | null
+  unique_viewers: number | null
+  completions: number | null
+  unique_completers: number | null
+  skips: number | null
+  unique_skippers: number | null
+  abandoned_accounts: number | null
+  drop_off_rate: number | null
+  completion_rate: number | null
+  skip_rate: number | null
+  median_duration_seconds: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminOnboardingSegmentRow {
+  dimension: 'plan' | 'provider'
+  key: string
+  label: string
+  accounts: number | null
+  views: number | null
+  completions: number | null
+  skips: number | null
+  drop_off_rate: number | null
+  completion_rate: number | null
+  skip_rate: number | null
+  median_duration_seconds: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+  steps: AdminOnboardingStepRow[]
+}
+
+export interface AdminOnboardingSummary {
+  accounts: number | null
+  views: number | null
+  step_completions: number | null
+  completions: number | null
+  skips: number | null
+  terminal_accounts: number | null
+  abandoned_accounts: number | null
+  completion_rate: number | null
+  skip_rate: number | null
+  drop_off_rate: number | null
+  median_duration_seconds: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+}
+
+export interface AdminOnboardingReconciliation {
+  completed_accounts: number | null
+  skipped_accounts: number | null
+  terminal_accounts: number | null
+  preference_on_accounts: number | null
+  reconciled_accounts: number | null
+  missing_preference_accounts: number | null
+  preference_without_terminal_accounts: number | null
+  reconciled_rate: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+  definition: string
+}
+
+export interface AdminOnboardingAnalyticsResponse {
+  days: number
+  period: { start: string; end: string; timezone: string }
+  minimum_cohort_size: number
+  flow_version: string | null
+  available_flow_versions: Array<{ flow_version: string; events: number }>
+  summary: AdminOnboardingSummary
+  steps: AdminOnboardingStepRow[]
+  completion_reconciliation: AdminOnboardingReconciliation
+  by_plan: AdminOnboardingSegmentRow[]
+  by_provider: AdminOnboardingSegmentRow[]
+  suppressed_segments: Record<'plan' | 'provider', number>
+  suppressed_rows: number
+  suppressed_cells: number
+  truncated_segments: Record<'plan' | 'provider', number>
+  truncated_events: boolean
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminPrivacyBreakdownRow {
   value: string
   label: string
@@ -7822,6 +7908,23 @@ class ApiClient {
   async getAdminLandingConversion(days = 30): Promise<AdminLandingConversionResponse> {
     const qs = new URLSearchParams({ days: String(days) })
     return this.request<AdminLandingConversionResponse>(`/admin/analytics/landing-conversion?${qs}`)
+  }
+
+  async getAdminOnboardingAnalytics(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    flow_version?: string
+  }): Promise<AdminOnboardingAnalyticsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.flow_version) qs.set('flow_version', params.flow_version)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminOnboardingAnalyticsResponse>(
+      `/admin/analytics/onboarding${suffix}`,
+    )
   }
 
   async getAdminPrivacyBreakdowns(params?: {

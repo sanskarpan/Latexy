@@ -100,6 +100,14 @@ from .editor_mode_telemetry_routes import router as editor_mode_telemetry_router
 
 router.include_router(editor_mode_telemetry_router)
 
+# Onboarding step completion and drop-off reporting. Kept in a dedicated module
+# so ingestion can never reach document models or free-form event metadata.
+from .onboarding_analytics_routes import admin_router as admin_onboarding_analytics_router
+from .onboarding_analytics_routes import router as onboarding_analytics_router
+
+router.include_router(onboarding_analytics_router)
+router.include_router(admin_onboarding_analytics_router)
+
 # First-party UTM/referrer capture and aggregate growth reporting. Kept in a
 # dedicated module so the public capture path cannot reach document models.
 from .traffic_source_routes import admin_router as admin_traffic_source_router
