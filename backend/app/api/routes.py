@@ -88,6 +88,13 @@ from .signup_funnel_routes import router as signup_funnel_router
 
 router.include_router(signup_funnel_router)
 
+# First-party consent choices and aggregate consent/replay coverage reporting.
+from .consent_analytics_routes import admin_router as admin_consent_analytics_router
+from .consent_analytics_routes import router as consent_analytics_router
+
+router.include_router(consent_analytics_router)
+router.include_router(admin_consent_analytics_router)
+
 # First-party UTM/referrer capture and aggregate growth reporting. Kept in a
 # dedicated module so the public capture path cannot reach document models.
 from .traffic_source_routes import admin_router as admin_traffic_source_router
