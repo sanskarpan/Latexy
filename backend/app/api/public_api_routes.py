@@ -23,6 +23,7 @@ from ..middleware.auth_middleware import get_developer_api_key_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.capability_router import enforce_capabilities
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.compile_complexity import count_sections
 from ..services.developer_key_service import developer_key_service
 from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, BoundedReadError, decode_base64_bounded
@@ -222,6 +223,7 @@ async def compile_v1(
         user_id=api_key.user_id,
         job_id=job_id,
         status="processing",
+        section_count=count_sections(body.latex_content),
     )
     db.add(compilation_record)
     await db.flush()

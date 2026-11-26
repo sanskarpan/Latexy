@@ -1495,6 +1495,162 @@ export interface AdminCompileErrorsResponse {
   generated_at: string
 }
 
+export interface AdminDocumentComplexityBucket {
+  bucket: string
+  lower_bound: number | null
+  upper_bound: number | null
+  count: number
+  pct: number
+}
+
+export interface AdminDocumentComplexityPageSummary {
+  samples: number
+  missing: number
+  mean: number | null
+  p50: number | null
+  p90: number | null
+  p95: number | null
+  p99: number | null
+  max: number | null
+  buckets: AdminDocumentComplexityBucket[]
+}
+
+export interface AdminDocumentComplexitySectionSummary {
+  samples: number
+  missing: number
+  mean: number | null
+  p50: number | null
+  p90: number | null
+  p95: number | null
+  p99: number | null
+  max: number | null
+  buckets: AdminDocumentComplexityBucket[]
+}
+
+export interface AdminDocumentComplexityLatencySummary {
+  samples: number
+  missing: number
+  mean_seconds: number | null
+  p50_seconds: number | null
+  p95_seconds: number | null
+  p99_seconds: number | null
+  max_seconds: number | null
+  buckets: AdminDocumentComplexityBucket[]
+}
+
+export interface AdminDocumentComplexityFailureClass {
+  error_class: AdminCompileErrorClassKey
+  label: string
+  count: number
+  share: number
+  sparse: boolean
+}
+
+export interface AdminDocumentComplexityFailureSummary {
+  failed_compilations: number
+  class_total: number
+  reconciled: boolean
+  classes: AdminDocumentComplexityFailureClass[]
+}
+
+export interface AdminDocumentComplexityOverflowThreshold {
+  pages: number
+  label: string
+  count: number
+  share: number
+}
+
+export interface AdminDocumentComplexityOverflowSummary {
+  page_samples: number
+  max_pages: number | null
+  thresholds: AdminDocumentComplexityOverflowThreshold[]
+  pdf_limit_failures: number
+}
+
+export interface AdminDocumentComplexitySegment {
+  dimension: 'plan' | 'compiler' | 'template'
+  value: string
+  label: string
+  users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  other_compilations: number
+  page_count: AdminDocumentComplexityPageSummary
+  sections: AdminDocumentComplexitySectionSummary
+  latency: AdminDocumentComplexityLatencySummary
+  failure_classes: AdminDocumentComplexityFailureSummary
+  overflow: AdminDocumentComplexityOverflowSummary
+  sparse: boolean
+}
+
+export interface AdminDocumentComplexityResponse {
+  days: number
+  presets: number[]
+  window: { start: string; end: string }
+  timezone: string
+  filters: {
+    plan: string | null
+    compiler: string | null
+    template: string | null
+  }
+  minimum_users: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    rule: string
+    filtered_suppressed: boolean
+    hidden_by_dimension: { plan: number; compiler: number; template: number }
+    by_dimension: { plan: number; compiler: number; template: number }
+  }
+  totals: {
+    compilations: number
+    completed_compilations: number
+    failed_compilations: number
+    other_compilations: number
+    distinct_users: number
+    page_count_samples: number
+    page_count_missing: number
+    section_count_samples: number
+    section_count_missing: number
+    latency_samples: number
+    latency_missing: number
+  }
+  page_count: AdminDocumentComplexityPageSummary
+  sections: AdminDocumentComplexitySectionSummary
+  latency: AdminDocumentComplexityLatencySummary
+  failure_classes: AdminDocumentComplexityFailureSummary
+  overflow: AdminDocumentComplexityOverflowSummary
+  by_plan: AdminDocumentComplexitySegment[]
+  by_compiler: AdminDocumentComplexitySegment[]
+  by_template: AdminDocumentComplexitySegment[]
+  segmentation: {
+    dimensions: Array<'plan' | 'compiler' | 'template'>
+    maximum_segment_rows: number
+    omitted_by_dimension: { plan: number; compiler: number; template: number }
+  }
+  missing_dimensions: { plan: number; compiler: number; template: number }
+  reconciliation: {
+    source_rows: number
+    authenticated_compilations: number
+    completed_compilations: number
+    failed_compilations: number
+    other_compilations: number
+    reconciled: boolean
+    anonymous_excluded: number
+    failure_classes_reconciled: boolean
+    hidden_by_suppression: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminTemplatePerformanceRow {
   rank: number
   template_id: string
@@ -8253,6 +8409,23 @@ class ApiClient {
     if (params?.error_class) qs.set('error_class', params.error_class)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminCompileErrorsResponse>(`/admin/analytics/compile-errors${suffix}`)
+  }
+
+  async getAdminDocumentComplexity(params?: {
+    days?: number
+    plan?: string
+    compiler?: string
+    template?: string
+  }): Promise<AdminDocumentComplexityResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.compiler) qs.set('compiler', params.compiler)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminDocumentComplexityResponse>(
+      `/admin/analytics/document-complexity${suffix}`,
+    )
   }
 
   async getAdminFilteredTimeseries(params: {

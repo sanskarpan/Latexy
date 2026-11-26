@@ -1083,6 +1083,7 @@ async def retry_stuck_job(
         plan_family=compilation.plan_family if compilation is not None else None,
         compiler=compiler,
         template_id=compilation.template_id if compilation is not None else None,
+        section_count=compilation.section_count if compilation is not None else None,
     )
     db.add(new_compilation)
     new_finalization = models.JobFinalization(

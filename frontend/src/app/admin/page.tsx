@@ -25,6 +25,7 @@ import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformanc
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
 import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
+import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -964,6 +965,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
           <div className="space-y-6">
             <AdminAnalytics />
             <AdminAtsScoreDistribution />
+            <AdminDocumentComplexity />
           </div>
         )}
         {tab === 'operations' && (
