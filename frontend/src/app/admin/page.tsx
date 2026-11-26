@@ -18,6 +18,7 @@ import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
 import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
+import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
@@ -960,6 +961,11 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'product' && <AdminProduct />}
         {tab === 'replays' && <AdminReplayBrowser />}
         {tab === 'quality' && <AdminTemplatePerformance />}
+        {tab === 'quality' && (
+          <div className="mt-6">
+            <AdminContentLibraryQuality />
+          </div>
+        )}
         {tab === 'quality' && (
           <div className="mt-6">
             <AdminOptimizationAcceptance />

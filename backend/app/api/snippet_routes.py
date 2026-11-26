@@ -26,6 +26,10 @@ from ..middleware.auth_middleware import (
 )
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
+from ..services.content_library_events import (
+    record_snippet_delete_snapshot,
+    record_snippet_insert,
+)
 from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix='/snippets', tags=['snippets'])
@@ -258,6 +262,9 @@ async def delete_snippet(
         raise HTTPException(status_code=404, detail='Snippet not found')
     if snippet.author_id != user_id:
         raise HTTPException(status_code=403, detail='Only the author can delete this snippet')
+    # Keep an aggregate-only identity/name tombstone before the hard delete so
+    # adoption history survives without retaining the body or author.
+    await record_snippet_delete_snapshot(db, snippet=snippet, user_id=user_id)
     await db.delete(snippet)
     await db.commit()
 
@@ -286,6 +293,15 @@ async def install_snippet(
             .where(Snippet.id == snippet_id)
             .values(installs_count=Snippet.installs_count + 1)
         )
+    # The marketplace calls this endpoint for every insert, not only the first
+    # install, so the event captures time-bounded use without any snippet body.
+    await record_snippet_insert(
+        db,
+        snippet_id=snippet_id,
+        user_id=user_id,
+        category=snippet.category,
+        is_official=bool(snippet.is_official),
+    )
     await db.commit()
 
 
