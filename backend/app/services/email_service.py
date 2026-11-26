@@ -18,6 +18,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import parseaddr
 from html import escape
 from typing import Optional, Sequence
 from urllib.parse import quote
@@ -28,6 +29,28 @@ from ..core.logging import get_logger
 logger = get_logger(__name__)
 
 MAX_EMAIL_ATTACHMENT_BYTES = 8 * 1024 * 1024
+
+
+def _from_header() -> str:
+    """Return one RFC-5322 From value without double-wrapping a display name.
+
+    Operators may configure EMAIL_FROM as either ``noreply@example.com`` or
+    ``Product <noreply@example.com>``. Blindly prefixing EMAIL_FROM_NAME to the
+    latter produces an invalid header and providers reject the whole message.
+    """
+
+    raw = (settings.EMAIL_FROM or "").strip()
+    if "<" in raw and ">" in raw:
+        return raw
+    name = (settings.EMAIL_FROM_NAME or "").strip()
+    return f"{name} <{raw}>" if name and raw else raw
+
+
+def _envelope_from() -> str:
+    """Return the bare mailbox used for the SMTP envelope."""
+
+    _, address = parseaddr(settings.EMAIL_FROM or "")
+    return address or (settings.EMAIL_FROM or "").strip()
 
 
 @dataclass(frozen=True)
@@ -196,7 +219,7 @@ class EmailService:
         import httpx
 
         payload: dict = {
-            "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",
+            "from": _from_header(),
             "to": [to],
             "subject": subject,
             "html": html_body,
@@ -261,7 +284,7 @@ class EmailService:
 
         msg = MIMEMultipart("mixed" if attachments else "alternative")
         msg["Subject"] = subject
-        msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+        msg["From"] = _from_header()
         msg["To"] = to
         if idempotency_key:
             # Resend's SMTP gateway honors this header. Other SMTP relays may
@@ -294,7 +317,7 @@ class EmailService:
             # rather than raising.  With one recipient, any refused address
             # means the provider did not accept this delivery and must remain
             # retryable in the durable delivery state machine.
-            refused = server.sendmail(settings.EMAIL_FROM, to, msg.as_string())
+            refused = server.sendmail(_envelope_from(), to, msg.as_string())
             if isinstance(refused, dict) and refused:
                 logger.warning("SMTP provider refused recipient(s)")
                 return False
