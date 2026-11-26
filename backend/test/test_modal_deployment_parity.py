@@ -910,6 +910,10 @@ SCHEDULE_WAIVERS = {
     # cost more than the metric is worth; queue depth is meaningless there anyway,
     # since Modal does not use the Celery broker to dispatch.
     "sample-queue-depths": "Celery-broker-specific metric; no broker on Modal",
+    # The daily metrics rollup is a read optimisation only. The admin payload
+    # falls back to base tables and labels itself when the rollup is stale, so
+    # Modal needs no extra scheduled function (and its schedule budget is full).
+    "refresh-daily-metrics": "Read optimisation with base-table fallback; no Celery beat on Modal",
 }
 
 

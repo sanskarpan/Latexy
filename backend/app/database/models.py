@@ -1,6 +1,6 @@
 """Database models for Latexy application."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -2028,6 +2029,54 @@ class CeleryQueueSnapshot(Base):
     enqueued_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     completed_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AdminDailyMetric(Base):
+    """One pre-aggregated UTC day of global admin metrics (issue #2181).
+
+    Every value is a global count or minor-unit amount. The row intentionally
+    has no user id, email, document content, prompt, token, IP address, user
+    agent or provider payload column. ``metric_date`` is the unique date key;
+    the refresh worker recomputes a bounded trailing window with an upsert so
+    overlapping/failed runs cannot duplicate or erase a prior snapshot.
+    """
+
+    __tablename__ = "admin_daily_metrics"
+    __table_args__ = (
+        CheckConstraint(
+            "new_users >= 0 AND active_users >= 0 AND usage_events >= 0 "
+            "AND compilations >= 0 AND completed_compilations >= 0 "
+            "AND failed_compilations >= 0 AND optimizations >= 0 "
+            "AND payments_count >= 0 AND gross_revenue_minor >= 0 "
+            "AND refunds_count >= 0 AND refund_amount_minor >= 0",
+            name="ck_admin_daily_metrics_nonnegative",
+        ),
+        Index("idx_admin_daily_metrics_refreshed_at", "refreshed_at"),
+    )
+
+    metric_date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    new_users: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    active_users: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    usage_events: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    compilations: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    completed_compilations: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    failed_compilations: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    optimizations: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    payments_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    gross_revenue_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    refunds_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    refund_amount_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    refreshed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 

@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0099_tenant_domain_health"
+EXPECTED_HEAD = "0100_daily_metrics"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -34,7 +34,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution",
     "0087_email_delivery_events", "0088_admin_incidents",
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
-    "0092_document_complexity", "0099_tenant_domain_health",
+    "0092_document_complexity", "0100_daily_metrics",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -59,7 +59,6 @@ BILLING_COLUMNS_ADDED_BY_REVISION = {
         },
     },
     "0092_document_complexity": {},
-    "0099_tenant_domain_health": {},
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -102,7 +101,7 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
           "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions",
           "email_delivery_events", "email_recipient_suppressions", "admin_incidents",
-          "llm_call_attempts", "subscription_status_history", "tenant_domain_events")
+          "llm_call_attempts", "subscription_status_history", "admin_daily_metrics")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -295,9 +294,12 @@ CAPABILITY_SCHEMA_COLUMNS = {
         },
     },
     "0092_document_complexity": {},
-    "0099_tenant_domain_health": {
-        "tenant_domain_events": {
-            "id", "tenant_id", "domain", "event_type", "error_class", "checked_at",
+    "0100_daily_metrics": {
+        "admin_daily_metrics": {
+            "metric_date", "new_users", "active_users", "usage_events",
+            "compilations", "completed_compilations", "failed_compilations",
+            "optimizations", "payments_count", "gross_revenue_minor",
+            "refunds_count", "refund_amount_minor", "refreshed_at",
         },
     },
 }
