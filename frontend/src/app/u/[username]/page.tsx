@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { apiClient, type PortfolioResponse } from '@/lib/api-client'
+import PortfolioAnalytics from '@/components/portfolio/PortfolioAnalytics'
 import ContactForm from './ContactForm'
 
 interface PageProps {
@@ -54,6 +55,7 @@ export default async function PortfolioPage({ params }: PageProps) {
 
   return (
     <div className={`ph-no-capture min-h-screen ${themeClass}`} data-ph-no-capture>
+      <PortfolioAnalytics username={username} />
       {/* Header */}
       <header className={`sticky top-0 z-50 border-b ${headerClass}`}>
         <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">

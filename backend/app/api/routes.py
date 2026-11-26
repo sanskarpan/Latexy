@@ -323,6 +323,13 @@ from .portfolio_routes import router as portfolio_router
 
 router.include_router(portfolio_router)
 
+# Consent-gated public portfolio capture and aggregate admin reporting (issue #2082).
+from .admin_share_portfolio_routes import router as admin_share_portfolio_router
+from .portfolio_analytics_routes import router as portfolio_analytics_router
+
+router.include_router(portfolio_analytics_router)
+router.include_router(admin_share_portfolio_router)
+
 # Include Career Path routes (Feature 80)
 from .career_routes import admin_router as career_admin_router
 from .career_routes import router as career_router
