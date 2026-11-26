@@ -675,7 +675,11 @@ class TestGitHubEndpoints:
 
             assert resp.status_code == 409
             assert "pull it first" in resp.json()["detail"].lower()
-            mock_db.commit.assert_not_awaited()
+            # The conflict leaves resume state untouched; the single commit is
+            # the durable analytics failure event.
+            assert mock_resume.resume_settings == {"github_sync_sha": "known-sha"}
+            mock_db.commit.assert_awaited_once()
+            mock_db.add.assert_called_once()
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -772,7 +776,10 @@ class TestGitHubEndpoints:
 
             assert resp.status_code == 413
             assert mock_resume.latex_content == "keep me"
-            mock_db.commit.assert_not_awaited()
+            # The oversize guard leaves the resume untouched; the single commit
+            # is the durable analytics failure event.
+            mock_db.commit.assert_awaited_once()
+            mock_db.add.assert_called_once()
         finally:
             app.dependency_overrides.pop(get_db, None)
 
