@@ -92,6 +92,11 @@ def _worst(statuses: list[str]) -> str:
     return "healthy"
 
 
+def _bounded_text(value: str | None, *, max_length: int = 240) -> str:
+    cleaned = " ".join((value or "").split())
+    return cleaned if len(cleaned) <= max_length else cleaned[: max_length - 1] + "…"
+
+
 def _capacity_status(status: str) -> str:
     if status in {"critical", "exhausted", "misconfigured", "unavailable"}:
         return "unhealthy"
@@ -465,6 +470,45 @@ async def get_attention(db: AsyncSession) -> dict[str, Any]:
                 "status": "unavailable",
                 "metadata_status": "unknown",
                 "detail": "Custom-domain state could not be checked",
+            }
+        )
+
+    # The incident timeline is the source of truth for operator-declared
+    # outages. Active incidents surface individually so an on-call admin can
+    # jump straight to the entry, while the source summary keeps the count
+    # visible even when no other attention item fires.
+    try:
+        active_incidents = (
+            await db.execute(
+                select(models.AdminIncident)
+                .where(
+                    models.AdminIncident.status == "open",
+                    models.AdminIncident.ended_at.is_(None),
+                )
+                .order_by(models.AdminIncident.started_at.asc())
+            )
+        ).scalars().all()
+        sources.append({"key": "incidents.active", "status": "ok", "count": len(active_incidents)})
+        for incident in active_incidents:
+            items.append(
+                _attention_item(
+                    key=f"incidents.{incident.id}",
+                    title=incident.title,
+                    severity=incident.severity,
+                    owner=incident.owner,
+                    count=1,
+                    oldest_at=incident.started_at,
+                    href=f"/admin?tab=operations&incident={incident.id}#admin-incident-timeline",
+                    detail=_bounded_text(incident.summary) or "Active incident without a summary.",
+                )
+            )
+    except Exception:
+        await _safe_rollback(db)
+        sources.append(
+            {
+                "key": "incidents.active",
+                "status": "unavailable",
+                "detail": "Active incidents could not be checked",
             }
         )
 

@@ -1404,6 +1404,88 @@ class AdminAlert(Base):
     )
 
 
+class AdminIncident(Base):
+    """Operator-owned incident timeline row.
+
+    Only admin-written operational metadata lives here: no customer identifiers,
+    document content, provider errors or credentials. The status/end-time
+    invariant is enforced in the database so an open incident cannot carry an
+    end timestamp and a resolved incident cannot omit one.
+    """
+
+    __tablename__ = "admin_incidents"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open', 'resolved')",
+            name="ck_admin_incidents_status",
+        ),
+        CheckConstraint(
+            "severity IN ('critical', 'high', 'medium', 'low')",
+            name="ck_admin_incidents_severity",
+        ),
+        CheckConstraint(
+            "(status = 'open' AND ended_at IS NULL) OR "
+            "(status = 'resolved' AND ended_at IS NOT NULL)",
+            name="ck_admin_incidents_state_end",
+        ),
+        CheckConstraint(
+            "ended_at IS NULL OR ended_at >= started_at",
+            name="ck_admin_incidents_time_order",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(services) = 'array' AND jsonb_array_length(services) > 0",
+            name="ck_admin_incidents_services",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(links) = 'array'",
+            name="ck_admin_incidents_links",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(related_alert_keys) = 'array'",
+            name="ck_admin_incidents_alert_keys",
+        ),
+        CheckConstraint(
+            "deploy_sha IS NULL OR deploy_sha ~ '^[0-9a-f]{7,40}$'",
+            name="ck_admin_incidents_deploy_sha",
+        ),
+        CheckConstraint(
+            "length(trim(title)) > 0 AND length(trim(summary)) > 0 "
+            "AND length(trim(owner)) > 0",
+            name="ck_admin_incidents_required_text",
+        ),
+        Index("idx_admin_incidents_status_started", "status", "started_at"),
+        Index("idx_admin_incidents_severity_started", "severity", "started_at"),
+        Index("idx_admin_incidents_started", "started_at"),
+        Index("idx_admin_incidents_services", "services", postgresql_using="gin"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open", server_default="open")
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    services: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    owner: Mapped[str] = mapped_column(String(64), nullable=False)
+    links: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    related_alert_keys: Mapped[List[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    deploy_sha: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    deploy_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CeleryQueueSnapshot(Base):
     """A single periodic sample of a Celery queue for admin operations.
 
