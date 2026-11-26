@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0092_document_complexity"
+EXPECTED_HEAD = "0094_template_health"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -34,7 +34,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution",
     "0087_email_delivery_events", "0088_admin_incidents",
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
-    "0092_document_complexity",
+    "0092_document_complexity", "0094_template_health",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -59,6 +59,7 @@ BILLING_COLUMNS_ADDED_BY_REVISION = {
         },
     },
     "0092_document_complexity": {},
+    "0094_template_health": {},
 }
 # Diagnostic-only ISO 4217 current-code snapshot, published 2026-09-17 by
 # SIX (the ISO maintenance agency). This does not alter runtime sale settings.
@@ -101,7 +102,7 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
           "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions",
           "email_delivery_events", "email_recipient_suppressions", "admin_incidents",
-          "llm_call_attempts", "subscription_status_history")
+          "llm_call_attempts", "subscription_status_history", "template_health_checks")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -294,6 +295,14 @@ CAPABILITY_SCHEMA_COLUMNS = {
         },
     },
     "0092_document_complexity": {},
+    "0094_template_health": {
+        "template_health_checks": {
+            "id", "template_id", "status", "error_class", "visual_test",
+            "commit_sha", "ci_run_id", "source", "assets_present",
+            "compile_samples", "compile_failures", "status_detail",
+            "idempotency_key", "checked_at",
+        },
+    },
 }
 
 

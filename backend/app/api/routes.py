@@ -223,6 +223,7 @@ from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
 from .admin_support_action_routes import router as admin_support_action_router
 from .admin_team_seat_routes import router as admin_team_seat_router
+from .admin_template_health_routes import router as admin_template_health_router
 from .admin_template_performance_routes import router as admin_template_performance_router
 from .admin_trial_health_routes import router as admin_trial_health_router
 from .landing_conversion_routes import router as landing_conversion_router
@@ -258,6 +259,7 @@ router.include_router(admin_team_seat_router)
 router.include_router(admin_dunning_router)
 router.include_router(admin_editor_mode_router)
 router.include_router(admin_template_performance_router)
+router.include_router(admin_template_health_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
 router.include_router(admin_trial_health_router)

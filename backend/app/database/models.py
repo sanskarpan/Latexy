@@ -2286,6 +2286,98 @@ class ResumeTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TemplateHealthCheck(Base):
+    """Append-only verification evidence for one catalog template.
+
+    Template popularity and compile outcomes stay in their existing source
+    tables.  This table only owns the latest rendered-asset/compile/visual
+    verification snapshot so admin can distinguish pass, fail and unknown.
+    Rows never contain template source, document text, compiler logs, storage
+    credentials or per-user activity.
+    """
+
+    __tablename__ = "template_health_checks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pass', 'fail', 'unknown')",
+            name="ck_template_health_checks_status",
+        ),
+        CheckConstraint(
+            "visual_test IN ('pass', 'fail', 'unknown')",
+            name="ck_template_health_checks_visual_test",
+        ),
+        CheckConstraint(
+            "error_class IS NULL OR error_class IN "
+            "('missing_asset', 'compile_error', 'syntax', 'missing_package', "
+            "'timeout', 'engine', 'storage', 'pdf_limit', 'visual_regression', 'unknown')",
+            name="ck_template_health_checks_error_class",
+        ),
+        CheckConstraint(
+            "source IN ('admin_retry', 'compile_batch', 'ci', 'backfill')",
+            name="ck_template_health_checks_source",
+        ),
+        CheckConstraint(
+            "commit_sha IS NULL OR commit_sha ~ '^[0-9a-f]{40}$'",
+            name="ck_template_health_checks_commit_sha",
+        ),
+        CheckConstraint(
+            "ci_run_id IS NULL OR ci_run_id ~ '^[0-9]{1,32}$'",
+            name="ck_template_health_checks_ci_run_id",
+        ),
+        CheckConstraint(
+            "compile_samples IS NULL OR compile_samples >= 0",
+            name="ck_template_health_checks_compile_samples",
+        ),
+        CheckConstraint(
+            "compile_failures IS NULL OR compile_failures >= 0",
+            name="ck_template_health_checks_compile_failures",
+        ),
+        CheckConstraint(
+            "compile_samples IS NULL OR compile_failures IS NULL "
+            "OR compile_failures <= compile_samples",
+            name="ck_template_health_checks_compile_failures_bounded",
+        ),
+        UniqueConstraint(
+            "template_id",
+            "idempotency_key",
+            name="uq_template_health_checks_template_idempotency",
+        ),
+        Index(
+            "ix_template_health_checks_template_checked",
+            "template_id",
+            text("checked_at DESC"),
+        ),
+        Index("ix_template_health_checks_checked", "checked_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    template_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("resume_templates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="unknown")
+    error_class: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    visual_test: Mapped[str] = mapped_column(String(16), nullable=False, server_default="unknown")
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    ci_run_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="admin_retry")
+    assets_present: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    compile_samples: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    compile_failures: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status_detail: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class ResumeCollaborator(Base):
     """Per-resume collaborator access control (Feature 40)."""
 

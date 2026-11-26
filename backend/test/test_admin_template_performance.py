@@ -6,6 +6,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,11 +117,14 @@ async def _seed_compilation(
     plan_family: str,
     status: str,
     created_at: datetime | None = None,
+    compilation_time: float | None = None,
+    error_class: str = "unknown",
 ) -> None:
     await db.execute(
         text(
-            "INSERT INTO compilations (id, user_id, job_id, status, plan_family, template_id, created_at) "
-            "VALUES (:id, :uid, :job_id, :status, :plan, :template, :created)"
+            "INSERT INTO compilations "
+            "(id, user_id, job_id, status, plan_family, template_id, created_at, compilation_time, error_class) "
+            "VALUES (:id, :uid, :job_id, :status, :plan, :template, :created, :seconds, :error_class)"
         ),
         {
             "id": str(uuid.uuid4()),
@@ -130,6 +134,8 @@ async def _seed_compilation(
             "plan": plan_family,
             "template": template_id,
             "created": created_at or datetime.now(timezone.utc) - timedelta(hours=1),
+            "seconds": compilation_time,
+            "error_class": error_class,
         },
     )
     await db.commit()
@@ -421,6 +427,100 @@ class TestTemplatePerformanceEndpoint:
         assert "latex_content" not in leak_check.text
         for user_id in user_ids:
             assert user_id not in leak_check.text
+
+    async def test_latency_percentiles_failure_rate_and_regression(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        plan = f"test_plan_{uuid.uuid4().hex[:8]}"
+        users = [await _create_user(db_session, plan="pro") for _ in range(5)]
+        user_ids = [item[0] for item in users]
+        latency_template = await _create_template(db_session, name=f"test_tmpl_{_token('latency')}")
+        regression_template = await _create_template(db_session, name=f"test_tmpl_{_token('regression')}")
+
+        now = datetime.now(timezone.utc)
+        for index, seconds in enumerate(range(1, 11)):
+            await _seed_compilation(
+                db_session,
+                user_id=user_ids[index % 5],
+                template_id=latency_template,
+                plan_family=plan,
+                status="completed",
+                created_at=now - timedelta(days=2),
+                compilation_time=float(seconds),
+            )
+        for index in range(2):
+            await _seed_compilation(
+                db_session,
+                user_id=user_ids[index],
+                template_id=latency_template,
+                plan_family=plan,
+                status="failed",
+                error_class="syntax",
+                created_at=now - timedelta(days=2),
+            )
+
+        # Prior seven days: clean. Newest seven days: four of five fail.
+        for user_id in user_ids:
+            await _seed_compilation(
+                db_session,
+                user_id=user_id,
+                template_id=regression_template,
+                plan_family=plan,
+                status="completed",
+                created_at=now - timedelta(days=10),
+                compilation_time=1.0,
+            )
+        for index, user_id in enumerate(user_ids):
+            await _seed_compilation(
+                db_session,
+                user_id=user_id,
+                template_id=regression_template,
+                plan_family=plan,
+                status="failed" if index < 4 else "completed",
+                error_class="syntax",
+                created_at=now - timedelta(days=1),
+                compilation_time=None if index < 4 else 2.0,
+            )
+
+        headers = await _admin_headers(db_session)
+        response = await client.get(
+            f"/admin/templates/performance?days=30&plan={plan}",
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        rows = {row["template_id"]: row for row in response.json()["ranking"]}
+
+        latency_row = rows[latency_template]
+        assert latency_row["latency_samples"] == 10
+        assert latency_row["p50_compile_seconds"] == pytest.approx(5.5, abs=0.001)
+        assert latency_row["p95_compile_seconds"] == pytest.approx(9.55, abs=0.001)
+        assert latency_row["latency_sparse"] is True
+        assert latency_row["compile_success"] == 10
+        assert latency_row["compile_failed"] == 2
+        assert latency_row["success_rate"] == pytest.approx(83.33, abs=0.01)
+        assert latency_row["failure_rate"] == pytest.approx(16.67, abs=0.01)
+        assert latency_row["regression"] is False
+
+        regression_row = rows[regression_template]
+        assert regression_row["regression"] is True
+        assert regression_row["regression_reason"] == "failure_rate_increase"
+        assert regression_row["previous_failure_rate"] == pytest.approx(0.0)
+        assert regression_row["recent_failure_rate"] == pytest.approx(80.0)
+
+        payload = response.json()
+        assert payload["totals"]["failure_rate"] == pytest.approx(27.27, abs=0.01)
+        assert payload["totals"]["regressions"] == 1
+
+        csv_response = await client.get(
+            f"/admin/templates/performance?days=30&plan={plan}&format=csv",
+            headers=headers,
+        )
+        assert csv_response.status_code == 200
+        header = csv_response.text.splitlines()[0].split(",")
+        assert "failure_rate" in header
+        assert "p50_compile_seconds" in header
+        assert "p95_compile_seconds" in header
+        assert "regression" in header
 
     async def test_suppression_hides_small_template_cohorts(self, client: AsyncClient, db_session: AsyncSession):
         plan = f"test_plan_{uuid.uuid4().hex[:8]}"
