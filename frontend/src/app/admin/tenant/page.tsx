@@ -22,8 +22,10 @@ import {
   type TenantCohort,
   type TenantResponse,
   type TenantStats,
+  type TenantTrendPeriod,
 } from '@/lib/api-client'
 import { applyTenantTheme } from '@/lib/tenant-theme'
+import TenantOverviewAnalytics from '@/components/admin/TenantOverviewAnalytics'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
@@ -129,6 +131,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
   const [membersError, setMembersError] = useState<string | null>(null)
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
+  const [trendPeriod, setTrendPeriod] = useState<TenantTrendPeriod>(30)
   const [saving, setSaving] = useState(false)
   const [savingDomain, setSavingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
@@ -171,6 +174,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
     setStatsLoading(true)
     setMembersError(null)
     setStatsError(null)
+    setTrendPeriod(30)
 
     const context = requestContext(() => canActForOwner() && requestId === detailRequestRef.current
       && selectedTenantIdRef.current === tenant.id)
@@ -569,46 +573,33 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
       )}
 
       {selected && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Left column — stats */}
-          <div className="space-y-4 lg:col-span-1">
-            {/* Stats cards */}
-            <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
-              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Stats</p>
-              {statsLoading ? (
-                <div className="flex justify-center py-4"><Spinner /></div>
-              ) : statsError ? (
-                <div role="alert" className="space-y-2 py-3 text-center">
-                  <p className="text-xs text-err">{statsError}</p>
-                  <button type="button" onClick={() => void selectTenant(selected)} className="text-xs text-err underline">Retry tenant data</button>
+        <div className="space-y-6">
+          <TenantOverviewAnalytics
+            stats={stats}
+            loading={statsLoading}
+            error={statsError}
+            onRetry={() => void selectTenant(selected)}
+            period={trendPeriod}
+            onPeriodChange={setTrendPeriod}
+          />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Left column — tenant info */}
+            <div className="space-y-4 lg:col-span-1">
+              {/* Tenant meta */}
+              <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-2">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Info</p>
+                <div className="text-sm text-fg-2">
+                  <span className="text-fg-3">Slug: </span>{selected.slug}
                 </div>
-              ) : stats ? (
-                <div className="space-y-3">
-                  {[{ label: 'Members', value: stats.member_count }].map(({ label, value }) => (
-                    <div key={label} className="flex items-center justify-between">
-                      <span className="text-sm text-fg-3">{label}</span>
-                      <span className="text-sm font-semibold text-fg">{value}</span>
-                    </div>
-                  ))}
+                <div className="text-sm text-fg-2">
+                  <span className="text-fg-3">Plan: </span>
+                  <Badge label={selected.plan_id} color="orange" />
                 </div>
-              ) : null}
-            </div>
-
-            {/* Tenant meta */}
-            <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-2">
-              <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Info</p>
-              <div className="text-sm text-fg-2">
-                <span className="text-fg-3">Slug: </span>{selected.slug}
-              </div>
-              <div className="text-sm text-fg-2">
-                <span className="text-fg-3">Plan: </span>
-                <Badge label={selected.plan_id} color="orange" />
-              </div>
-              <div className="text-sm text-fg-2">
-                <span className="text-fg-3">Max members: </span>{selected.max_members}
+                <div className="text-sm text-fg-2">
+                  <span className="text-fg-3">Max members: </span>{selected.max_members}
+                </div>
               </div>
             </div>
-          </div>
 
           {/* Right column — branding + members + domain */}
           <div className="space-y-6 lg:col-span-2">
@@ -854,6 +845,7 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
                 ))}
               </div>
             </section>
+          </div>
           </div>
         </div>
       )}

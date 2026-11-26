@@ -12,6 +12,9 @@ function elements(value: unknown): Element[] {
 function label(value: unknown): string {
   if (typeof value === 'string' || typeof value === 'number') return String(value)
   if (Array.isArray(value)) return value.map(label).join(' ')
+  if (value && typeof value === 'object' && 'type' in value && typeof (value as Element).type === 'function') {
+    return label(((value as Element).type as (props: Record<string, unknown>) => unknown)((value as Element).props))
+  }
   return value && typeof value === 'object' && 'props' in value ? label((value as Element).props.children) : ''
 }
 function findButton(tree: unknown, text: string) {
@@ -20,6 +23,15 @@ function findButton(tree: unknown, text: string) {
 function click(node: Element) { return (node.props.onClick as () => unknown)() }
 const expectedContext = expect.objectContaining({ authToken: 'owner-token', isCurrent: expect.any(Function) })
 const tenant = { id: 'tenant', name: 'Owned tenant', owner_id: 'owner', primary_color: '#19375d', logo_url: null, custom_domain: 'old.example.com', max_members: 50, plan_id: 'agency', slug: 'owned', domain_verified: false }
+const overviewStats = (submissionCount: number) => ({
+  member_count: 2, seats_used: 2, seats_available: 48, seat_limit: 50, seat_utilization: 0.04,
+  invited_members: 0, pending_invites_available: true, accepted_members: 2, active_members: 1, active_members_window_days: 30,
+  cohort_count: 1, cohort_member_count: 2, cohorts_with_submissions: 1, submission_count: submissionCount,
+  activation: { submitted: submissionCount, opened: 0, downloaded: 0, submitting_members: 1, activation_rate: 0.5 },
+  trends: { '7': [], '30': [], '90': [] },
+  suppression: { minimum_cohort_size: 5, suppressed_cohorts: 0, cohort_breakdown_visible: false, note: 'Cohorts below five members are included in tenant totals only.' },
+  generated_at: '2026-11-27T00:00:00Z',
+})
 
 type HookState = { slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }>; effects: Array<() => void>; mounted: boolean }
 type TenantAuth = { session: { user: { id: string }; session?: { token: string } } | null; isPending: boolean; isRefetching?: boolean; error: unknown }
@@ -305,6 +317,30 @@ it('drops delayed A member details and provisioning status without entering B pr
   const tree = h.render()
   expect(label(tree)).not.toContain('Private A member')
   expect(findButton(tree, '+ New Tenant')).toBeUndefined()
+})
+
+it('clears the previous tenant overview while a newly selected tenant loads', async () => {
+  let resolveSecond!: (value: ReturnType<typeof overviewStats>) => void
+  const tenantA = { ...tenant, id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' }
+  const tenantB = { ...tenant, id: 'tenant-b', name: 'Tenant B', slug: 'tenant-b' }
+  const h = await harness(api => {
+    api.listMyTenants.mockResolvedValue([tenantA, tenantB])
+    api.getTenantStats.mockImplementation((id: string) => id === 'tenant-a'
+      ? Promise.resolve(overviewStats(987))
+      : new Promise(done => { resolveSecond = done }))
+    api.listTenantMembers.mockResolvedValue([])
+  })
+  expect(label(h.render())).toContain('987')
+  const pending = click(findButton(h.render(), 'Tenant B')!)
+  const loadingTree = h.render()
+  expect(label(loadingTree)).not.toContain('987')
+  expect(label(loadingTree)).toContain('Tenant B')
+  resolveSecond(overviewStats(3))
+  await pending
+  await h.flush()
+  const loadedTree = h.render()
+  expect(label(loadedTree)).not.toContain('987')
+  expect(label(loadedTree)).toContain('3')
 })
 
 it.each([false, true])('keeps admitted A mutation outcomes off B/new-A views and themes (round-trip=%s)', async roundTrip => {

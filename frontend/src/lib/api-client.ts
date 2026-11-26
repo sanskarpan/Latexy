@@ -11024,8 +11024,50 @@ export interface MemberResponse {
   joined_at: string
 }
 
+export interface TenantTrendPoint {
+  date: string
+  members_joined: number
+  submissions: number
+  active_members: number
+}
+
+export type TenantTrendPeriod = 7 | 30 | 90
+
+export interface TenantActivationStats {
+  submitted: number
+  opened: number
+  downloaded: number
+  submitting_members: number
+  activation_rate: number
+}
+
+export interface TenantSuppressionStats {
+  minimum_cohort_size: number
+  suppressed_cohorts: number
+  cohort_breakdown_visible: boolean
+  note: string
+}
+
 export interface TenantStats {
+  /** Retained for older callers; equal to seats_used. */
   member_count: number
+  seats_used: number
+  seats_available: number
+  seat_limit: number
+  seat_utilization: number
+  invited_members: number
+  pending_invites_available: boolean
+  accepted_members: number
+  active_members: number
+  active_members_window_days: number
+  cohort_count: number
+  cohort_member_count: number
+  cohorts_with_submissions: number
+  submission_count: number
+  activation: TenantActivationStats
+  trends: Record<'7' | '30' | '90', TenantTrendPoint[]>
+  suppression: TenantSuppressionStats
+  generated_at: string
 }
 
 export interface TenantInvitationResponse {

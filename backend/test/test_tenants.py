@@ -554,20 +554,69 @@ class TestCustomDomainUniqueness:
 class TestTenantStats:
     @pytest.mark.asyncio
     async def test_stats_member_count(self):
-        """GET /tenants/{id}/stats → correct member_count."""
+        """GET /tenants/{id}/stats → delegates to the aggregate overview service."""
         owner_id = _uid()
         tenant = make_tenant(owner_id)
 
         db = _mock_db()
-        count_result = MagicMock(scalar=MagicMock(return_value=3))
-        db.execute = AsyncMock(side_effect=[count_result])
+        payload = {
+            "member_count": 3,
+            "seats_used": 3,
+            "seats_available": 47,
+            "seat_limit": 50,
+            "seat_utilization": 0.06,
+            "invited_members": 1,
+            "pending_invites_available": True,
+            "accepted_members": 3,
+            "active_members": 2,
+            "active_members_window_days": 30,
+            "cohort_count": 1,
+            "cohort_member_count": 6,
+            "cohorts_with_submissions": 1,
+            "submission_count": 2,
+            "activation": {
+                "submitted": 2,
+                "opened": 1,
+                "downloaded": 0,
+                "submitting_members": 2,
+                "activation_rate": 0.6667,
+            },
+            "trends": {
+                "7": [
+                    {
+                        "date": "2026-11-26",
+                        "members_joined": 0,
+                        "submissions": 2,
+                        "active_members": 2,
+                    }
+                ]
+            },
+            "suppression": {
+                "minimum_cohort_size": 5,
+                "suppressed_cohorts": 0,
+                "cohort_breakdown_visible": False,
+                "note": "Cohorts below five members are included in tenant totals only.",
+            },
+            "generated_at": datetime.now(timezone.utc),
+        }
+        overview = AsyncMock(return_value=payload)
 
-        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+        with (
+            patch(
+                'app.api.tenant_routes._require_tenant_owner_or_admin',
+                new=AsyncMock(return_value=tenant),
+            ),
+            patch('app.api.tenant_routes.build_tenant_overview', new=overview),
+        ):
             result = await tenant_stats(tenant_id=tenant.id, db=db, user_id=owner_id)
 
         assert result.member_count == 3
-        assert not hasattr(result, 'total_resumes')
-        assert db.execute.await_count == 1
+        assert result.seats_used == 3
+        assert result.seats_available == 47
+        assert result.submission_count == 2
+        assert 'total_resumes' not in result.model_dump()
+        overview.assert_awaited_once_with(db, tenant)
+        db.execute.assert_not_awaited()
 
 
 # ── 85T-08  Custom domain stored via PATCH ────────────────────────────────────
