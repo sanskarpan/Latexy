@@ -354,6 +354,11 @@ from .tenant_routes import router as tenant_router
 
 router.include_router(tenant_router)
 
+# Include tenant billing/seat utilization routes (read-only + audited CTA)
+from .tenant_billing_routes import router as tenant_billing_router
+
+router.include_router(tenant_billing_router)
+
 # Include Team billing seat routes (Feature 32)
 from .team_routes import router as team_router
 
