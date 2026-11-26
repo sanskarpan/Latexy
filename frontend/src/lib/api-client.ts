@@ -2284,6 +2284,46 @@ export interface AdminUserTrialActionResult {
   trial: AdminUser360['trial']
 }
 
+export type AdminUserPayment = AdminUser360['billing']['payments'][number]
+
+export type AdminReceiptLineItemsState =
+  | 'available'
+  | 'not_exposed'
+  | 'not_linked'
+  | 'unconfigured'
+
+export interface AdminReceiptLineItem {
+  description: string
+  quantity: number
+  amount_minor: number | null
+  currency: string | null
+}
+
+export interface AdminPaymentReceipt {
+  payment_id: string
+  provider_payment_id: string | null
+  amount_minor: number
+  currency: string | null
+  status: string
+  paid_at: string | null
+  line_items: AdminReceiptLineItem[]
+  line_items_available: boolean
+  line_items_state: AdminReceiptLineItemsState
+  line_items_source: 'provider' | 'local'
+}
+
+export interface AdminSupportActionResult {
+  action: 'verification_email' | 'password_reset' | 'payment_receipt'
+  status: 'sent'
+  delivery: 'accepted'
+  target_user_id: string
+  retry_after_seconds: number
+  payment_id?: string
+  line_items_count?: number
+  line_items_source?: 'provider' | 'local'
+  line_items_state?: AdminReceiptLineItemsState
+}
+
 export interface AdminAuditEntry {
   id: string
   actor_user_id: string | null
@@ -7607,6 +7647,40 @@ class ApiClient {
     return this.request<{ trial_used: boolean; device_trials_reset: number }>(
       `/admin/users/${encodeURIComponent(id)}/trial/reset`,
       { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async resendAdminVerificationEmail(id: string, reason: string): Promise<AdminSupportActionResult> {
+    return this.request<AdminSupportActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/support/resend-verification`,
+      { method: 'POST', body: JSON.stringify({ reason, confirm: true }) },
+    )
+  }
+
+  async sendAdminPasswordReset(id: string, reason: string): Promise<AdminSupportActionResult> {
+    return this.request<AdminSupportActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/support/password-reset`,
+      { method: 'POST', body: JSON.stringify({ reason, confirm: true }) },
+    )
+  }
+
+  async getAdminPaymentReceipt(id: string, paymentId: string): Promise<AdminPaymentReceipt> {
+    return this.request<AdminPaymentReceipt>(
+      `/admin/users/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/receipt`,
+    )
+  }
+
+  async resendAdminPaymentReceipt(
+    id: string,
+    paymentId: string,
+    reason: string,
+  ): Promise<AdminSupportActionResult> {
+    return this.request<AdminSupportActionResult>(
+      `/admin/users/${encodeURIComponent(id)}/support/resend-receipt`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ payment_id: paymentId, reason, confirm: true }),
+      },
     )
   }
 
