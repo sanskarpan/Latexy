@@ -3048,6 +3048,146 @@ class RenderArtifactManifest(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
+class RetentionPolicy(Base):
+    """Current configured retention window and schedule for one data class."""
+
+    __tablename__ = "retention_policies"
+    __table_args__ = (
+        CheckConstraint(
+            "data_class IN ('pdfs', 'job_finalizations', 'analytics', 'audit', 'exports')",
+            name="ck_retention_policies_data_class",
+        ),
+        CheckConstraint(
+            "configured_hours BETWEEN 1 AND 87600",
+            name="ck_retention_policies_configured_hours",
+        ),
+        CheckConstraint(
+            "schedule_hours BETWEEN 1 AND 8760",
+            name="ck_retention_policies_schedule_hours",
+        ),
+        CheckConstraint("version >= 1", name="ck_retention_policies_version"),
+    )
+
+    data_class: Mapped[str] = mapped_column(String(32), primary_key=True)
+    configured_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    schedule_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=24, server_default="24"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    updated_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class RetentionPolicyRevision(Base):
+    """Append-only snapshot of one retention policy version."""
+
+    __tablename__ = "retention_policy_revisions"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="ck_retention_policy_revisions_version"),
+    )
+
+    data_class: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("retention_policies.data_class", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    changed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class RetentionRun(Base):
+    """One bounded preview or purge attempt for a data class."""
+
+    __tablename__ = "retention_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "data_class IN ('pdfs', 'job_finalizations', 'analytics', 'audit', 'exports')",
+            name="ck_retention_runs_data_class",
+        ),
+        CheckConstraint("mode IN ('dry_run', 'purge')", name="ck_retention_runs_mode"),
+        CheckConstraint(
+            "status IN ('running', 'completed', 'refused', 'failed')",
+            name="ck_retention_runs_status",
+        ),
+        CheckConstraint("batch_limit BETWEEN 1 AND 1000", name="ck_retention_runs_batch_limit"),
+        CheckConstraint(
+            "scanned >= 0 AND eligible >= 0 AND affected >= 0",
+            name="ck_retention_runs_counts",
+        ),
+        Index("idx_retention_runs_class_started", "data_class", "started_at"),
+        Index(
+            "uq_retention_runs_active_class",
+            "data_class",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+        Index(
+            "uq_retention_runs_idempotency",
+            "data_class",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    data_class: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("retention_policies.data_class", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="running", server_default="running"
+    )
+    retention_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    effective_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    cutoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scanned: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    eligible: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    protected_active_jobs: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    protected_legal_hold: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    protected_immutable: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    recent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    affected: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    batch_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=200, server_default="200")
+    has_more: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    started_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    detail: Mapped[Dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 Index("idx_users_email", User.email)
 Index("idx_device_trials_fingerprint", DeviceTrial.device_fingerprint)
 Index("idx_device_trials_ip", DeviceTrial.ip_address)

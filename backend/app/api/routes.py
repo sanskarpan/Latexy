@@ -227,6 +227,7 @@ from .admin_path_analysis_routes import router as admin_path_analysis_router
 from .admin_plan_health_routes import router as admin_plan_health_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
 from .admin_referral_analytics_routes import router as admin_referral_analytics_router
+from .admin_retention_routes import router as admin_retention_router
 from .admin_revenue_lifecycle_routes import router as admin_revenue_lifecycle_router
 from .admin_routes import router as admin_router
 from .admin_saved_views_routes import router as admin_saved_views_router
@@ -254,6 +255,7 @@ router.include_router(admin_document_complexity_router)
 router.include_router(admin_content_library_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_artifact_lifecycle_router)
+router.include_router(admin_retention_router)
 router.include_router(admin_optimization_acceptance_router)
 router.include_router(admin_path_analysis_router)
 router.include_router(admin_ats_score_router)
