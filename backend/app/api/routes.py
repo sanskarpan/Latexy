@@ -198,6 +198,7 @@ from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
 from .admin_plan_health_routes import router as admin_plan_health_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
+from .admin_revenue_lifecycle_routes import router as admin_revenue_lifecycle_router
 from .admin_routes import router as admin_router
 from .admin_stuck_job_routes import router as admin_stuck_job_router
 from .admin_subscription_routes import router as admin_subscription_router
@@ -226,6 +227,7 @@ router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
 router.include_router(admin_privacy_breakdown_router)
+router.include_router(admin_revenue_lifecycle_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
 router.include_router(admin_dunning_router)

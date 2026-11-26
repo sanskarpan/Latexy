@@ -2092,6 +2092,152 @@ export interface AdminCheckoutFunnel {
   notes: string[]
 }
 
+export interface AdminRevenueReviewFlag {
+  flag_id: string
+  kind: string
+  severity: 'high' | 'medium' | 'low'
+  title: string
+  detail: string
+  coupon_id: string | null
+  coupon_code: string | null
+  affected_count: number
+  requires_human_review: boolean
+  automated_action: 'none'
+}
+
+export interface AdminCouponPerformanceTotals {
+  coupons: number
+  active_coupons: number
+  expired_coupons: number
+  exhausted_coupons: number
+  reservations: number
+  redemptions: number
+  released: number
+  paid_redemptions: number
+  unlinked_redemptions: number
+  expired_redemptions: number
+  repeated_reservation_events: number
+  repeated_reservation_users: number
+  used_count_total: number
+  capacity_total: number
+  redemption_rate_pct: number
+  conversion_pct: number
+  capacity_used_pct: number
+  distinct_users: number
+}
+
+export interface AdminCouponPerformanceRow {
+  coupon_id: string
+  code: string | null
+  discount_percent: number | null
+  applicable_plans: string[]
+  distinct_users: number
+  reservations: number
+  redemptions: number
+  released: number
+  paid_redemptions: number
+  expired_redemptions: number
+  repeated_reservation_users: number
+  repeated_reservation_events: number
+  redemption_rate_pct: number
+  conversion_pct: number
+}
+
+export interface AdminCouponReconciliationCheck {
+  key: string
+  label: string
+  ok: boolean
+  expected: number
+  actual: number
+  difference: number
+}
+
+export interface AdminCouponPerformance {
+  totals: AdminCouponPerformanceTotals
+  by_coupon: AdminCouponPerformanceRow[]
+  suppressed_coupons: number
+  review_flags: AdminRevenueReviewFlag[]
+  suppressed_review_flags: number
+  reconciliation: {
+    balanced: boolean
+    redemption_rows: number
+    reserved_rows: number
+    redeemed_rows: number
+    released_rows: number
+    active_redemptions: number
+    used_count_total: number
+    used_count_difference: number
+    missing_subscription_count: number
+    window_unlinked_redemptions: number
+    checks: AdminCouponReconciliationCheck[]
+  }
+}
+
+export interface AdminStudentFunnelStep {
+  key: 'student_requested' | 'student_verified' | 'student_paid'
+  label: string
+  count: number
+  from_previous: number
+  from_start: number
+}
+
+export interface AdminStudentPerformance {
+  applicable: boolean
+  requested_users: number
+  verified_users: number
+  paid_users: number
+  steps: AdminStudentFunnelStep[]
+  conversion: {
+    requested_to_verified: number
+    verified_to_paid: number
+    requested_to_paid: number
+  }
+  failures: {
+    total_events: number
+    distinct_users: number
+    by_reason: { reason: string; label: string; count: number }[]
+    repeated_failure_users: number | null
+    repeated_failure_users_suppressed: boolean
+  }
+  by_plan: { plan_id: string; users: number; conversion_pct: number }[]
+  suppressed_segments: number
+  review_flags: AdminRevenueReviewFlag[]
+  reconciliation: {
+    requested_at_least_verified: boolean
+    verified_at_least_paid: boolean
+    paid_without_verification: number
+    checks: AdminCouponReconciliationCheck[]
+  }
+}
+
+export interface AdminCouponStudentPerformance {
+  generated_at: string
+  period: { days: number; start: string; end: string; timezone: string }
+  filters: {
+    days: number
+    start: string | null
+    end: string | null
+    plan: string | null
+    timezone: string
+  }
+  minimum_segment_size: number
+  coupon: AdminCouponPerformance
+  student: AdminStudentPerformance
+  review_flags: AdminRevenueReviewFlag[]
+  suppressed_review_flags: number
+  privacy: {
+    aggregate_only: boolean
+    student_emails_returned: boolean
+    verification_tokens_returned: boolean
+    account_ids_returned: boolean
+    documents_returned: boolean
+    event_metadata_returned: boolean
+    minimum_segment_size: number
+  }
+  definitions: Record<string, string>
+  notes: string[]
+}
+
 export interface AdminSubscriptionSummary {
   active_at_start: number
   active_at_end: number
@@ -7912,6 +8058,21 @@ class ApiClient {
   async getAdminCheckoutFunnel(days = 30): Promise<AdminCheckoutFunnel> {
     const qs = new URLSearchParams({ days: String(days) })
     return this.request<AdminCheckoutFunnel>(`/admin/billing/checkout-funnel?${qs}`)
+  }
+
+  async getAdminCouponStudentPerformance(params?: {
+    days?: number
+    start?: string
+    end?: string
+    plan?: string
+  }): Promise<AdminCouponStudentPerformance> {
+    const qs = new URLSearchParams({ days: String(params?.days ?? 30) })
+    if (params?.start) qs.set('start', params.start)
+    if (params?.end) qs.set('end', params.end)
+    if (params?.plan) qs.set('plan', params.plan)
+    return this.request<AdminCouponStudentPerformance>(
+      `/admin/revenue/coupon-student-performance?${qs}`,
+    )
   }
 
   async getAdminSubscriptionAnalytics(params?: {

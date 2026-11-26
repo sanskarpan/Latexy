@@ -10,6 +10,7 @@ import {
   type AdminRefundList,
 } from '@/lib/api-client'
 import AdminRevenueBreakdown from './AdminRevenueBreakdown'
+import AdminCouponStudentPerformance from './AdminCouponStudentPerformance'
 import AdminPlanHealth from './AdminPlanHealth'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
 import AdminCheckoutFunnel from './AdminCheckoutFunnel'
@@ -1141,6 +1142,8 @@ export default function AdminBilling() {
         granularity={granularity}
         onGranularity={setGranularity}
       />
+
+      <AdminCouponStudentPerformance />
 
       <AdminPlanHealth />
 
