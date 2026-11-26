@@ -19,6 +19,7 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.document_converter_service import document_converter_service
+from ..services.llm_attempt_recording import record_llm_attempt_best_effort
 from ..workers.event_publisher import (
     get_worker_redis,
     is_cancelled,
@@ -117,6 +118,7 @@ def generate_cover_letter_task(
     tone: str = "formal",
     length_preference: str = "3_paragraphs",
     user_api_key: Optional[str] = None,
+    user_plan: str = "free",
     model: Optional[str] = None,
     quota_refund: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -204,6 +206,7 @@ def generate_cover_letter_task(
         "stage": "cover_letter_generation",
     })
 
+    attempt_started = time.perf_counter()
     try:
         publish_event(job_id, "job.progress", {
             "percent": 5,
@@ -230,7 +233,9 @@ def generate_cover_letter_task(
         # constructor arg is omitted, which happened to work but meant the
         # Gemini "thinking"-token workaround below was never applied here.
         _use_platform_base = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
+        provider = "openai"
         model_name = model or settings.OPENAI_MODEL
+        attempt_started = time.perf_counter()
         if _use_platform_base:
             client = openai.OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
         else:
@@ -279,6 +284,17 @@ def generate_cover_letter_task(
                     publish_event(job_id, "llm.token", {"token": visible_delta})
 
                 if token_count % 20 == 0 and is_cancelled(job_id):
+                    record_llm_attempt_best_effort(
+                        provider=provider,
+                        model=model_name,
+                        feature="cover_letter_generation",
+                        plan=user_plan,
+                        run_id=job_id,
+                        attempt_number=self.request.retries + 1,
+                        status="cancelled",
+                        retry_reason="none",
+                        latency_ms=(time.perf_counter() - attempt_started) * 1000,
+                    )
                     return _finish_terminal(
                         {"success": False, "job_id": job_id, "cancelled": True},
                         "job.cancelled",
@@ -293,6 +309,18 @@ def generate_cover_letter_task(
         if not match:
             logger.warning(f"Cover letter job {job_id}: LLM output missing <<<LATEX>>> delimiters")
             retryable = self.request.retries < self.max_retries
+            record_llm_attempt_best_effort(
+                provider=provider,
+                model=model_name,
+                feature="cover_letter_generation",
+                plan=user_plan,
+                run_id=job_id,
+                attempt_number=self.request.retries + 1,
+                status="error",
+                retry_reason="empty_output" if retryable else "none",
+                error_class="invalid_response",
+                latency_ms=(time.perf_counter() - attempt_started) * 1000,
+            )
             if retryable:
                 publish_event(job_id, "job.failed", {
                     "stage": "cover_letter_generation",
@@ -326,6 +354,18 @@ def generate_cover_letter_task(
         if not is_valid:
             logger.warning(f"Cover letter job {job_id}: invalid LaTeX — {validation_error}")
             retryable = self.request.retries < self.max_retries
+            record_llm_attempt_best_effort(
+                provider=provider,
+                model=model_name,
+                feature="cover_letter_generation",
+                plan=user_plan,
+                run_id=job_id,
+                attempt_number=self.request.retries + 1,
+                status="error",
+                retry_reason="invalid_response" if retryable else "none",
+                error_class="invalid_response",
+                latency_ms=(time.perf_counter() - attempt_started) * 1000,
+            )
             if retryable:
                 publish_event(job_id, "job.failed", {
                     "stage": "cover_letter_generation",
@@ -350,6 +390,17 @@ def generate_cover_letter_task(
                 },
             )
 
+        record_llm_attempt_best_effort(
+            provider=provider,
+            model=model_name,
+            feature="cover_letter_generation",
+            plan=user_plan,
+            run_id=job_id,
+            attempt_number=self.request.retries + 1,
+            status="success",
+            retry_reason="none",
+            latency_ms=(time.perf_counter() - attempt_started) * 1000,
+        )
         result = {
             "success": True,
             "job_id": job_id,
@@ -416,6 +467,17 @@ def generate_cover_letter_task(
 
     except SoftTimeLimitExceeded:
         logger.error(f"Cover letter task {task_id} exceeded soft time limit for job {job_id}")
+        record_llm_attempt_best_effort(
+            provider="openai",
+            model=model or settings.OPENAI_MODEL,
+            feature="cover_letter_generation",
+            plan=user_plan,
+            run_id=job_id,
+            attempt_number=self.request.retries + 1,
+            status="timeout",
+            retry_reason="none",
+            latency_ms=(time.perf_counter() - attempt_started) * 1000,
+        )
         return _finish_terminal(
             {"success": False, "job_id": job_id, "error": "Task exceeded time limit"},
             "job.failed",
@@ -437,6 +499,18 @@ def generate_cover_letter_task(
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
         retryable = has_retries_left
+        record_llm_attempt_best_effort(
+            provider="openai",
+            model=model or settings.OPENAI_MODEL,
+            feature="cover_letter_generation",
+            plan=user_plan,
+            run_id=job_id,
+            attempt_number=self.request.retries + 1,
+            status="error",
+            retry_reason=None if has_retries_left else "none",
+            latency_ms=(time.perf_counter() - attempt_started) * 1000,
+            exc=exc,
+        )
         if has_retries_left:
             publish_event(job_id, "job.failed", {
                 "stage": "cover_letter_generation",
@@ -589,6 +663,7 @@ def submit_cover_letter_generation(
             "tone": tone,
             "length_preference": length_preference,
             "user_api_key": user_api_key,
+            "user_plan": user_plan,
             "model": model,
             "quota_refund": quota_refund,
         })
@@ -606,6 +681,7 @@ def submit_cover_letter_generation(
             "tone": tone,
             "length_preference": length_preference,
             "user_api_key": user_api_key,
+            "user_plan": user_plan,
             "model": model,
             "quota_refund": quota_refund,
         },

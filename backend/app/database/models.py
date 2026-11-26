@@ -1588,6 +1588,79 @@ class AdminIncident(Base):
     )
 
 
+class LLMCallAttempt(Base):
+    """Append-only, privacy-safe telemetry for one LLM provider attempt.
+
+    Only aggregate dimensions, bounded outcome classes and latency are stored.
+    Prompts, documents, provider error text, API keys and user identifiers never
+    enter this table. ``run_ref`` is an opaque hash used only to count distinct
+    runs for reconciliation.
+    """
+
+    __tablename__ = "llm_call_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('success', 'error', 'timeout', 'cancelled')",
+            name="ck_llm_call_attempts_status",
+        ),
+        CheckConstraint(
+            "retry_reason IN ('none', 'timeout', 'rate_limit', 'connection', "
+            "'provider_error', 'empty_output', 'truncated', 'invalid_response', "
+            "'cancelled', 'unknown')",
+            name="ck_llm_call_attempts_retry_reason",
+        ),
+        CheckConstraint(
+            "error_class IS NULL OR error_class IN ('timeout', 'rate_limit', "
+            "'connection', 'provider_error', 'invalid_response', 'cancelled', "
+            "'unknown')",
+            name="ck_llm_call_attempts_error_class",
+        ),
+        CheckConstraint(
+            "attempt_number >= 1",
+            name="ck_llm_call_attempts_attempt_number",
+        ),
+        CheckConstraint(
+            "latency_ms IS NULL OR latency_ms >= 0",
+            name="ck_llm_call_attempts_latency",
+        ),
+        Index("idx_llm_attempts_occurred", "occurred_at"),
+        Index("idx_llm_attempts_provider_occurred", "provider", "occurred_at"),
+        Index("idx_llm_attempts_model_occurred", "provider", "model", "occurred_at"),
+        Index("idx_llm_attempts_feature_occurred", "feature", "occurred_at"),
+        Index("idx_llm_attempts_plan_occurred", "plan", "occurred_at"),
+        Index("idx_llm_attempts_run", "run_ref"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    provider: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="unknown", server_default="unknown"
+    )
+    model: Mapped[str] = mapped_column(
+        String(160), nullable=False, default="unknown", server_default="unknown"
+    )
+    feature: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="unknown", server_default="unknown"
+    )
+    plan: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="unknown", server_default="unknown"
+    )
+    run_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    attempt_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="success", server_default="success"
+    )
+    retry_reason: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="none", server_default="none"
+    )
+    error_class: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+
 class CeleryQueueSnapshot(Base):
     """A single periodic sample of a Celery queue for admin operations.
 
