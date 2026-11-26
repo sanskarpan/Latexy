@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0099_tenant_domain_health"
-down_revision = "0092_document_complexity"
+down_revision = "0097_two_person_approvals"
 branch_labels = None
 depends_on = None
 
