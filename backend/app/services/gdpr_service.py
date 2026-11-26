@@ -42,6 +42,7 @@ from ..database.models import (
     User,
 )
 from ..middleware.auth_middleware import extract_session_token
+from . import admin_approval_service
 from .admin_audit_service import AdminActor, record_admin_audit
 from .admin_user_service import mask_email
 
@@ -90,10 +91,16 @@ RETENTION_EXCEPTIONS: List[Dict[str, Any]] = [
     },
     {
         "category": "security_audit",
-        "tables": ["admin_audit_log", "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds"],
+        "tables": [
+            "admin_audit_log",
+            "admin_approvals",
+            "gdpr_requests",
+            "gdpr_request_events",
+            "gdpr_legal_holds",
+        ],
         "reason": (
-            "Append-only operator audit and data-subject request history is "
-            "required to demonstrate lawful processing and is never deleted."
+            "Append-only operator audit, approval and data-subject request history "
+            "is required to demonstrate lawful processing and is never deleted."
         ),
         "legal_basis": "legal_obligation_accountability",
     },
@@ -613,6 +620,7 @@ RETENTION_STEPS: tuple[RetentionStep, ...] = (
     RetentionStep("subscriptions", "Billing relationship evidence retained by tax law", "invoices_and_payments"),
     RetentionStep("payment_refunds", "Refund ledger retained by tax law", "invoices_and_payments"),
     RetentionStep("admin_refund_requests", "Refund approvals retained for financial audit", "invoices_and_payments"),
+    RetentionStep("admin_approvals", "Two-person approvals retained for security audit", "security_audit"),
     RetentionStep(
         "billing_webhook_events",
         "Signed provider event evidence retained for fraud/chargeback review",
@@ -1407,6 +1415,18 @@ async def request_deletion(
     )
     db.add(row)
     await db.flush()
+    await admin_approval_service.create_request(
+        db,
+        request_type="account_deletion",
+        payload={"gdpr_request_id": row.id, "user_id": str(user_id)},
+        reason=(reason or "").strip()[:1000] or "User requested account deletion",
+        requested_by=str(user_id),
+        resource_type="gdpr_request",
+        resource_id=row.id,
+        expires_in=admin_approval_service.MAX_TTL,
+        request=request,
+        commit=False,
+    )
     await _append_event(
         db,
         row,
@@ -1578,6 +1598,15 @@ async def review_request(
             "You cannot review your own deletion request",
             code="self_review_forbidden",
         )
+    await admin_approval_service.sync_decision(
+        db,
+        request_type="account_deletion",
+        resource_id=str(row.id),
+        decision="approve" if decision == "approved" else "reject",
+        note=note,
+        actor=actor,
+        request=request,
+    )
     previous = row.status
     row.status = "approved" if decision == "approved" else "rejected"
     row.legal_review_status = decision
@@ -1682,6 +1711,14 @@ async def execute_deletion(
             )
     if not row.user_id:
         raise GdprConflict("Account is no longer linked to this request", code="missing_subject")
+    await admin_approval_service.require_approved_for_resource(
+        db,
+        request_type="account_deletion",
+        resource_id=str(row.id),
+        payload={"gdpr_request_id": str(row.id), "user_id": str(row.user_id)},
+        actor=actor,
+        request=request,
+    )
 
     holds = await _active_holds_for(db, [str(row.user_id)])
     if str(row.user_id) in holds:
@@ -1833,6 +1870,15 @@ async def execute_deletion(
             },
             request=request,
         )
+        await admin_approval_service.sync_execution(
+            db,
+            request_type="account_deletion",
+            resource_id=str(row.id),
+            actor=actor,
+            failed=True,
+            note=note,
+            request=request,
+        )
         await db.commit()
         await db.refresh(row)
         logger.warning(
@@ -1873,6 +1919,15 @@ async def execute_deletion(
                 "request_type": DELETION,
                 "attempt": row.attempts,
             },
+            request=request,
+        )
+        await admin_approval_service.sync_execution(
+            db,
+            request_type="account_deletion",
+            resource_id=str(row.id),
+            actor=actor,
+            result={"status": "completed", "attempt": row.attempts},
+            note=note,
             request=request,
         )
         await db.commit()

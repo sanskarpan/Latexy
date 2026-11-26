@@ -79,7 +79,7 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
     config = Config()
     config.set_main_option("script_location", str(backend / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0096_retention_controls"]
+    assert scripts.get_heads() == ["0097_two_person_approvals"]
     expected = {
         "0069_capability_catalog": "0068",
         "0070_plan_catalog": "0069_capability_catalog",
@@ -105,7 +105,7 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
         "0090_ats_score_baseline": "0089_ai_latency_retry",
         "0091_dunning_history": "0090_ats_score_baseline",
         "0092_document_complexity": "0091_dunning_history",
-        "0096_retention_controls": "0092_document_complexity",
+        "0097_two_person_approvals": "0092_document_complexity",
     }
     for revision, parent in expected.items():
         assert scripts.get_revision(revision).down_revision == parent
