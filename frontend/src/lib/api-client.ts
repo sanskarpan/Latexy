@@ -3431,6 +3431,167 @@ export interface AdminChangeHistoryList {
 }
 
 // ---------------------------------------------------------------- //
+//  Admin CSV/PDF exports and scheduled digest                      //
+// ---------------------------------------------------------------- //
+
+export type AdminExportReport = 'overview' | 'billing' | 'users' | 'audit'
+export type AdminExportFormat = 'csv' | 'pdf'
+export type AdminDigestFrequency = 'daily' | 'weekly' | 'monthly'
+export type AdminDigestFormat = 'summary' | 'csv'
+
+export interface AdminExportReportSpec {
+  report: AdminExportReport
+  label: string
+  description: string
+  filters: string[]
+  formats: AdminExportFormat[]
+  aliases?: string[]
+}
+
+export interface AdminExportHistoryItem {
+  id: string
+  export_id: string | null
+  event: 'generated' | 'downloaded'
+  created_at: string
+  metadata: Record<string, unknown>
+}
+
+export interface AdminExportLimits {
+  max_rows: number
+  max_pdf_rows: number
+  signed_url_ttl_minutes: number
+  max_range_days: number
+  minimum_users: number
+  synchronous_row_threshold: number
+}
+
+export interface AdminDigestLastRun {
+  status: 'sent' | 'failed' | string
+  report?: string
+  format?: string
+  row_count?: number
+  recipient_count?: number
+  delivered_count?: number
+  failed_count?: number
+  error_class?: string
+  finished_at?: string
+}
+
+export interface AdminExportDigestConfig {
+  enabled: boolean
+  frequency: AdminDigestFrequency
+  recipient_user_ids: string[]
+  recipient_count: number
+  report: Exclude<AdminExportReport, 'audit'>
+  format: AdminDigestFormat
+  days: number
+  start_date: string | null
+  end_date: string | null
+  filters: Record<string, string>
+  configured_at: string | null
+  updated: boolean
+  schema_version: string
+  last_run: AdminDigestLastRun | null
+}
+
+export interface AdminExportRecipient {
+  user_id: string
+  role: 'admin'
+  is_self: boolean
+}
+
+export interface AdminExportsResponse {
+  reports: AdminExportReportSpec[]
+  limits: AdminExportLimits
+  schema_version: string
+  history: AdminExportHistoryItem[]
+  digest: AdminExportDigestConfig
+  privacy: {
+    aggregate_only: boolean
+    content_fields_excluded: string[]
+  }
+  generated_at: string
+}
+
+export interface AdminExportCreateRequest {
+  report: AdminExportReport
+  format: AdminExportFormat
+  days?: number
+  start_date?: string
+  end_date?: string
+  plan?: string
+  compiler?: string
+  status?: string
+  role?: string
+  action?: string
+  target_type?: string
+}
+
+export interface AdminExportCreateResponse {
+  export_id: string
+  report: AdminExportReport
+  format: AdminExportFormat
+  delivery: 'signed_url'
+  large_job: boolean
+  download_url: string
+  download_token: string
+  expires_at: string
+  schema_version: string
+  row_cap: number
+  row_count: number
+  generated_at: string
+  range: { days: number; start_date: string; end_date: string }
+  filters: Record<string, string>
+  metadata: {
+    schema_version: string
+    generated_at: string
+    report: AdminExportReport
+    format: AdminExportFormat
+    range: { start_date: string; end_date: string; days: number }
+    filters: Record<string, string>
+    row_cap: number
+    row_count: number
+    minimum_users: number
+    suppressed: boolean
+    truncated: boolean
+    notes: string[]
+  }
+}
+
+export interface AdminExportDigestResponse extends AdminExportDigestConfig {
+  available_recipients: AdminExportRecipient[]
+}
+
+export interface AdminExportDigestUpdateRequest {
+  enabled: boolean
+  frequency: AdminDigestFrequency
+  recipient_user_ids: string[]
+  report: Exclude<AdminExportReport, 'audit'>
+  format: AdminDigestFormat
+  days?: number
+  start_date?: string
+  end_date?: string
+  plan?: string
+  compiler?: string
+  status?: string
+  role?: string
+  reason: string
+  confirm: true
+}
+
+export interface AdminExportDigestDryRunResponse {
+  sent: false
+  dry_run: true
+  subject: string
+  text_body: string
+  metadata: Record<string, unknown>
+  recipient_user_ids: string[]
+  recipient_count: number
+  rejected_recipient_count: number
+  schema_version: string
+}
+
+// ---------------------------------------------------------------- //
 //  GDPR data-subject workflow                                      //
 // ---------------------------------------------------------------- //
 
@@ -9920,9 +10081,80 @@ class ApiClient {
     return this.request<AdminAuditList>(`/admin/audit${suffix}`)
   }
 
+  async getAdminExports(): Promise<AdminExportsResponse> {
+    return this.request<AdminExportsResponse>('/admin/exports')
+  }
+
+  async getAdminExportHistory(limit = 25): Promise<{ items: AdminExportHistoryItem[]; schema_version: string }> {
+    return this.request<{ items: AdminExportHistoryItem[]; schema_version: string }>(
+      `/admin/exports/history?limit=${encodeURIComponent(String(limit))}`,
+    )
+  }
+
+  async createAdminExport(body: AdminExportCreateRequest): Promise<AdminExportCreateResponse> {
+    return this.request<AdminExportCreateResponse>('/admin/exports', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async downloadAdminExportStream(params: AdminExportCreateRequest): Promise<Blob> {
+    const qs = new URLSearchParams()
+    qs.set('report', params.report)
+    qs.set('format', params.format)
+    if (params.days != null) qs.set('days', String(params.days))
+    for (const key of ['start_date', 'end_date', 'plan', 'compiler', 'status', 'role', 'action', 'target_type'] as const) {
+      const value = params[key]
+      if (value) qs.set(key, value)
+    }
+    const response = await this.authedFetch(`${API_BASE}/admin/exports/stream?${qs.toString()}`)
+    if (!response.ok) {
+      throw new Error(`Admin export failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async downloadAdminExportToken(token: string): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${API_BASE}/admin/exports/download?token=${encodeURIComponent(token)}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Admin export download failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminExportDigest(): Promise<AdminExportDigestResponse> {
+    return this.request<AdminExportDigestResponse>('/admin/exports/digest')
+  }
+
+  async updateAdminExportDigest(body: AdminExportDigestUpdateRequest): Promise<AdminExportDigestConfig> {
+    return this.request<AdminExportDigestConfig>('/admin/exports/digest', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async dryRunAdminExportDigest(body: {
+    enabled?: boolean
+    frequency: AdminDigestFrequency
+    recipient_user_ids: string[]
+    report: Exclude<AdminExportReport, 'audit'>
+    format: AdminDigestFormat
+    days?: number
+    plan?: string
+    compiler?: string
+    status?: string
+    role?: string
+  }): Promise<AdminExportDigestDryRunResponse> {
+    return this.request<AdminExportDigestDryRunResponse>('/admin/exports/digest/dry-run', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   /** Read-only history for feature flags, kill-switches and entitlement cells. */
-  async getAdminChangeHistory(params?: {
-    key?: string
+  async getAdminChangeHistory(params?: {    key?: string
     target_id?: string
     actor_user_id?: string
     action?: string

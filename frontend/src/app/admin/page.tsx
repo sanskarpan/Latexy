@@ -30,6 +30,7 @@ import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
+import AdminExports from '@/components/admin/AdminExports'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
@@ -44,7 +45,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -57,6 +58,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'billing', label: 'Revenue' },
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'email', label: 'Email Health' },
+  { id: 'exports', label: 'Exports' },
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
@@ -1007,6 +1009,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
           </div>
         )}
         {tab === 'email' && <AdminEmailHealth />}
+        {tab === 'exports' && <AdminExports />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
         {tab === 'audit' && (
