@@ -18,6 +18,7 @@ import {
 import { ActivityAreaChart, FeatureUsageBars } from '@/components/analytics/MetricCharts'
 import AdminTrafficSources from '@/components/admin/AdminTrafficSources'
 import AdminLandingConversion from '@/components/admin/AdminLandingConversion'
+import AdminOnboardingAnalytics from '@/components/admin/AdminOnboardingAnalytics'
 import AdminPrivacyBreakdowns from '@/components/admin/AdminPrivacyBreakdowns'
 import AdminTrialAttribution from '@/components/admin/AdminTrialAttribution'
 import AdminTrialHealth from '@/components/admin/AdminTrialHealth'
@@ -1352,6 +1353,7 @@ export default function AdminGrowth() {
       {activation?.signup_funnel && <SignupFunnel data={activation.signup_funnel} />}
       <AdminTrafficSources days={days} />
       <AdminLandingConversion days={days} />
+      <AdminOnboardingAnalytics days={days} />
       <AdminPrivacyBreakdowns days={days} />
       <AdminTrialAttribution days={days} />
       <AdminTrialHealth />

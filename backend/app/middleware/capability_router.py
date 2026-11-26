@@ -273,6 +273,9 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "consent_analytics_routes": frozenset({
         "record_consent_event", "get_admin_consent_analytics",
     }),
+    "onboarding_analytics_routes": frozenset({
+        "ingest_onboarding_event", "get_admin_onboarding_analytics",
+    }),
     "application_routes": frozenset({
         "list_submissions", "get_submission",
     }),
