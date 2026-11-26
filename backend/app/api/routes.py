@@ -214,6 +214,7 @@ from .admin_incident_routes import router as admin_incident_router
 from .admin_linter_routes import router as admin_linter_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
+from .admin_path_analysis_routes import router as admin_path_analysis_router
 from .admin_plan_health_routes import router as admin_plan_health_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
 from .admin_referral_analytics_routes import router as admin_referral_analytics_router
@@ -243,6 +244,7 @@ router.include_router(admin_content_library_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_artifact_lifecycle_router)
 router.include_router(admin_optimization_acceptance_router)
+router.include_router(admin_path_analysis_router)
 router.include_router(admin_ats_score_router)
 router.include_router(admin_plan_health_router)
 router.include_router(admin_incident_router)

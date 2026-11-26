@@ -2030,6 +2030,149 @@ export interface AdminReferralSummaryResponse {
   generated_at: string
 }
 
+export type AdminPathAnalysisNodeKind = 'route' | 'outcome' | 'missing'
+
+export interface AdminPathAnalysisNode {
+  id: string
+  label: string
+  kind: AdminPathAnalysisNodeKind
+  count: number
+  users: number
+  incoming: number
+  outgoing: number
+  route?: string
+  outcome?: 'upgrade' | 'churn'
+  missing?: boolean
+  filter?: { route?: string; outcome?: 'upgrade' | 'churn'; missing?: boolean }
+}
+
+export interface AdminPathAnalysisEdge {
+  source: string
+  target: string
+  source_label: string
+  target_label: string
+  label: string
+  count: number
+  users: number
+}
+
+export interface AdminPathAnalysisPath {
+  path: string[]
+  node_ids: string[]
+  label: string
+  count: number
+  users: number
+  missing: boolean
+}
+
+export interface AdminPathAnalysisSection {
+  key: 'upgrade' | 'churn'
+  label: string
+  status: 'visible' | 'empty' | 'suppressed'
+  total_outcomes: number | null
+  missing_path_outcomes: number | null
+  route_path_outcomes: number | null
+  route_coverage_pct: number | null
+  missing_path_suppressed: boolean
+  nodes: AdminPathAnalysisNode[]
+  edges: AdminPathAnalysisEdge[]
+  top_paths: AdminPathAnalysisPath[]
+  suppressed_edges: number
+  thresholded_edges: number
+  suppressed_paths: number
+  visible_paths: number
+  top_paths_truncated: boolean
+  raw: {
+    outcomes: number
+    paths: number
+    transitions: number
+    route_paths: number | null
+    missing_path_outcomes: number | null
+  } | null
+  reconciliation: {
+    reconciled: boolean
+    checks: Array<{ key: string; ok: boolean; detail: string }>
+  }
+  notes: string[]
+}
+
+export interface AdminPathAnalysisResponse {
+  days: number
+  start_date: string
+  end_date: string
+  period: { start: string; end: string; timezone: string }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    cohort: 'all' | 'new' | 'established'
+    min_edge_count: number
+    timezone: 'UTC'
+  }
+  minimum_cohort_size: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    applied: boolean
+    rule: string
+    upgrade_suppressed: boolean
+    churn_suppressed: boolean
+    suppressed_edges: number
+    thresholded_edges: number
+    suppressed_paths: number
+  }
+  summary: {
+    outcomes: number | null
+    upgrade_outcomes: number | null
+    churn_outcomes: number | null
+    paths_with_route_data: number | null
+    paths_without_route_data: number | null
+    route_coverage_pct: number | null
+    visible_edges: number
+  }
+  upgrade: AdminPathAnalysisSection
+  churn: AdminPathAnalysisSection
+  reconciliation: {
+    reconciled: boolean
+    checks: Array<{ key: string; ok: boolean; detail: string }>
+  }
+  data_source: {
+    kind: 'first_party_event_sequences'
+    pageview_action: string
+    route_field: string
+    outcome_source: string
+    posthog_paths_queried: boolean
+    path_lookback_days: number
+    max_route_steps: number
+    upgrade_rule: string
+    churn_rule: string
+  }
+  data_quality: {
+    outcome_rows_truncated: boolean
+    pageviews_truncated: boolean
+    max_outcome_rows: number
+    max_pageview_rows: number
+    missing_path_label: string
+    missing_path_imputed: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    minimum_users: number
+    route_sanitization: string
+    excluded_fields: string[]
+  }
+  automation: {
+    automatic_refund: boolean
+    automatic_grant: boolean
+    automatic_enforcement: boolean
+    read_only: boolean
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminOptimizationAcceptanceMetrics {
   candidates_shown: number
   decided: number
@@ -9170,6 +9313,54 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Referral analytics CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminPathAnalysis(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string[]
+    cohort?: 'all' | 'new' | 'established'
+    min_edge_count?: number
+  }): Promise<AdminPathAnalysisResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    for (const plan of params?.plan ?? []) {
+      if (plan) qs.append('plan', plan)
+    }
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    if (params?.min_edge_count != null) qs.set('min_edge_count', String(params.min_edge_count))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminPathAnalysisResponse>(`/admin/analytics/paths${suffix}`)
+  }
+
+  async downloadAdminPathAnalysisCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string[]
+    cohort?: 'all' | 'new' | 'established'
+    min_edge_count?: number
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    for (const plan of params?.plan ?? []) {
+      if (plan) qs.append('plan', plan)
+    }
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    if (params?.min_edge_count != null) qs.set('min_edge_count', String(params.min_edge_count))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/analytics/paths/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Path analysis CSV failed (${response.status})`)
     }
     return response.blob()
   }

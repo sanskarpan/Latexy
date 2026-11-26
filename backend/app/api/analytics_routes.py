@@ -506,6 +506,7 @@ async def track_page_view(
     experiment: Optional[str] = Query(None, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"),
     variant: Optional[str] = Query(None, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"),
     device_class: Optional[DeviceClass] = None,
+    route: Optional[str] = Query(None, max_length=240),
     http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
@@ -514,7 +515,9 @@ async def track_page_view(
 
     Landing callers may attach a bounded page key and experiment/variant label
     plus a device class; the server records a coarse device class when the
-    browser omits one. No path, query string, or share token is accepted here.
+    browser omits one. ``route`` is an optional canonical page label for path
+    analysis: query strings, fragments and opaque identifiers are re-sanitized
+    server-side and never stored raw.
     """
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
@@ -531,6 +534,7 @@ async def track_page_view(
             variant=variant,
             device_class=device_class or classify_device_class(user_agent),
             country=country_from_request(http_request),
+            route=route,
             ip_address=ip_address,
             user_agent=user_agent
         )

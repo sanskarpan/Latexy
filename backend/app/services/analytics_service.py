@@ -34,6 +34,7 @@ from .landing_conversion_service import (
     normalize_page_key,
     normalize_variant,
 )
+from .path_analysis_service import sanitize_path_route
 from .posthog_service import posthog_service
 from .signup_funnel_service import signup_funnel_service
 
@@ -1311,6 +1312,7 @@ class AnalyticsService:
         device_class: Optional[str] = None,
         feature: Optional[str] = None,
         country: Optional[str] = None,
+        route: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> bool:
@@ -1320,10 +1322,16 @@ class AnalyticsService:
         stored only in the existing JSON metadata column, so no migration or new
         identifier table is needed. Missing variants stay absent rather than
         being imputed as a control group.
+
+        ``route`` is an optional, already-canonicalized page label used by the
+        admin path report. It is re-sanitized here so a direct caller cannot
+        persist a query string, share token, or document identifier.
         """
         metadata = {}
         if page:
             metadata["page"] = page
+        if route:
+            metadata["route"] = sanitize_path_route(route)
         if page_key:
             normalized_page_key = normalize_page_key(page_key)
             if normalized_page_key is not None:
