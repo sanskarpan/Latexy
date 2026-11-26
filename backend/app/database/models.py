@@ -746,7 +746,15 @@ class Optimization(Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer)
     optimization_time: Mapped[Optional[float]] = mapped_column(Float)
+    # Legacy post-score column kept for older readers. New writers set both
+    # ats_score_after and ats_score; ats_score_before stays NULL when no
+    # comparable baseline was captured for the run.
     ats_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ats_score_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ats_score_after: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Bounded classification keys only — never resume or job-description text.
+    industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    profile: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     changes_made: Mapped[Optional[dict]] = mapped_column(JSONB)
     # Layer 3: embedding of the job description used for this optimization
     job_desc_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)

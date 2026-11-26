@@ -45,6 +45,8 @@ from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
 from ..services.analytics_service import analytics_service
 from ..services.ats_resume_schema import CanonicalATSResume, from_structured_resume
+from ..services.ats_score_dimensions import normalize_industry, normalize_profile
+from ..services.ats_scoring_service import ats_scoring_service
 from ..services.collab_manager import CLOSE_ROLE_CHANGED, collab_manager
 from ..services.entitlement_service import entitlement_service
 from ..services.format_detection import ResumeFormat, format_detection_service
@@ -1969,7 +1971,14 @@ class RecordOptimizationRequest(BaseModel):
     original_latex: str
     optimized_latex: str
     changes_made: Optional[List[Dict[str, Any]]] = None
-    ats_score: Optional[float] = None
+    ats_score: Optional[float] = Field(None, ge=0, le=100)
+    # D5: a comparable baseline is required for before/after reporting. Older
+    # clients only send the post-score; the server derives the baseline when it
+    # can and otherwise stores it as missing.
+    ats_score_before: Optional[float] = Field(None, ge=0, le=100)
+    ats_score_after: Optional[float] = Field(None, ge=0, le=100)
+    industry: Optional[str] = Field(None, max_length=100)
+    profile: Optional[str] = Field(None, max_length=100)
     tokens_used: Optional[int] = None
     job_description: Optional[str] = None
 
@@ -2002,8 +2011,38 @@ async def record_optimization(
 ):
     """Save an optimization record after a successful AI job."""
     result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
-    if not result.scalar_one_or_none():
+    resume = result.scalar_one_or_none()
+    if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
+
+    score_after = body.ats_score_after if body.ats_score_after is not None else body.ats_score
+    score_before = body.ats_score_before
+    industry = normalize_industry(body.industry)
+    profile = normalize_profile(body.profile)
+    if profile is None and isinstance(resume.resume_settings, dict):
+        profile = normalize_profile(resume.resume_settings.get("last_persona"))
+
+    # Older clients do not send a baseline. Derive one with the same
+    # deterministic scorer used by the optimization pipeline so the admin
+    # report has a comparable before/after pair. Scoring is best-effort: a
+    # failure leaves the row visibly "missing baseline" instead of inventing
+    # a score or failing the user's save.
+    if score_before is None and score_after is not None:
+        try:
+            baseline = await ats_scoring_service.score_resume(
+                latex_content=body.original_latex,
+                job_description=body.job_description,
+                industry=body.industry,
+            )
+            score_before = float(baseline.overall_score)
+            if industry is None:
+                industry = normalize_industry(getattr(baseline, "industry_key", None))
+        except Exception as exc:
+            logger.warning(
+                "Baseline ATS scoring unavailable for optimization record on resume %s",
+                sanitize_for_log(resume_id),
+                extra={"error_type": type(exc).__name__},
+            )
 
     opt = Optimization(
         id=str(uuid4()),
@@ -2015,7 +2054,11 @@ async def record_optimization(
         provider="openai",
         model="gpt-4o",
         tokens_used=body.tokens_used,
-        ats_score=body.ats_score,
+        ats_score=score_after,
+        ats_score_before=score_before,
+        ats_score_after=score_after,
+        industry=industry,
+        profile=profile,
         changes_made=body.changes_made or [],
     )
     db.add(opt)
