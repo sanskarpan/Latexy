@@ -1323,6 +1323,115 @@ export interface AdminTemplatePerformanceResponse {
   generated_at: string
 }
 
+export interface AdminContentLibraryRow {
+  rank: number
+  snippet_id: string
+  title: string | null
+  category: string | null
+  is_official: boolean
+  deleted: boolean
+  deleted_at: string | null
+  created_at: string | null
+  age_days: number
+  users: number
+  active_users: number
+  installers: number
+  inserts: number
+  uses: number
+  upvotes: number
+  upvote_ratio: number
+  lifetime_installs: number
+  lifetime_upvotes: number
+  last_used_at: string | null
+  active: boolean
+  stale: boolean
+  unused: boolean
+}
+
+export interface AdminContentLibraryMacroSummary {
+  total_macros: number
+  script_macros: number
+  recorded_macros: number
+  owners: number
+  created_in_range: number
+  updated_in_range: number
+  used_macros: number
+  use_events: number
+  active_owners: number
+  unused_macros: number
+  stale_macros: number
+  last_used_at: string | null
+}
+
+export type AdminContentLibraryStatus = 'all' | 'active' | 'stale' | 'unused' | 'deleted'
+
+export interface AdminContentLibraryResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    category: string[] | null
+    status: AdminContentLibraryStatus
+    official: boolean | null
+    snippet: string | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  stale_after_days: number
+  candidate_snippets: number
+  suppressed: boolean
+  suppressed_snippets: number
+  ranking: AdminContentLibraryRow[]
+  macro_summary: AdminContentLibraryMacroSummary | null
+  macro_suppressed: boolean
+  totals: {
+    snippets: number
+    suppressed_snippets: number
+    installs: number
+    uses: number
+    upvotes: number
+    lifetime_installs: number
+    lifetime_upvotes: number
+    active_snippets: number
+    stale_snippets: number
+    unused_snippets: number
+    deleted_snippets: number
+    official_snippets: number
+    upvote_ratio: number
+  }
+  reconciliation: {
+    source: string
+    candidate_snippets: number
+    visible_snippets: number
+    suppressed_snippets: number
+    source_installs: number
+    visible_installs: number
+    suppressed_installs: number
+    source_uses: number
+    visible_uses: number
+    suppressed_uses: number
+    source_upvotes: number
+    visible_upvotes: number
+    suppressed_upvotes: number
+    counter_installs: number
+    lifetime_install_rows: number
+    counter_upvotes: number
+    lifetime_upvote_rows: number
+    counter_install_drift: number
+    counter_upvote_drift: number
+    reconciled: boolean
+    macro_source: string
+    macro_values_suppressed: boolean
+  }
+  definitions: Record<string, string>
+  generated_at: string
+}
+
 export interface AdminOptimizationAcceptanceMetrics {
   candidates_shown: number
   decided: number
@@ -6857,6 +6966,56 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Template performance CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminContentLibraryAdoption(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    category?: string
+    status?: AdminContentLibraryStatus
+    official?: boolean
+    snippet?: string
+  }): Promise<AdminContentLibraryResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.official != null) qs.set('official', String(params.official))
+    if (params?.snippet) qs.set('snippet', params.snippet)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminContentLibraryResponse>(
+      `/admin/content-library/adoption${suffix}`,
+    )
+  }
+
+  async downloadAdminContentLibraryAdoptionCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    category?: string
+    status?: AdminContentLibraryStatus
+    official?: boolean
+    snippet?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.official != null) qs.set('official', String(params.official))
+    if (params?.snippet) qs.set('snippet', params.snippet)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/content-library/adoption/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Content library adoption CSV failed (${response.status})`)
     }
     return response.blob()
   }
