@@ -81,6 +81,7 @@ async def test_saved_image_export_has_genuine_mime_and_filename(monkeypatch):
     )
     db = AsyncMock()
     db.get.return_value = resume
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: "free")
     monkeypatch.setattr(export_routes, "_get_latest_compiled_pdf", AsyncMock(return_value=b"%PDF-1.7"))
     monkeypatch.setattr(export_routes, "_render_pdf_first_page", lambda _pdf, _fmt: b"jpeg-bytes")
 
