@@ -207,6 +207,7 @@ router.include_router(reference_router)
 
 # Include Admin routes (feature flags + public config)
 from .admin_abuse_routes import router as admin_abuse_router
+from .admin_access_review_routes import router as admin_access_review_router
 from .admin_activity_routes import router as admin_activity_router
 from .admin_ai_credential_mix_routes import router as admin_ai_credential_mix_router
 from .admin_ai_latency_retry_routes import router as admin_ai_latency_retry_router
@@ -263,6 +264,7 @@ router.include_router(cohort_evaluation_router)
 router.include_router(admin_approval_router)
 router.include_router(admin_abuse_router)
 router.include_router(admin_activity_router)
+router.include_router(admin_access_review_router)
 router.include_router(admin_ai_latency_retry_router)
 router.include_router(admin_ai_credential_mix_router)
 router.include_router(admin_feature_adoption_router)

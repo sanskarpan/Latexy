@@ -17,6 +17,7 @@ import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminQualityTriage from '@/components/admin/AdminQualityTriage'
 import AdminErrorFeed from '@/components/admin/AdminErrorFeed'
+import AdminAccessReview from '@/components/admin/AdminAccessReview'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
@@ -60,7 +61,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'abuse' | 'approvals' | 'privacy' | 'flags' | 'experiments' | 'matrix' | 'plans' | 'views'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'access' | 'abuse' | 'approvals' | 'privacy' | 'flags' | 'experiments' | 'matrix' | 'plans' | 'views'
 
 const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
   'analytics',
@@ -93,6 +94,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'access', label: 'Access Review' },
   { id: 'abuse', label: 'Abuse' },
   { id: 'approvals', label: 'Approvals' },
   { id: 'privacy', label: 'Privacy' },
@@ -1152,6 +1154,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'exports' && <AdminExports />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
+        {tab === 'access' && <AdminAccessReview />}
         {tab === 'audit' && (
           <div className="space-y-10">
             <AdminAudit />

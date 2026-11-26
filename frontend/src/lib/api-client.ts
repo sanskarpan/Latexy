@@ -2075,6 +2075,141 @@ export interface AdminDocumentComplexityResponse {
   generated_at: string
 }
 
+export interface AdminAccessReviewAccount {
+  user_id: string
+  email_masked: string | null
+  name_masked: string | null
+  role: 'admin' | 'support'
+  two_factor_enabled: boolean
+  passkey_count: number
+  strong_auth: boolean
+  missing_two_factor: boolean
+  missing_strong_auth: boolean
+  last_login_at: string | null
+  last_activity_at: string | null
+  last_session_expires_at: string | null
+  session_count: number
+  active_sessions: number
+  account_age_days: number | null
+  stale: boolean
+  never_used: boolean
+  flags: string[]
+}
+
+export interface AdminAccessReviewFlag {
+  code: string
+  label: string
+  severity: 'high' | 'medium' | 'low'
+  count: number
+  account_ids: string[]
+  truncated: boolean
+}
+
+export interface AdminAccessReviewSummary {
+  total: number
+  admins: number
+  support: number
+  two_factor_enabled: number
+  without_two_factor: number
+  admins_without_2fa: number
+  support_without_2fa: number
+  strong_auth_enabled: number
+  without_strong_auth: number
+  admins_without_strong_auth: number
+  stale: number
+  stale_admins: number
+  stale_support: number
+  never_used: number
+  never_used_admins: number
+  never_used_support: number
+  active_sessions: number
+  flagged: number
+  two_factor_coverage_pct: number
+  strong_auth_coverage_pct: number
+}
+
+export type AdminAccessReviewDecision = 'attested' | 'follow_up_required'
+
+export interface AdminAccessReviewAttestation {
+  audit_id: string
+  quarter: string | null
+  decision: AdminAccessReviewDecision | null
+  note: string | null
+  attested_at: string | null
+  attested_by_user_id: string | null
+  attested_by_email_masked: string | null
+  roster_size: number | null
+  admins: number | null
+  support: number | null
+  admins_without_2fa: number | null
+  support_without_2fa: number | null
+  stale: number | null
+  never_used: number | null
+  active_sessions: number | null
+  snapshot_hash: string | null
+  automatic_demotion: boolean
+}
+
+export interface AdminAccessReviewAttestationState {
+  quarter: string
+  required: boolean
+  current: boolean
+  latest: AdminAccessReviewAttestation | null
+  roster_changed_since_attestation: boolean
+  history: AdminAccessReviewAttestation[]
+}
+
+export interface AdminAccessReviewResponse {
+  quarter: string
+  quarter_bounds: { start: string; end: string; timezone: 'UTC' }
+  generated_at: string
+  stale_after_days: number
+  review_policy: {
+    read_only: boolean
+    automatic_demotion: boolean
+    quarterly_attestation: boolean
+    requires_confirmation: boolean
+    requires_reason: boolean
+    minimum_note_length: number
+    role_change_detection: string
+    attestation_store: string
+    attestation_retention: string
+  }
+  summary: AdminAccessReviewSummary
+  flags: AdminAccessReviewFlag[]
+  accounts: AdminAccessReviewAccount[]
+  snapshot_hash: string
+  attestation: AdminAccessReviewAttestationState
+  privacy: {
+    admin_only: boolean
+    read_only: boolean
+    scope: string
+    minimum_user_suppression: boolean
+    suppression_exception: string
+    per_user_histories: boolean
+    fields_read: string[]
+    fields_excluded: string[]
+  }
+  notes: string[]
+}
+
+export interface AdminAccessReviewAttestRequest {
+  quarter: string
+  expected_snapshot_hash: string
+  expected_accounts: Array<{ user_id: string; role: 'admin' | 'support' }>
+  decision: AdminAccessReviewDecision
+  note: string
+  confirm: boolean
+  idempotency_key?: string
+}
+
+export interface AdminAccessReviewAttestResponse {
+  quarter: string
+  duplicate: boolean
+  automatic_demotion: boolean
+  attestation: AdminAccessReviewAttestation
+}
+
 export interface AdminTemplatePerformanceRow {
   rank: number
   template_id: string
@@ -11028,6 +11163,29 @@ class ApiClient {
     return this.request<AdminDocumentComplexityResponse>(
       `/admin/analytics/document-complexity${suffix}`,
     )
+  }
+
+  async getAdminAccessReview(): Promise<AdminAccessReviewResponse> {
+    return this.request<AdminAccessReviewResponse>('/admin/access-review')
+  }
+
+  async downloadAdminAccessReviewCsv(): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/access-review/export.csv`,
+    )
+    if (!response.ok) {
+      throw new Error(`Access review CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async attestAdminAccessReview(
+    body: AdminAccessReviewAttestRequest,
+  ): Promise<AdminAccessReviewAttestResponse> {
+    return this.request<AdminAccessReviewAttestResponse>('/admin/access-review/attest', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   async getAdminFilteredTimeseries(params: {
