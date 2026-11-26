@@ -169,6 +169,7 @@ from .reference_routes import router as reference_router
 router.include_router(reference_router)
 
 # Include Admin routes (feature flags + public config)
+from .admin_ai_credential_mix_routes import router as admin_ai_credential_mix_router
 from .admin_alert_routes import router as admin_alert_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
@@ -184,6 +185,7 @@ from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
+router.include_router(admin_ai_credential_mix_router)
 router.include_router(admin_feature_adoption_router)
 router.include_router(admin_billing_reconciliation_router)
 router.include_router(admin_checkout_funnel_router)

@@ -18,6 +18,7 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Growth & Cost | `GET /admin/analytics/landing-conversion` | Landing visits and same-device first-touch trial/registration conversion by page key, experiment/variant, and mobile/tablet/desktop class; overall funnel summary kept as the authoritative sample, missing variants labelled, cells below five visits suppressed |
 | Growth & Cost | `GET /admin/analytics/retention` | Weekly D1/D7/D30 cohorts with a minimum cohort size |
 | Growth & Cost | `GET /admin/analytics/ai-cost` | Estimated token cost, model/plan/user breakdowns, margin estimates, spend-cap and outlier alerts |
+| Growth & Cost | `GET /admin/analytics/credential-mix` | BYOK vs platform-key calls, tokens and estimated cost by feature/plan/day/provider/model/persona with key-ownership counts only; source shares reconcile to 100% and small cohorts are suppressed |
 | Growth & Cost | `GET /admin/analytics/timeseries` | Event/compile/optimize/revenue series filtered by plan, auth provider, or feature |
 | Growth & Cost | `GET /admin/analytics/feature-depth` | Per-feature users/events, median and p95 events per user, repeat rate, frequency buckets (1, 2-4, 5-9, 10+), habitual users (>=5 events/week), and distinct-feature breadth; plan and signup-cohort filters, groups below five users suppressed |
 | Growth & Cost | `GET /admin/analytics/compile-latency` | p50/p95/p99 compile latency by plan family, compiler, and template with sample counts, explicit sparse buckets, missing-attribution counts and ranked slowest buckets |
@@ -73,6 +74,12 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
   credits a registration at most once using the earliest same-device landing
   view; it never builds a cross-device user funnel. No path, query string,
   share token, account id, or device fingerprint is returned.
+- The BYOK vs platform-key mix labels each semantic run with a non-secret
+  credential source. Older runs use the existing keyed-fingerprint comparison;
+  legacy optimization rows are reported as unknown. Responses contain only
+  aggregate calls, tokens, estimated cost and key-ownership counts. API keys,
+  ciphertext, key names, key ids, fingerprints, prompts and document content
+  are never selected or returned.
 - KPI comparisons use an equal-length previous window. A zero (or negative)
   baseline returns no percent delta instead of infinity, and the UI uses a
   neutral tone in that case. Snapshot KPIs compare against the count at the

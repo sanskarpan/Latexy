@@ -21,7 +21,6 @@ value wins when present.
 from __future__ import annotations
 
 import math
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
@@ -30,19 +29,18 @@ from typing import Any, Iterable
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..database import models
-from .admin_ai_cost_service import _int, _stage_feature, _utc
+from .admin_ai_cost_service import _float, _int, _stage_feature, _utc
 from .admin_ai_cost_service import _persona as _resume_persona
+from .credential_source import (
+    credential_source_from_scope,
+    platform_credential_scopes,
+)
 
 MIN_GROUP_SIZE = 5
 SUCCESS_STATUSES = frozenset({"completed"})
 ERROR_STATUSES = frozenset({"failed", "ambiguous", "cancelled"})
 RUN_TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "cancelled"})
-
-_HEX_HASH = re.compile(r"^[0-9a-f]{64}$")
-_PLATFORM_SCOPE_PREFIXES = ("platform", "managed", "system", "server")
-_BYOK_SCOPE_PREFIXES = ("byok", "user", "custom", "own")
 
 
 def _clean(value: Any, limit: int, default: str = "unknown") -> str:
@@ -70,47 +68,17 @@ def _event_persona(run_persona: Any, resume_settings: Any) -> str:
 
 
 def _platform_credential_scopes() -> set[str]:
-    """Fingerprints of configured platform keys, never the keys themselves.
-
-    Resume-engine runs persist only a keyed fingerprint.  Comparing it to the
-    platform keys (without reading any stored user key) lets us label the source
-    as platform versus BYOK without exposing the fingerprint.
-    """
-    try:
-        from .resume_engine.credential_scope import credential_scope
-    except Exception:  # pragma: no cover - configuration failure falls back to unknown
-        return set()
-
-    scopes: set[str] = set()
-    for key in (
-        settings.OPENAI_API_KEY,
-        settings.ANTHROPIC_API_KEY,
-        settings.OPENROUTER_API_KEY,
-        settings.GEMINI_API_KEY,
-    ):
-        if isinstance(key, str) and key:
-            try:
-                scopes.add(credential_scope(key))
-            except Exception:
-                continue
-    return scopes
+    """Compatibility wrapper around the shared non-secret source classifier."""
+    return platform_credential_scopes()
 
 
-def _credential_source(scope: Any, platform_scopes: Iterable[str]) -> str:
-    if not isinstance(scope, str) or not scope.strip():
-        return "unknown"
-    normalized = scope.strip().lower()
-    if normalized.startswith(_PLATFORM_SCOPE_PREFIXES):
-        return "platform"
-    if normalized.startswith(_BYOK_SCOPE_PREFIXES):
-        return "byok"
-    if normalized in platform_scopes:
-        return "platform"
-    # Durable resume-engine scopes are keyed HMAC fingerprints.  Anything that is
-    # a fingerprint but not the platform key must have come from a user key.
-    if _HEX_HASH.match(normalized):
-        return "byok"
-    return "unknown"
+def _credential_source(
+    scope: Any,
+    platform_scopes: Iterable[str],
+    persisted_source: Any = None,
+) -> str:
+    """Compatibility wrapper around the shared non-secret source classifier."""
+    return credential_source_from_scope(scope, platform_scopes, persisted_source)
 
 
 def _stage_outcome(status: Any) -> str:
@@ -197,6 +165,9 @@ class UsageEvent:
     outcome: str
     tokens: int
     latency_ms: float | None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    recorded_cost_usd: float | None = None
 
 
 @dataclass
@@ -349,6 +320,7 @@ async def _load_stage_events(
             models.ResumeOptimizationRun.provider,
             models.ResumeOptimizationRun.model,
             models.ResumeOptimizationRun.credential_scope,
+            models.ResumeOptimizationRun.context_payload["credential_source"].astext,
             models.ResumeOptimizationRun.context_payload["direction"]["persona"].astext,
             models.ResumeOptimizationStage.stage_key,
             models.ResumeOptimizationStage.status,
@@ -385,6 +357,7 @@ async def _load_stage_events(
         run_provider,
         run_model,
         credential_scope,
+        persisted_source,
         run_persona,
         stage_key,
         status,
@@ -396,6 +369,7 @@ async def _load_stage_events(
     ) in (await db.execute(statement)).all():
         occurred = _utc(stage_completed_at or stage_created_at)
         persona = _event_persona(run_persona, resume_settings)
+        payload = usage if isinstance(usage, dict) else {}
         events.append(
             UsageEvent(
                 source="resume_optimization_stages",
@@ -406,10 +380,15 @@ async def _load_stage_events(
                 provider=_clean(run_provider, 80),
                 model=_clean(run_model, 160),
                 persona=persona,
-                credential_source=_credential_source(credential_scope, platform_scopes),
+                credential_source=_credential_source(
+                    credential_scope, platform_scopes, persisted_source
+                ),
                 outcome=_stage_outcome(status),
-                tokens=_stage_tokens(usage),
+                tokens=_stage_tokens(payload),
                 latency_ms=_latency_ms(stage_created_at, stage_completed_at),
+                input_tokens=_int(payload.get("input_tokens")) or 0,
+                output_tokens=_int(payload.get("output_tokens")) or 0,
+                recorded_cost_usd=_float(payload.get("cost_usd")),
             )
         )
     return events

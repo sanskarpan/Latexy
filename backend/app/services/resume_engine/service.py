@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from ...core.config import settings
 from ...core.engine_observability import engine_span
 from ...database.models import Resume, ResumeOptimizationRun, ResumeRequirementContext, ResumeTemplate
+from ..credential_source import credential_source_for_api_key
 from .budgets import initial_budget
 from .context import build_context
 from .credential_scope import credential_scope as credential_scope_for_api_key
@@ -134,6 +135,7 @@ def run_semantic_optimization(
     spec = resolve_provider(api_key, metadata.get("semantic_provider_model", model),
                             selected_provider=metadata.get("semantic_provider"))
     credential_scope = credential_scope_for_api_key(api_key)
+    credential_source = credential_source_for_api_key(api_key)
     extracted_requirements = extract_requirements(job_description)
     decision_memory = None
     frozen_requirements, requirement_plan = None, None
@@ -224,6 +226,7 @@ def run_semantic_optimization(
         model=spec.model,
         credential_scope=credential_scope,
         budget=budget,
+        credential_source=credential_source,
     )
 
     def emit(event, payload):
