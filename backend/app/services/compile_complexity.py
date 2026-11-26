@@ -57,8 +57,36 @@ OVERFLOW_PAGE_THRESHOLDS: tuple[int, ...] = (2, 5, 10)
 
 # A comment starts at an unescaped percent sign. ``\%`` is a literal percent
 # and must not hide the remainder of the line from the section count.
-_LATEX_COMMENT_RE = re.compile(r"(?<!\\)%.*$", re.MULTILINE)
 _SECTION_RE = re.compile(r"\\section\*?\s*\{")
+
+
+def _strip_latex_comments(text: str) -> str:
+    """Remove unescaped LaTeX comments in one linear pass.
+
+    A regex with a variable-length lookbehind is unnecessary here and can be
+    superlinear on hostile input; scanning each line keeps the admission path
+    bounded regardless of source size.
+    """
+
+    cleaned: list[str] = []
+    for line in text.splitlines():
+        cut = len(line)
+        index = 0
+        while True:
+            index = line.find("%", index)
+            if index < 0:
+                break
+            backslashes = 0
+            cursor = index - 1
+            while cursor >= 0 and line[cursor] == "\\":
+                backslashes += 1
+                cursor -= 1
+            if backslashes % 2 == 0:
+                cut = index
+                break
+            index += 1
+        cleaned.append(line[:cut])
+    return "\n".join(cleaned)
 
 
 def _integral(value: Any) -> Optional[int]:
@@ -99,7 +127,7 @@ def count_sections(latex_content: Optional[str]) -> Optional[int]:
     """
     if not isinstance(latex_content, str) or not latex_content.strip():
         return None
-    without_comments = _LATEX_COMMENT_RE.sub("", latex_content)
+    without_comments = _strip_latex_comments(latex_content)
     count = len(_SECTION_RE.findall(without_comments))
     return min(count, MAX_SECTION_COUNT)
 

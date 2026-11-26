@@ -37,6 +37,8 @@ function modeHarness(page: keyof typeof pages, preferred = 'pdf', effective = pr
     editorRef: { current: { getValue: vi.fn<() => string | undefined>(() => 'latest source buffer') } },
     setLatexContent: vi.fn(), setRightTab: vi.fn(), setEditorMode: vi.fn(),
     localStorage: { setItem: vi.fn() },
+    window: { location: { pathname: '/workspace/owned-document/edit' } },
+    editorModeTelemetry: { selectMode: vi.fn(), toggleAutoCompile: vi.fn(), synctex: vi.fn() },
   }
   return { context, deny: (key: string) => features.delete(key), toggle: callback(page, 'handleToggleEditorMode', context) }
 }

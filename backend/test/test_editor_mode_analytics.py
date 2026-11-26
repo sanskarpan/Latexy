@@ -15,7 +15,7 @@ from httpx import AsyncClient
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Compilation, Resume, UsageAnalytics
+from app.database.models import Resume, UsageAnalytics
 from app.services.editor_mode_analytics_service import (
     AUTO_COMPILE_TOGGLED,
     EDITOR_MODE_SELECTED,
