@@ -779,6 +779,7 @@ def scheduled_cleanup_expired_jobs() -> None:
     # then silently swallow, leaving the storage fix inert.
     _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_expired_jobs_task
+    from app.workers.email_worker import send_admin_digests
     from app.workers.retention_worker import run_due_retention_previews_task
 
     cleanup_expired_jobs_task.apply(throw=False)
@@ -786,6 +787,10 @@ def scheduled_cleanup_expired_jobs() -> None:
     # admin actions. Piggybacking on this schedule avoids Modal's five-schedule
     # budget while still updating next/last preview timestamps in production.
     run_due_retention_previews_task.apply(throw=False)
+    # Admin digest policies are due-checked hourly; sharing this schedule keeps
+    # Modal within its five-schedule budget and still dispatches daily/weekly/
+    # monthly digests without a separate Modal cron.
+    send_admin_digests.apply(throw=False)
 
 
 @app.function(
