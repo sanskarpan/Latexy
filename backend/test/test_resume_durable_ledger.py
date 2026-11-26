@@ -146,6 +146,7 @@ def admitted(request):
         model="gpt-4o-mini",
         credential_scope=credential_scope("semantic-test-key"),
         budget=initial_budget("quick"),
+        credential_source="byok",
     )
     ledger.create_or_restore(**args)
     yield ledger, args, user_id, resume_id, job_id, client
@@ -161,6 +162,19 @@ def admitted(request):
     client.delete(lifecycle_key(job_id))
     client.close()
     clear_current_owner(job_id)
+
+
+def test_run_persists_non_secret_credential_source_beside_hashed_context(admitted):
+    _, args, _, _, job_id, _ = admitted
+
+    async def inspect(db):
+        return await db.get(ResumeOptimizationRun, job_id)
+
+    row = database(inspect)
+    assert row.context_payload["credential_source"] == "byok"
+    assert args["context"].get("credential_source") is None
+    assert "semantic-test-key" not in json.dumps(row.context_payload)
+    assert row.credential_scope == args["credential_scope"]
 
 
 def test_private_run_context_rotated_server_key_cannot_restore_paid_run(admitted, monkeypatch):

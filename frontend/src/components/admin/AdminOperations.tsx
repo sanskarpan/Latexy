@@ -18,12 +18,14 @@ import AdminStuckJobs from '@/components/admin/AdminStuckJobs'
 const SEVERITY_TONE: Record<AdminAttentionItem['severity'], string> = {
   critical: 'text-err',
   high: 'text-warn',
+  medium: 'text-accent-strong',
   low: 'text-fg-3',
 }
 
 const SEVERITY_LABEL: Record<AdminAttentionItem['severity'], string> = {
   critical: 'Critical',
   high: 'High',
+  medium: 'Medium',
   low: 'Low',
 }
 
@@ -33,6 +35,7 @@ const SOURCE_LABEL: Record<string, string> = {
   'billing.payments': 'Payments',
   'jobs.stuck': 'Job queue',
   'domains.custom': 'Custom domains',
+  'incidents.active': 'Incident timeline',
 }
 
 const METADATA_STATUS_LABEL: Record<string, string> = {
@@ -426,7 +429,7 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
             Needs attention
           </h3>
           <p className="mt-1 text-xs text-fg-3">
-            Billing, queue and domain signals that need an operator within five minutes.
+            Active incidents, billing, queue and domain signals that need an operator within five minutes.
           </p>
         </div>
         {data && (
@@ -457,7 +460,7 @@ function AttentionStrip({ refreshKey }: { refreshKey: number }) {
       )}
       {data && data.items.length === 0 && !error && (
         <p className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface-2/60 px-3 py-3 text-xs text-fg-3">
-          No failed webhooks, past-due subscriptions, failed payments, stuck jobs or expiring custom domains are waiting.
+          No active incidents, failed webhooks, past-due subscriptions, failed payments, stuck jobs or expiring custom domains are waiting.
         </p>
       )}
 

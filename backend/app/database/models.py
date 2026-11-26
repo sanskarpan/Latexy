@@ -623,6 +623,108 @@ class DocumentEmailDelivery(Base):
     )
 
 
+class EmailDeliveryEvent(Base):
+    """Append-only provider delivery/bounce/complaint evidence.
+
+    Rows are keyed by the provider webhook event id for idempotency and carry
+    the provider message id for delivery mapping. Recipient mailboxes are never
+    stored; ``recipient_hash`` is a one-way digest used only to honour
+    suppression state. No message body, subject, headers or provider payload is
+    persisted.
+    """
+
+    __tablename__ = "email_delivery_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "provider_event_id",
+            name="uq_email_delivery_events_provider_event",
+        ),
+        Index(
+            "ix_email_delivery_events_provider_message",
+            "provider_message_id",
+        ),
+        Index(
+            "ix_email_delivery_events_type_occurred",
+            "event_type",
+            "occurred_at",
+        ),
+        Index("ix_email_delivery_events_delivery", "delivery_id"),
+        Index("ix_email_delivery_events_recipient_hash", "recipient_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="resend", server_default="resend"
+    )
+    provider_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_message_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    delivery_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("document_email_deliveries.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    recipient_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    bounce_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    bounce_subtype: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    retryable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    occurred_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class EmailRecipientSuppression(Base):
+    """Current local suppression state for a hashed recipient address.
+
+    The provider remains the source of truth for its suppression list; this
+    table mirrors suppression.added/removed and hard bounce/complaint outcomes so
+    Latexy does not submit another document email to a known-bad mailbox.
+    """
+
+    __tablename__ = "email_recipient_suppressions"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "recipient_hash",
+            name="uq_email_recipient_suppressions_provider_hash",
+        ),
+        Index("ix_email_recipient_suppressions_created", "created_at"),
+        Index("ix_email_recipient_suppressions_delivery", "delivery_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="resend", server_default="resend"
+    )
+    recipient_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_event_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    delivery_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("document_email_deliveries.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class Optimization(Base):
     """LLM optimization history."""
 
@@ -1396,6 +1498,88 @@ class AdminAlert(Base):
     snooze_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AdminIncident(Base):
+    """Operator-owned incident timeline row.
+
+    Only admin-written operational metadata lives here: no customer identifiers,
+    document content, provider errors or credentials. The status/end-time
+    invariant is enforced in the database so an open incident cannot carry an
+    end timestamp and a resolved incident cannot omit one.
+    """
+
+    __tablename__ = "admin_incidents"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open', 'resolved')",
+            name="ck_admin_incidents_status",
+        ),
+        CheckConstraint(
+            "severity IN ('critical', 'high', 'medium', 'low')",
+            name="ck_admin_incidents_severity",
+        ),
+        CheckConstraint(
+            "(status = 'open' AND ended_at IS NULL) OR "
+            "(status = 'resolved' AND ended_at IS NOT NULL)",
+            name="ck_admin_incidents_state_end",
+        ),
+        CheckConstraint(
+            "ended_at IS NULL OR ended_at >= started_at",
+            name="ck_admin_incidents_time_order",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(services) = 'array' AND jsonb_array_length(services) > 0",
+            name="ck_admin_incidents_services",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(links) = 'array'",
+            name="ck_admin_incidents_links",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(related_alert_keys) = 'array'",
+            name="ck_admin_incidents_alert_keys",
+        ),
+        CheckConstraint(
+            "deploy_sha IS NULL OR deploy_sha ~ '^[0-9a-f]{7,40}$'",
+            name="ck_admin_incidents_deploy_sha",
+        ),
+        CheckConstraint(
+            "length(trim(title)) > 0 AND length(trim(summary)) > 0 "
+            "AND length(trim(owner)) > 0",
+            name="ck_admin_incidents_required_text",
+        ),
+        Index("idx_admin_incidents_status_started", "status", "started_at"),
+        Index("idx_admin_incidents_severity_started", "severity", "started_at"),
+        Index("idx_admin_incidents_started", "started_at"),
+        Index("idx_admin_incidents_services", "services", postgresql_using="gin"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open", server_default="open")
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    services: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    owner: Mapped[str] = mapped_column(String(64), nullable=False)
+    links: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    related_alert_keys: Mapped[List[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    deploy_sha: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    deploy_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

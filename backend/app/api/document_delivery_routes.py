@@ -34,8 +34,10 @@ from ..services.document_delivery_service import (
     make_retryable,
     mark_accepted,
     mark_failed,
+    mark_permanent_failure,
     public_status,
 )
+from ..services.email_health_service import is_recipient_suppressed
 from ..services.email_service import (
     MAX_EMAIL_ATTACHMENT_BYTES,
     EmailAttachment,
@@ -211,6 +213,11 @@ async def email_compiled_document(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     recipient = _safe_verified_email(user)
+    if await is_recipient_suppressed(db, recipient):
+        raise HTTPException(
+            status_code=422,
+            detail="This email address cannot receive document emails after a prior bounce or complaint",
+        )
     resume, compilation, pdf_bytes = await _owned_compiled_pdf(resume_id, user_id, db)
     delivery = await get_or_create_delivery(
         db,
@@ -240,7 +247,7 @@ async def email_compiled_document(
     # dedupe with Resend. Generic SMTP cannot promise deduplication, so that
     # behavior is returned explicitly to the UI.
     claim_token = delivery.claim_token
-    sent = await email_service.send_email(
+    receipt = await email_service.send_email_with_receipt(
         to=delivery.recipient_email,
         subject="Your compiled resume from Latexy",
         html_body=html_body,
@@ -248,10 +255,20 @@ async def email_compiled_document(
         idempotency_key=delivery.idempotency_key,
         attachments=(EmailAttachment("resume.pdf", pdf_bytes, "application/pdf"),),
     )
-    if not sent:
-        await mark_failed(db, delivery, "provider_rejected", claim_token=claim_token)
+    if not receipt.accepted:
+        if receipt.transient:
+            await mark_failed(db, delivery, "provider_transient", claim_token=claim_token)
+        else:
+            await mark_permanent_failure(
+                db, delivery, "provider_rejected", claim_token=claim_token
+            )
         raise HTTPException(status_code=503, detail="Email provider did not accept the document; please retry")
-    await mark_accepted(db, delivery, claim_token=claim_token)
+    await mark_accepted(
+        db,
+        delivery,
+        claim_token=claim_token,
+        provider_message_id=receipt.provider_message_id,
+    )
 
     retry_behavior: Literal["provider_idempotent", "smtp_best_effort"] = (
         "provider_idempotent" if settings.EMAIL_PROVIDER == "resend" else "smtp_best_effort"

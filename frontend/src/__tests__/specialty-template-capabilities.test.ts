@@ -70,7 +70,7 @@ async function harness(authenticated = true, initiallySpecialty = true, configur
     id: category, category, name: `${category} template`, category_label: category, description: '', tags: [],
   }))
   const permittedRows = () => templates.filter(template => grants.has('b05') || template.category === 'professional')
-  const api = { getTemplates: vi.fn().mockImplementation(async () => permittedRows()), getTemplateCategories: vi.fn().mockImplementation(async () => permittedRows().map(template => ({ category: template.category, label: template.category, count: 1 }))), useTemplate: vi.fn().mockResolvedValue({ resume_id: 'created' }) }
+  const api = { getTemplates: vi.fn().mockImplementation(async () => permittedRows()), getTemplateCategories: vi.fn().mockImplementation(async () => permittedRows().map(template => ({ category: template.category, label: template.category, count: 1 }))), trackTemplateEvent: vi.fn().mockResolvedValue(undefined), useTemplate: vi.fn().mockResolvedValue({ resume_id: 'created' }) }
   configure?.(api)
   vi.doMock('@/lib/api-client', () => ({ apiClient: api }))
   const Component = (await import('@/app/templates/page')).default

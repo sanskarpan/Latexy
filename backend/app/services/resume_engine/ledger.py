@@ -16,6 +16,7 @@ from ...core.config import settings
 from ...database.models import JobFinalization, ResumeOptimizationRun, ResumeOptimizationStage, ResumeRequirementContext
 from ...utils.db_url import normalize_database_url
 from ...workers.job_lifecycle import current_owner, current_owner_epoch, lifecycle_key
+from ..credential_source import normalize_credential_source
 from .budgets import BudgetExceeded, reconcile, reserve
 from .stages import (
     StageCheckpointError,
@@ -100,6 +101,7 @@ class DurableOptimizationLedger:
         model: str,
         credential_scope: str,
         budget: dict,
+        credential_source: str = "unknown",
     ) -> dict:
         fingerprint = durable_run_context_fingerprint(
             {
@@ -113,6 +115,11 @@ class DurableOptimizationLedger:
                 "engine": "semantic-v1",
             }
         )
+        # Non-secret, server-written label.  It is deliberately stored beside the
+        # hashed context rather than inside the fingerprint input so an in-flight
+        # run admitted by an older revision can still restore after a deploy.
+        source_label = normalize_credential_source(credential_source) or "unknown"
+        stored_context = {**context, "credential_source": source_label}
 
         async def operation(session, arbiter):
             if str(arbiter.user_id) != user_id or (arbiter.resume_id and str(arbiter.resume_id) != resume_id):
@@ -157,7 +164,7 @@ class DurableOptimizationLedger:
                 model=model,
                 credential_scope=credential_scope,
                 snapshot=document,
-                context_payload=context,
+                context_payload=stored_context,
                 budget=bounded_budget,
                 status="running",
                 expires_at=datetime.now(timezone.utc) + timedelta(days=7),

@@ -775,7 +775,7 @@ export interface AdminOperationsSummary {
   active_users_24h: number
 }
 
-export type AdminAttentionSeverity = 'critical' | 'high' | 'low'
+export type AdminAttentionSeverity = 'critical' | 'high' | 'medium' | 'low'
 
 export interface AdminAttentionItem {
   key: string
@@ -988,6 +988,88 @@ export interface AdminAlertList {
   offset: number
 }
 
+export type AdminIncidentSeverity = 'critical' | 'high' | 'medium' | 'low'
+export type AdminIncidentStatus = 'open' | 'resolved'
+
+export interface AdminIncidentRelatedAlert {
+  id: string
+  dedupe_key: string
+  kind: string
+  severity: AdminIncidentSeverity
+  owner: string
+  title: string
+  state: 'open' | 'acknowledged' | 'snoozed' | 'resolved'
+  occurrence_count: number
+  last_seen_at: string | null
+}
+
+export interface AdminIncident {
+  id: string
+  status: AdminIncidentStatus
+  severity: AdminIncidentSeverity
+  title: string
+  summary: string
+  services: string[]
+  owner: string
+  links: string[]
+  related_alert_keys: string[]
+  related_alerts: AdminIncidentRelatedAlert[]
+  deploy_sha: string | null
+  deploy_url: string | null
+  started_at: string
+  ended_at: string | null
+  duration_seconds: number | null
+  created_by: string | null
+  updated_by: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminIncidentList {
+  generated_at: string
+  items: AdminIncident[]
+  total: number
+  limit: number
+  offset: number
+  active_count: number
+  filters: {
+    service: string[]
+    severity: string | null
+    status: string | null
+    start_date: string | null
+    end_date: string | null
+  }
+}
+
+export interface AdminIncidentInput {
+  title?: string
+  summary: string
+  severity: AdminIncidentSeverity
+  services: string[]
+  owner: string
+  links?: string[]
+  related_alert_keys?: string[]
+  deploy_sha?: string | null
+  deploy_url?: string | null
+  started_at?: string | null
+  reason?: string
+}
+
+export interface AdminIncidentUpdateInput {
+  title?: string
+  summary?: string
+  severity?: AdminIncidentSeverity
+  services?: string[]
+  owner?: string
+  links?: string[]
+  related_alert_keys?: string[]
+  deploy_sha?: string | null
+  deploy_url?: string | null
+  started_at?: string | null
+  status?: AdminIncidentStatus | 'active'
+  reason?: string
+}
+
 export interface AdminKpiTrendPoint {
   date: string
   value: number
@@ -1138,6 +1220,85 @@ export interface AdminCompileErrorsResponse {
     minimum_sample_size: number
     user_dimension_included: false
     detail: string
+  }
+  generated_at: string
+}
+
+export interface AdminTemplatePerformanceRow {
+  rank: number
+  template_id: string
+  template_name: string | null
+  category: string | null
+  deleted: boolean
+  active: boolean
+  users: number
+  views: number
+  selects: number
+  uses: number
+  exports: number
+  usage_events: number
+  compile_success: number
+  compile_failed: number
+  compile_attempts: number
+  success_rate: number
+  last_used_at: string | null
+}
+
+export interface AdminTemplatePerformanceTrendPoint {
+  date: string
+  views: number
+  selects: number
+  uses: number
+  exports: number
+  compile_success: number
+  compile_failed: number
+}
+
+export interface AdminTemplatePerformanceResponse {
+  days: number
+  start_date: string
+  end_date: string
+  timezone: 'UTC'
+  date_range: { start: string; end: string; days: number; timezone: 'UTC' }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    template: string | null
+    timezone: 'UTC'
+  }
+  minimum_users: number
+  candidate_templates: number
+  suppressed: boolean
+  suppressed_templates: number
+  ranking: AdminTemplatePerformanceRow[]
+  trend: AdminTemplatePerformanceTrendPoint[]
+  totals: {
+    templates: number
+    suppressed_templates: number
+    views: number
+    selects: number
+    uses: number
+    exports: number
+    usage_events: number
+    compile_success: number
+    compile_failed: number
+    compile_attempts: number
+  }
+  reconciliation: {
+    source: 'compilations'
+    attributed_compile_success: number
+    attributed_compile_failed: number
+    ranked_compile_success: number
+    ranked_compile_failed: number
+    suppressed_compile_success: number
+    suppressed_compile_failed: number
+    unattributed_compile_success: number
+    unattributed_compile_failed: number
+    compilation_success: number
+    compilation_failed: number
+    reconciled: boolean
   }
   generated_at: string
 }
@@ -2361,6 +2522,68 @@ export interface AdminTrialAttributionResponse {
   generated_at: string
 }
 
+export type AdminEmailHealthStatus = 'ok' | 'watch' | 'review' | 'unconfigured'
+
+export interface AdminEmailHealthFailure {
+  event_type: string
+  occurred_at: string
+  bounce_type: string | null
+  bounce_subtype: string | null
+  retryable: boolean
+  delivery_mapped: boolean
+  delivery_status: string | null
+}
+
+export interface AdminEmailHealthResponse {
+  provider: string
+  configured_provider: string
+  period: { days: number; start: string; end: string }
+  minimum_rate_sample: number
+  signature_verification: {
+    configured: boolean
+    scheme: string
+    tolerance_seconds: number
+  }
+  summary: {
+    outbound: { total: number; accepted: number; failed: number; pending: number }
+    events: {
+      sent: number
+      delivered: number
+      bounced: number
+      complained: number
+      delayed: number
+      failed: number
+      suppressed: number
+      suppression_added: number
+      suppression_removed: number
+      unknown: number
+    }
+    attempted: number
+    bounce_rate_pct: number | null
+    complaint_rate_pct: number | null
+    delivery_rate_pct: number | null
+    bounce_rate: number | null
+    complaint_rate: number | null
+    delivery_rate: number | null
+    rates_withheld: boolean
+    sample_size: number
+  }
+  event_types: Array<{ event_type: string; count: number }>
+  recent_failures: AdminEmailHealthFailure[]
+  suppression: {
+    status: AdminEmailHealthStatus
+    active_recipients: number
+    added_in_period: number
+    removed_in_period: number
+    provider_side_suppression: boolean
+    local_enforcement: boolean
+    review_thresholds: { complaint_rate_pct: number; bounce_rate_pct: number }
+    policy: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminRetentionCell {
   count: number
   eligible: number
@@ -2754,6 +2977,130 @@ export interface AdminAiUsageResponse {
     content_fields_read: string[]
     content_fields_excluded: string[]
   }
+  notes: string[]
+}
+
+export type AdminCredentialSource = 'byok' | 'platform' | 'unknown'
+
+export interface AdminCredentialMixMetrics {
+  calls: number
+  tokens: number
+  cost_usd: number
+  cost_usd_minor: number
+  users: number
+  estimated_calls: number
+  unknown_pricing_calls: number
+  call_share_pct: number
+  token_share_pct: number
+  cost_share_pct: number
+}
+
+export interface AdminCredentialMixRow extends AdminCredentialMixMetrics {
+  credential_source: AdminCredentialSource
+  feature?: string
+  plan?: string
+  provider?: string
+  model?: string
+  persona?: string
+  date?: string
+}
+
+export interface AdminCredentialMixResponse {
+  period_days: number
+  start_date: string
+  end_date: string
+  generated_at: string
+  filters: {
+    plan: string | null
+    feature: string | null
+    provider: string | null
+    model: string | null
+    persona: string | null
+  }
+  minimum_group_size: number
+  currency: string
+  minor_unit: string
+  totals: {
+    calls: number
+    tokens: number
+    cost_usd: number
+    cost_usd_minor: number
+    users: number
+    classified_calls: number
+    unclassified_calls: number
+    classified_share_pct: number
+    mix: Record<AdminCredentialSource, AdminCredentialMixMetrics>
+  }
+  sources: Array<AdminCredentialMixMetrics & { credential_source: AdminCredentialSource }>
+  by_feature: AdminCredentialMixRow[]
+  by_plan: AdminCredentialMixRow[]
+  by_provider: AdminCredentialMixRow[]
+  by_model: AdminCredentialMixRow[]
+  by_persona: AdminCredentialMixRow[]
+  by_day: AdminCredentialMixRow[]
+  key_ownership: {
+    active_keys: number
+    inactive_keys: number
+    users_with_active_keys: number
+    users_with_any_keys: number
+    minimum_group_size: number
+    suppressed_groups: number
+    by_provider: Array<{
+      provider: string
+      active_keys: number
+      inactive_keys: number
+      users: number
+    }>
+    by_plan: Array<{
+      plan: string
+      active_keys: number
+      inactive_keys: number
+      users: number
+    }>
+    note: string
+  }
+  suppressed_groups: number
+  suppression: {
+    minimum_group_size: number
+    rule: string
+    suppressed_groups: number
+    by_dimension: Record<string, number>
+  }
+  reconciliation: {
+    ledgers: Array<{
+      source: string
+      table: string
+      calls: number
+      tokens: number
+      cost_usd: number
+      cost_usd_minor: number
+      users: number
+      estimated_calls: number
+      unknown_pricing_calls: number
+    }>
+    total_calls: number
+    total_tokens: number
+    total_cost_usd: number
+    total_cost_usd_minor: number
+    classified_calls: number
+    unknown_calls: number
+    call_share_total_pct: number
+    checks: Array<{
+      key: string
+      label: string
+      expected: number
+      actual: number
+      ok: boolean
+    }>
+    unknown_policy: string
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  credential_source_note: string
   notes: string[]
 }
 
@@ -5379,6 +5726,44 @@ class ApiClient {
   }
 
   /**
+   * Privacy-safe template catalog event. Only the allowlisted event name, the
+   * public template id and a browser-generated retry id reach the server; the
+   * plan is resolved server-side from the account.
+   */
+  async trackTemplateEvent(
+    templateId: string,
+    event: 'view' | 'select',
+    eventId?: string,
+  ): Promise<void> {
+    let retryId = eventId
+    if (!retryId) {
+      try {
+        retryId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      } catch {
+        retryId = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      }
+    }
+    captureAnalyticsEvent('template_event', {
+      template_id: templateId,
+      template_event: event,
+      surface: 'templates',
+    })
+    try {
+      await this.request<{ recorded: string; duplicate: boolean }>(
+        `/templates/${encodeURIComponent(templateId)}/events`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ event, event_id: retryId }),
+        },
+      )
+    } catch {
+      // Analytics must never block browsing or document creation.
+    }
+  }
+
+  /**
    * Anonymous signup-attempt counter. Only the allowlisted provider label is
    * sent; the backend never uses it to attribute an account. Account provider,
    * completion and verification always come from server-owned auth state.
@@ -6043,6 +6428,24 @@ class ApiClient {
     return this.request<AdminAiUsageResponse>(`/admin/analytics/ai-usage?${qs}`)
   }
 
+  async getAdminCredentialMix(params?: {
+    days?: number
+    plan?: string
+    feature?: string
+    provider?: string
+    model?: string
+    persona?: string
+  }): Promise<AdminCredentialMixResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.feature) qs.set('feature', params.feature)
+    if (params?.provider) qs.set('provider', params.provider)
+    if (params?.model) qs.set('model', params.model)
+    if (params?.persona) qs.set('persona', params.persona)
+    return this.request<AdminCredentialMixResponse>(`/admin/analytics/credential-mix?${qs}`)
+  }
+
   async getAdminCompileLatency(params?: {
     days?: number
     plan?: string
@@ -6122,6 +6525,48 @@ class ApiClient {
     return this.request<AdminFeatureAdoptionResponse>(`/admin/analytics/feature-adoption${suffix}`)
   }
 
+  async getAdminTemplatePerformance(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    template?: string
+  }): Promise<AdminTemplatePerformanceResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTemplatePerformanceResponse>(
+      `/admin/templates/performance${suffix}`,
+    )
+  }
+
+  async downloadAdminTemplatePerformanceCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    template?: string
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/templates/performance/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Template performance CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
   async getAdminAttention(): Promise<AdminAttentionResponse> {
     return this.request<AdminAttentionResponse>('/admin/operations/attention')
   }
@@ -6153,6 +6598,75 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(body),
     })
+  }
+
+  async getAdminIncidents(params?: {
+    service?: string
+    severity?: AdminIncidentSeverity
+    status?: AdminIncidentStatus | 'active'
+    start_date?: string
+    end_date?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminIncidentList> {
+    const qs = new URLSearchParams()
+    if (params?.service) qs.set('service', params.service)
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminIncidentList>(`/admin/operations/incidents${suffix}`)
+  }
+
+  async getAdminIncident(id: string): Promise<AdminIncident> {
+    return this.request<AdminIncident>(`/admin/operations/incidents/${encodeURIComponent(id)}`)
+  }
+
+  async createAdminIncident(body: AdminIncidentInput): Promise<AdminIncident> {
+    return this.request<AdminIncident>('/admin/operations/incidents', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminIncident(id: string, body: AdminIncidentUpdateInput): Promise<AdminIncident> {
+    return this.request<AdminIncident>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async resolveAdminIncident(
+    id: string,
+    body: { reason?: string; ended_at?: string } = {},
+  ): Promise<AdminIncident> {
+    return this.request<AdminIncident>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}/resolve`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async reopenAdminIncident(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<AdminIncident> {
+    return this.request<AdminIncident>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}/reopen`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminIncident(id: string, reason?: string): Promise<{ deleted: boolean; id: string }> {
+    const qs = new URLSearchParams()
+    if (reason) qs.set('reason', reason)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<{ deleted: boolean; id: string }>(
+      `/admin/operations/incidents/${encodeURIComponent(id)}${suffix}`,
+      { method: 'DELETE' },
+    )
   }
 
   async getAdminOperationsHealth(): Promise<AdminOperationsHealthResponse> {
@@ -6250,6 +6764,12 @@ class ApiClient {
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminSubscriptionAnalyticsResponse>(
       `/admin/subscriptions/analytics${suffix}`,
+    )
+  }
+
+  async getAdminEmailHealth(days = 30): Promise<AdminEmailHealthResponse> {
+    return this.request<AdminEmailHealthResponse>(
+      `/admin/email/health?days=${encodeURIComponent(String(days))}`,
     )
   }
 

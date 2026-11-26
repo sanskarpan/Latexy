@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0086_trial_attribution"
+EXPECTED_HEAD = "0088_admin_incidents"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -32,6 +32,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0079_tenant_domain_expiry", "0080_queue_snapshots", "0081_compile_latency_dimensions",
     "0082_signup_funnel_providers", "0083_compile_error_taxonomy",
     "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution",
+    "0087_email_delivery_events", "0088_admin_incidents",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -82,7 +83,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "plan_quota_overrides", "plan_quota_revisions", "role_features",
           "redis_authority_control", "quota_ledger_accounts", "quota_ledger_reservations",
           "admin_audit_log", "admin_refund_requests", "admin_alerts", "subscription_history",
-          "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions")
+          "gdpr_requests", "gdpr_request_events", "gdpr_legal_holds", "trial_attributions",
+          "email_delivery_events", "email_recipient_suppressions", "admin_incidents")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -234,6 +236,26 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "acquisition_source", "acquisition_medium", "acquisition_campaign",
             "acquisition_content", "acquisition_term", "referrer_host", "landing_path",
             "plan_id", "trial_started_at", "signup_at", "paid_at", "created_at", "updated_at",
+        },
+    },
+    # Adds signed email delivery/bounce/complaint events and suppression rows.
+    "0087_email_delivery_events": {
+        "email_delivery_events": {
+            "id", "provider_event_id", "event_type", "provider", "provider_message_id",
+            "recipient_hash", "bounce_type", "bounce_subtype", "retryable",
+            "delivery_id", "occurred_at", "received_at",
+        },
+        "email_recipient_suppressions": {
+            "id", "recipient_hash", "reason", "source_event_id", "provider",
+            "delivery_id", "created_at", "updated_at",
+        },
+    },
+    # Adds the administrative incident timeline.
+    "0088_admin_incidents": {
+        "admin_incidents": {
+            "id", "status", "severity", "title", "summary", "services", "owner",
+            "links", "related_alert_keys", "deploy_sha", "deploy_url", "started_at",
+            "ended_at", "created_by", "updated_by", "created_at", "updated_at",
         },
     },
 }
