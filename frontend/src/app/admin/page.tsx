@@ -33,6 +33,7 @@ import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
+import AdminExports from '@/components/admin/AdminExports'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
@@ -49,7 +50,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
 
 const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
   'analytics',
@@ -78,6 +79,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'receipts', label: 'Receipts' },
   { id: 'email', label: 'Email Health' },
+  { id: 'exports', label: 'Exports' },
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
@@ -1112,6 +1114,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         )}
         {tab === 'receipts' && <AdminReceiptLookup />}
         {tab === 'email' && <AdminEmailHealth />}
+        {tab === 'exports' && <AdminExports />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
         {tab === 'audit' && (

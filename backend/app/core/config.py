@@ -294,6 +294,18 @@ class Settings(BaseSettings):
         le=120,
         description="Maximum session age accepted as re-authentication for account deletion",
     )
+    # Admin report exports use short-lived, actor-bound HMAC download tokens.
+    # The key should be rotated independently of auth credentials in production.
+    ADMIN_EXPORT_SIGNING_KEY: str = Field(
+        default="",
+        description="HMAC key for signed admin export downloads (falls back to auth secret derivation)",
+    )
+    ADMIN_EXPORT_TTL_MINUTES: int = Field(
+        default=10,
+        ge=1,
+        le=15,
+        description="Lifetime of a signed admin export download token (maximum 15 minutes)",
+    )
     TRUST_PROXY_HEADERS: bool = Field(
         default=False,
         description="Trust X-Forwarded-For for client IP (enable ONLY behind a trusted reverse proxy)",

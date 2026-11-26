@@ -978,6 +978,53 @@ async def _async_send_weekly_digest(user_id: str) -> None:
         await engine.dispose()
 
 
+# ── send_admin_digests ───────────────────────────────────────────────────────
+
+@celery_app.task(
+    name="app.workers.email_worker.send_admin_digests",
+    queue="email",
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    retry_jitter=True,
+    max_retries=1,
+    ignore_result=True,
+    soft_time_limit=120,
+    time_limit=180,
+)
+def send_admin_digests() -> None:
+    """Dispatch due aggregate-only admin digests (no user documents or PII)."""
+    asyncio.run(_async_send_admin_digests())
+
+
+async def _async_send_admin_digests() -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ..core.config import settings
+    from ..services.admin_export_service import dispatch_due_admin_digests
+    from ..utils.db_url import normalize_database_url
+
+    if not settings.EMAIL_ENABLED:
+        return
+
+    raw_url = os.environ.get("DATABASE_URL", "")
+    if not raw_url:
+        return
+
+    engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            results = await dispatch_due_admin_digests(session)
+        sent = sum(1 for item in results if item.get("status") in {"sent", "partial"})
+        failed = sum(1 for item in results if item.get("status") == "failed")
+        logger.info("EMAIL: admin digest dispatch completed (%s sent, %s failed)", sent, failed)
+    except Exception as exc:
+        logger.error("EMAIL: admin digest dispatch failed (%s)", type(exc).__name__)
+        raise
+    finally:
+        await engine.dispose()
+
+
 # ── send_weekly_digest_to_all ─────────────────────────────────────────────────
 
 @celery_app.task(

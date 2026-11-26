@@ -208,6 +208,7 @@ from .admin_document_complexity_routes import router as admin_document_complexit
 from .admin_dunning_routes import router as admin_dunning_router
 from .admin_editor_mode_routes import router as admin_editor_mode_router
 from .admin_email_health_routes import router as admin_email_health_router
+from .admin_export_routes import router as admin_export_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_incident_routes import router as admin_incident_router
@@ -264,6 +265,7 @@ router.include_router(admin_editor_mode_router)
 router.include_router(admin_template_performance_router)
 router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
+router.include_router(admin_export_router)
 router.include_router(admin_trial_health_router)
 router.include_router(admin_referral_analytics_router)
 

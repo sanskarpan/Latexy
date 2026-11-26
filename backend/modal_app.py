@@ -779,8 +779,12 @@ def scheduled_cleanup_expired_jobs() -> None:
     # then silently swallow, leaving the storage fix inert.
     _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_expired_jobs_task
+    from app.workers.email_worker import send_admin_digests
 
     cleanup_expired_jobs_task.apply(throw=False)
+    # Due admin digests share this hourly slot; the task only sends configs
+    # whose own daily/weekly/monthly cadence has elapsed.
+    send_admin_digests.apply(throw=False)
 
 
 @app.function(

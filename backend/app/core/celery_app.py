@@ -340,6 +340,12 @@ celery_app.conf.update(
             "task": "app.workers.email_worker.send_weekly_digest_to_all",
             "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
         },
+        # Admin digests are due-checked hourly so daily/weekly/monthly
+        # configurations share one scheduler slot.
+        "admin-digest-dispatch": {
+            "task": "app.workers.email_worker.send_admin_digests",
+            "schedule": 3600.0,
+        },
         "comment-mention-delivery-recovery": {
             "task": "app.workers.email_worker.send_pending_comment_mention_emails",
             "schedule": 60.0,
