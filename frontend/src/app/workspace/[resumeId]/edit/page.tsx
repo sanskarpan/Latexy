@@ -112,6 +112,7 @@ import ContrastToggle from '@/components/theme/ContrastToggle'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
+import { reportLinterIssues } from '@/lib/linter-telemetry'
 import { useSpellCheck } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
@@ -5026,13 +5027,20 @@ export default function ResumeEditPage() {
                   const newLines = [...lines]
                   newLines[issue.line - 1] = fixed
                   setLatexContent(newLines.join('\n'))
+                  if (fixed !== lineContent) {
+                    reportLinterIssues([issue], { fixed: true })
+                  }
                 } : undefined}
                 onAutoFixAll={canEditDocument ? () => {
                   if (!canRef.current('c01')) return
                   const currentContent = editorRef.current?.getValue() || latexContent
+                  const fixableIssues = lintIssues.filter((issue) => issue.fixable)
                   const fixed = runLintAutoFixAll(currentContent)
                   editorRef.current?.setValue(fixed)
                   setLatexContent(fixed)
+                  if (fixed !== currentContent) {
+                    reportLinterIssues(fixableIssues, { fixed: true })
+                  }
                 } : undefined}
                 extractedPdfText={extractedPdfText}
                 pageCount={pageCount}

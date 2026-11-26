@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { lintLatex, autoFixAll as runAutoFixAll, type LintIssue } from '@/lib/latex-linter'
+import { reportLinterIssues } from '@/lib/linter-telemetry'
 
 export function useLatexLinter(latexContent: string, enabled: boolean) {
   const [issues, setIssues] = useState<LintIssue[]>([])
@@ -16,7 +17,9 @@ export function useLatexLinter(latexContent: string, enabled: boolean) {
     if (timerRef.current) clearTimeout(timerRef.current)
 
     timerRef.current = setTimeout(() => {
-      setIssues(lintLatex(latexContent))
+      const nextIssues = lintLatex(latexContent)
+      setIssues(nextIssues)
+      reportLinterIssues(nextIssues, { fixed: false })
     }, 3000)
 
     return () => {

@@ -182,6 +182,7 @@ from .admin_email_health_routes import router as admin_email_health_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
 from .admin_incident_routes import router as admin_incident_router
+from .admin_linter_routes import router as admin_linter_router
 from .admin_operations_routes import router as admin_operations_router
 from .admin_optimization_acceptance_routes import router as admin_optimization_acceptance_router
 from .admin_privacy_breakdown_routes import router as admin_privacy_breakdown_router
@@ -203,6 +204,7 @@ router.include_router(admin_compile_error_router)
 router.include_router(admin_operations_router)
 router.include_router(admin_optimization_acceptance_router)
 router.include_router(admin_incident_router)
+router.include_router(admin_linter_router)
 router.include_router(admin_stuck_job_router)
 router.include_router(admin_alert_router)
 router.include_router(landing_conversion_router)
@@ -340,10 +342,12 @@ router.include_router(team_router)
 
 # Include One-Click Application routes (Feature 87)
 from .application_routes import router as application_router
+from .linter_telemetry_routes import router as linter_telemetry_router
 from .telemetry_routes import router as telemetry_router
 
 router.include_router(application_router)
 router.include_router(telemetry_router)
+router.include_router(linter_telemetry_router)
 
 # Include per-change accept/reject review routes (Feature 2 / P0)
 from .optimize_routes import router as optimize_review_router
