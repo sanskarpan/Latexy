@@ -28,6 +28,7 @@ import { applyTenantTheme } from '@/lib/tenant-theme'
 import TenantOverviewAnalytics from '@/components/admin/TenantOverviewAnalytics'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
+import TenantBillingPanel from '@/components/admin/TenantBillingPanel'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { useAccountContentScope, type AccountContentScope } from '@/contexts/AccountContentScope'
 import { isConfirmedSessionUnauthorized } from '@/lib/session-authority'
@@ -585,6 +586,13 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Left column — tenant info */}
             <div className="space-y-4 lg:col-span-1">
+              <TenantBillingPanel
+                tenantId={selected.id}
+                requestContext={requestContext}
+                canAct={canActForOwner}
+                isCurrent={isCurrentOwner}
+              />
+
               {/* Tenant meta */}
               <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-2">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Info</p>

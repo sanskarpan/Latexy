@@ -10010,6 +10010,25 @@ class ApiClient {
     return this.request<TenantStats>(`/tenants/${tenantId}/stats`, {}, accountContext)
   }
 
+  async getTenantBilling(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantBilling> {
+    return this.request<TenantBilling>(`/tenants/${tenantId}/billing`, {}, accountContext)
+  }
+
+  async recordTenantUpgradeIntent(
+    tenantId: string,
+    targetPlanId: string | null,
+    accountContext?: AccountPreferenceRequestContext,
+  ): Promise<TenantUpgradeIntentResponse> {
+    return this.request<TenantUpgradeIntentResponse>(
+      `/tenants/${tenantId}/billing/upgrade-intent`,
+      {
+        method: 'POST',
+        body: JSON.stringify(targetPlanId ? { target_plan_id: targetPlanId } : {}),
+      },
+      accountContext,
+    )
+  }
+
   async verifyTenantDomain(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<DomainVerifyResponse> {
     return this.request<DomainVerifyResponse>(`/tenants/${tenantId}/domain/verify`, {
       method: 'POST',
@@ -11068,6 +11087,83 @@ export interface TenantStats {
   trends: Record<'7' | '30' | '90', TenantTrendPoint[]>
   suppression: TenantSuppressionStats
   generated_at: string
+}
+
+export interface TenantBillingPlan {
+  plan_id: string
+  name: string
+  max_seats: number
+  tenant_status: 'active' | 'inactive'
+  status_source: 'tenant_record'
+}
+
+export interface TenantBillingSeats {
+  active: number
+  invited: number | null
+  available: number
+  used: number
+  max: number
+  utilization_percent: number
+  over_capacity: number
+  invited_available: boolean
+  invited_reason?: string | null
+  basis: 'active_and_invited' | 'active_only'
+}
+
+export interface TenantBillingInviteConversion {
+  available: boolean
+  reason?: string | null
+  minimum_cohort_size: number
+  accepted: number | null
+  invited: number | null
+  conversion_percent: number | null
+}
+
+export interface TenantBillingSubscription {
+  available: boolean
+  status: string | null
+  renewal_at: string | null
+  reason?: string | null
+  detail?: string | null
+}
+
+export interface TenantBillingUpgrade {
+  cta_visible: boolean
+  threshold_percent: number
+  threshold_seats: number
+  utilization_percent: number
+  target_plan_id: string | null
+  target_plan_name: string | null
+  cta_label: string | null
+  reason: string
+}
+
+export interface TenantBillingMapping {
+  seats: { status: string; source: string }
+  subscription: { status: string; reason: string }
+  team_seats: { status: string; reason: string; detail?: string }
+}
+
+export interface TenantBilling {
+  tenant_id: string
+  generated_at: string
+  plan: TenantBillingPlan
+  seats: TenantBillingSeats
+  invite_conversion: TenantBillingInviteConversion
+  subscription: TenantBillingSubscription
+  upgrade: TenantBillingUpgrade
+  mapping: TenantBillingMapping
+}
+
+export interface TenantUpgradeIntentResponse {
+  recorded: boolean
+  action: string
+  tenant_id: string
+  target_plan_id: string | null
+  target_plan_name: string | null
+  threshold_percent: number
+  utilization_percent: number
+  message: string
 }
 
 export interface TenantInvitationResponse {
