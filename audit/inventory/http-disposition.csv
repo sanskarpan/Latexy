@@ -1,0 +1,637 @@
+method,path,operation_id,auth_identity,disposition,http_status,request_id,evidence,reason
+POST,/account/gdpr/deletion,request_account_deletion_account_gdpr_deletion_post,free,tested,202,,auth-gdpr report,
+POST,/account/gdpr/deletion/{request_id}/cancel,cancel_account_deletion_account_gdpr_deletion__request_id__cancel_post,free,tested,200,,auth-gdpr report,
+POST,/account/gdpr/exports,create_gdpr_export_account_gdpr_exports_post,free,tested,202,,auth-gdpr report,
+GET,/account/gdpr/exports/{request_id}/download,download_gdpr_export_account_gdpr_exports__request_id__download_get,free,blocked,,,,path parameter requires a domain fixture
+GET,/account/gdpr/policy,get_gdpr_policy_account_gdpr_policy_get,free,tested,200,d3ba0947-6b81-460e-97ac-d8bcb7c4455d,live GET sweep 2026-11-27; request_id in row,
+GET,/account/gdpr/requests,list_gdpr_requests_account_gdpr_requests_get,free,tested,200,e735377b-2445-45fd-aa52-bf65617fdcdf,live GET sweep 2026-11-27; request_id in row,
+GET,/account/gdpr/requests/{request_id},get_gdpr_request_account_gdpr_requests__request_id__get,free,blocked,,,,path parameter requires a domain fixture
+GET,/admin/abuse/queue,list_abuse_queue_admin_abuse_queue_get,admin-superadmin,tested,200,c6e41d84-9b6f-4990-905a-833aa0d16a91,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/abuse/queue/scan,scan_abuse_signals_admin_abuse_queue_scan_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/abuse/queue/{item_id},get_abuse_queue_item_admin_abuse_queue__item_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/abuse/queue/{item_id}/assign,assign_abuse_queue_item_admin_abuse_queue__item_id__assign_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/abuse/queue/{item_id}/decision,decide_abuse_queue_item_admin_abuse_queue__item_id__decision_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/access-review,get_admin_access_review_admin_access_review_get,admin-superadmin,tested,200,18c3044b-734e-4f32-a257-5de0bf3ef9e5,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/access-review/attest,attest_admin_access_review_admin_access_review_attest_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/alerts,list_admin_alerts_admin_alerts_get,admin-superadmin,tested,200,0352094f-e6ea-4fbd-9be7-5bdd9f4c0f2d,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/alerts/dry-run,dry_run_admin_alerts_admin_alerts_dry_run_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+PATCH,/admin/alerts/{alert_id},update_admin_alert_admin_alerts__alert_id__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/analytics/activation,get_admin_activation_admin_analytics_activation_get,admin-superadmin,tested,200,8e44038b-4e7f-43ff-81ee-78d6712d43c9,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/activity,get_admin_activity_feed_admin_analytics_activity_get,admin-superadmin,tested,200,706cd01c-fd81-4781-bd47-2db2cc64c9de,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/ai-cost,get_admin_ai_cost_admin_analytics_ai_cost_get,admin-superadmin,tested,200,34ea2c17-3837-4df0-8f27-549405848c84,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/ai-latency-retry,get_admin_ai_latency_retry_admin_analytics_ai_latency_retry_get,admin-superadmin,tested,200,3248806d-90d8-46a6-8ce1-d46445f1f382,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/ai-usage,get_admin_ai_usage_admin_analytics_ai_usage_get,admin-superadmin,tested,200,6485f428-d090-441a-8ae9-9c1f6e69af7f,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/ats-score-distribution,get_admin_ats_score_distribution_admin_analytics_ats_score_distribution_get,admin-superadmin,tested,200,a62369b4-7344-465a-9d37-def587af323d,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/career-adoption,get_admin_career_adoption_admin_analytics_career_adoption_get,admin-superadmin,tested,200,8ea6a1e1-71f1-429d-a2c1-e2eb2eb71c54,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/collaboration,get_admin_collaboration_analytics_admin_analytics_collaboration_get,admin-superadmin,tested,200,845bfd9e-2da1-44c5-b554-c4512bd5d3e0,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/compile-errors,get_admin_compile_errors_admin_analytics_compile_errors_get,admin-superadmin,tested,200,2fc3446d-9dad-4cb0-8400-c7770ce2115b,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/compile-latency,get_admin_compile_latency_admin_analytics_compile_latency_get,admin-superadmin,tested,200,429ff5fd-af4c-43d0-9364-fcd2449f9313,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/consent,get_admin_consent_analytics_admin_analytics_consent_get,admin-superadmin,tested,200,dfd99322-03bd-4a31-9e8b-b05aae51859f,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/credential-mix,get_admin_credential_mix_admin_analytics_credential_mix_get,admin-superadmin,tested,200,45386559-77b0-4a81-bf2e-73ce3606e62f,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/daily-metrics,get_admin_daily_metrics_admin_analytics_daily_metrics_get,admin-superadmin,tested,200,304bb0ae-b218-403a-9f58-0e7f33e686b9,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/document-complexity,get_admin_document_complexity_admin_analytics_document_complexity_get,admin-superadmin,tested,200,ae6f13c4-b48f-42ce-9ff7-10ff9c05998e,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/editor-modes,get_admin_editor_modes_admin_analytics_editor_modes_get,admin-superadmin,tested,200,0c072aae-e483-41e1-95ab-157e921fa470,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/errors,get_admin_error_feed_admin_analytics_errors_get,admin-superadmin,tested,200,c1c8d00e-9f0a-4756-8ca7-2fcfdc022199,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/analytics/errors/evaluate,evaluate_admin_error_alerts_admin_analytics_errors_evaluate_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/analytics/feature-adoption,get_admin_feature_adoption_admin_analytics_feature_adoption_get,admin-superadmin,tested,200,3214458f-b4fb-4ee9-8d8d-cb118e17ce6f,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/feature-depth,get_admin_feature_depth_admin_analytics_feature_depth_get,admin-superadmin,tested,200,64b5505a-14d0-4a2c-a350-13bfb16da883,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/flag-exposure,get_admin_flag_exposure_admin_analytics_flag_exposure_get,admin-superadmin,tested,200,6e54ffdc-842e-44e7-be2b-03203a3e1ed4,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/integrations,get_admin_integrations_admin_analytics_integrations_get,admin-superadmin,tested,200,eefc9d39-66f3-45a7-bd53-6a8f3224168d,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/landing-conversion,get_admin_landing_conversion_admin_analytics_landing_conversion_get,admin-superadmin,tested,200,ab90eb4b-3281-4725-bb58-b626b85a9e9c,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/onboarding,get_admin_onboarding_analytics_admin_analytics_onboarding_get,admin-superadmin,tested,200,12783d4c-a1f7-4a51-b54f-a63f42601539,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/optimization-acceptance,get_admin_optimization_acceptance_admin_analytics_optimization_acceptance_get,admin-superadmin,tested,200,dac66015-f94b-4e40-ad91-15a3d4702b24,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/paths,get_admin_path_analysis_admin_analytics_paths_get,admin-superadmin,tested,200,e6b5a6f2-9f23-4756-bf96-ad2cf6677e79,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/plan-health,get_admin_plan_health_admin_analytics_plan_health_get,admin-superadmin,tested,200,64e768d7-a3c4-44f5-b96b-fec954b80b59,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/privacy-breakdowns,get_admin_privacy_breakdowns_admin_analytics_privacy_breakdowns_get,admin-superadmin,tested,200,c5457ddc-e996-40eb-8267-caf3bffa513e,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/retention,get_admin_retention_admin_analytics_retention_get,admin-superadmin,tested,200,1518cd71-ce7c-4391-b0d3-4df863adf07d,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/share-portfolio,get_admin_share_portfolio_admin_analytics_share_portfolio_get,admin-superadmin,tested,200,d062b136-d60b-4cd0-b249-1a22ce0d5954,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/share-portfolio/portfolios/{username},get_admin_share_portfolio_portfolio_admin_analytics_share_portfolio_portfolios__username__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+GET,/admin/analytics/share-portfolio/resumes/{resume_id},get_admin_share_portfolio_resume_admin_analytics_share_portfolio_resumes__resume_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+GET,/admin/analytics/team-seats,get_admin_team_seat_utilization_admin_analytics_team_seats_get,admin-superadmin,tested,200,014ec70c-f037-49d7-a047-2a78a15add6c,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/timeseries,get_admin_analytics_timeseries_admin_analytics_timeseries_get,admin-superadmin,tested,200,5a8f5125-fd24-4d22-a0a3-3b749f68446d,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/traffic-sources,get_admin_traffic_sources_admin_analytics_traffic_sources_get,admin-superadmin,tested,200,ddcd9eee-8166-4433-9834-ad7e3ebf809c,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/trial-attribution,get_admin_trial_attribution_admin_analytics_trial_attribution_get,admin-superadmin,tested,200,38b0d6fa-a5f5-43fd-858f-84cd2e2a158b,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/analytics/trial-health,get_admin_trial_health_admin_analytics_trial_health_get,admin-superadmin,tested,200,f9227144-58a5-413c-9759-db25eae2adc9,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/approvals,list_admin_approvals_admin_approvals_get,admin-superadmin,tested,200,e83e31bf-5f35-4bd8-9d8a-1c0cb820c95b,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/approvals,create_admin_approval_admin_approvals_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/approvals/{approval_id},get_admin_approval_admin_approvals__approval_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/approvals/{approval_id}/approve,approve_admin_approval_admin_approvals__approval_id__approve_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/approvals/{approval_id}/cancel,cancel_admin_approval_admin_approvals__approval_id__cancel_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/approvals/{approval_id}/execute,execute_admin_approval_admin_approvals__approval_id__execute_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/approvals/{approval_id}/reject,reject_admin_approval_admin_approvals__approval_id__reject_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/audit,get_admin_audit_log_admin_audit_get,admin-superadmin,tested,200,44d82337-bdec-44f1-9d2e-d232bf33dbf0,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/billing/checkout-funnel,get_admin_checkout_funnel_admin_billing_checkout_funnel_get,admin-superadmin,tested,200,e2d21efd-9b39-450e-97b2-5fd1382036bc,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/billing/dunning-recovery,get_admin_dunning_recovery_admin_billing_dunning_recovery_get,admin-superadmin,tested,200,0a622c5a-7f4c-475d-b7a0-bd300695bfa5,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/billing/reconciliation,list_admin_billing_reconciliation_admin_billing_reconciliation_get,admin-superadmin,tested,200,1ca1eb01-13dd-46e2-8d5b-382989d1d392,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/billing/reconciliation/{event_id}/acknowledge,acknowledge_admin_billing_reconciliation_admin_billing_reconciliation__event_id__acknowledge_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/billing/reconciliation/{event_id}/replay,replay_admin_billing_reconciliation_admin_billing_reconciliation__event_id__replay_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/billing/refunds,list_admin_refund_requests_admin_billing_refunds_get,admin-superadmin,tested,200,8bfd59f0-ab96-4525-ad16-ffc7aa2979f3,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/billing/refunds,create_admin_refund_request_admin_billing_refunds_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+POST,/admin/billing/refunds/{request_id}/approve,approve_admin_refund_request_admin_billing_refunds__request_id__approve_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/billing/refunds/{request_id}/execute,execute_admin_refund_request_admin_billing_refunds__request_id__execute_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/billing/refunds/{request_id}/reconcile,reconcile_admin_refund_request_admin_billing_refunds__request_id__reconcile_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/billing/refunds/{request_id}/reject,reject_admin_refund_request_admin_billing_refunds__request_id__reject_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/billing/summary,get_admin_billing_summary_admin_billing_summary_get,admin-superadmin,tested,200,6f730ff2-47bb-49b1-951a-01fafa256691,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/billing/webhooks,list_admin_billing_webhooks_admin_billing_webhooks_get,admin-superadmin,tested,200,ad47d8f0-29f4-479f-a2ed-c3becaa435e5,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/billing/webhooks/{event_id}/acknowledge,acknowledge_admin_billing_webhook_admin_billing_webhooks__event_id__acknowledge_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/billing/webhooks/{event_id}/reconcile,reconcile_admin_billing_webhook_admin_billing_webhooks__event_id__reconcile_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/billing/webhooks/{event_id}/replay,replay_admin_billing_webhook_admin_billing_webhooks__event_id__replay_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/career-graph/seed,seed_career_graph_admin_career_graph_seed_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/change-history,get_admin_change_history_admin_change_history_get,admin-superadmin,tested,200,62a48c23-8da5-424d-83cc-d46745689349,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/cohorts,list_feature_cohorts_admin_cohorts_get,admin-superadmin,tested,200,568bd250-bd83-4aea-96af-054f2eaee7b4,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/cohorts,create_feature_cohort_admin_cohorts_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+POST,/admin/cohorts/{cohort_id}/mappings,map_cohort_flag_admin_cohorts__cohort_id__mappings_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/admin/cohorts/{cohort_id}/mappings/{flag_key},unmap_cohort_flag_admin_cohorts__cohort_id__mappings__flag_key__delete,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/cohorts/{cohort_id}/sync,sync_feature_cohort_admin_cohorts__cohort_id__sync_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/content-library/adoption,get_admin_content_library_adoption_admin_content_library_adoption_get,admin-superadmin,tested,200,ae8e2765-b784-405e-bbc8-5012ffcbf2c8,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/email/health,get_admin_email_health_admin_email_health_get,admin-superadmin,tested,200,fb34d5a1-71b6-4cb3-a0e0-de7b2459b441,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/entitlements,get_entitlements_admin_entitlements_get,admin-superadmin,tested,200,11436be8-5d9b-4cae-bbf5-4332f3c8639a,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/entitlements/bulk,bulk_update_entitlements_admin_entitlements_bulk_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+PATCH,/admin/entitlements/kill-switch/{key},update_kill_switch_admin_entitlements_kill_switch__key__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/admin/entitlements/matrix,update_matrix_cell_admin_entitlements_matrix_patch,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+PATCH,/admin/entitlements/roles,update_role_matrix_cell_admin_entitlements_roles_patch,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/experiments,list_admin_experiments_admin_experiments_get,admin-superadmin,tested,200,0f6ad173-14f6-4483-b912-4881485e41f8,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/experiments,create_admin_experiment_admin_experiments_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/experiments/catalog,get_admin_experiment_catalog_admin_experiments_catalog_get,admin-superadmin,tested,200,0bb6afa3-69ad-4e5e-978e-f2d3b58fff57,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/experiments/{experiment_id},get_admin_experiment_admin_experiments__experiment_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+GET,/admin/experiments/{experiment_id}/results,get_admin_experiment_results_admin_experiments__experiment_id__results_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/experiments/{experiment_id}/revert,revert_admin_experiment_assignments_admin_experiments__experiment_id__revert_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/experiments/{experiment_id}/start,start_admin_experiment_admin_experiments__experiment_id__start_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/experiments/{experiment_id}/stop,stop_admin_experiment_admin_experiments__experiment_id__stop_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/exports,get_admin_exports_admin_exports_get,admin-superadmin,tested,200,39b08233-254a-47c7-8c5d-d9519628ce06,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/exports,create_admin_export_admin_exports_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/exports/digest,get_admin_digest_admin_exports_digest_get,admin-superadmin,tested,200,eba9243b-0f27-442b-804a-673585c31946,live GET sweep 2026-11-27; request_id in row,
+PUT,/admin/exports/digest,update_admin_digest_admin_exports_digest_put,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+POST,/admin/exports/digest/dry-run,dry_run_admin_digest_admin_exports_digest_dry_run_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/exports/download,download_admin_export_admin_exports_download_get,admin-superadmin,tested,422,e40e845b-18fa-4b57-9181-7763cc28250f,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+GET,/admin/exports/history,get_admin_export_history_admin_exports_history_get,admin-superadmin,tested,200,a37a1f8f-51e0-4c5d-a7d9-3cbfa5e5de85,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/exports/stream,stream_admin_export_admin_exports_stream_get,admin-superadmin,tested,422,5413d07d-32cc-4605-8dc2-24de037828c7,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+GET,/admin/feature-flags,get_admin_feature_flags_admin_feature_flags_get,admin-superadmin,tested,200,dfafcf76-6b65-419d-b484-0e7c2e0d6ec6,live GET sweep 2026-11-27; request_id in row,
+PATCH,/admin/feature-flags/{key},update_feature_flag_admin_feature_flags__key__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/gdpr/legal-holds,list_gdpr_legal_holds_admin_gdpr_legal_holds_get,admin-superadmin,tested,200,7ac4fd32-29b0-4922-8f8c-8302a21a51a6,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/gdpr/legal-holds,place_gdpr_legal_hold_admin_gdpr_legal_holds_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+POST,/admin/gdpr/legal-holds/{hold_id}/release,release_gdpr_legal_hold_admin_gdpr_legal_holds__hold_id__release_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/gdpr/requests,list_gdpr_requests_admin_gdpr_requests_get,admin-superadmin,tested,200,84809808-d61c-4c72-b8ed-4ab03d076f91,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/gdpr/requests/{request_id}/execute,execute_gdpr_deletion_admin_gdpr_requests__request_id__execute_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/gdpr/requests/{request_id}/review,review_gdpr_request_admin_gdpr_requests__request_id__review_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/jobs/stuck,list_admin_stuck_jobs_admin_jobs_stuck_get,admin-superadmin,tested,200,4bec7b31-55e3-4523-8bf6-5dac12f57ee1,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/jobs/{job_id}/cancel,cancel_admin_stuck_job_admin_jobs__job_id__cancel_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/jobs/{job_id}/fence,fence_admin_stuck_job_admin_jobs__job_id__fence_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/jobs/{job_id}/requeue,requeue_admin_stuck_job_admin_jobs__job_id__requeue_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/jobs/{job_id}/retry,retry_admin_stuck_job_admin_jobs__job_id__retry_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/linter/rules,get_admin_linter_rules_admin_linter_rules_get,admin-superadmin,tested,200,2c4239e3-73b9-43f6-a600-23adcaf1a23a,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/operations/artifacts/cleanup,run_artifact_cleanup_admin_operations_artifacts_cleanup_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/operations/artifacts/lifecycle,get_artifact_lifecycle_admin_operations_artifacts_lifecycle_get,admin-superadmin,tested,200,2dc70ed8-393b-4733-8961-d07c775487b4,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/operations/attention,get_admin_attention_admin_operations_attention_get,admin-superadmin,tested,200,b05d2d94-ed1b-424e-b030-739badb518bd,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/operations/health,get_admin_operations_health_admin_operations_health_get,admin-superadmin,tested,200,0da883ba-00b1-466d-bd44-4fc27a1de934,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/operations/incidents,list_admin_incidents_admin_operations_incidents_get,admin-superadmin,tested,200,756cdb57-86f1-458b-a0c1-d436ca4436ea,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/operations/incidents,create_admin_incident_admin_operations_incidents_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/operations/incidents/timeline,get_admin_incident_timeline_admin_operations_incidents_timeline_get,admin-superadmin,tested,200,fed990ca-0fe5-48cb-8fc3-79d520deed01,live GET sweep 2026-11-27; request_id in row,
+DELETE,/admin/operations/incidents/{incident_id},delete_admin_incident_admin_operations_incidents__incident_id__delete,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/operations/incidents/{incident_id},get_admin_incident_admin_operations_incidents__incident_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+PATCH,/admin/operations/incidents/{incident_id},update_admin_incident_admin_operations_incidents__incident_id__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/incidents/{incident_id}/reopen,reopen_admin_incident_admin_operations_incidents__incident_id__reopen_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/incidents/{incident_id}/resolve,resolve_admin_incident_admin_operations_incidents__incident_id__resolve_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/operations/jobs/stuck,list_admin_stuck_jobs_admin_operations_jobs_stuck_get,admin-superadmin,tested,200,0132c3fb-360b-4089-865b-a8c76a57755b,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/operations/jobs/{job_id}/cancel,cancel_admin_stuck_job_admin_operations_jobs__job_id__cancel_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/jobs/{job_id}/fence,fence_admin_stuck_job_admin_operations_jobs__job_id__fence_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/jobs/{job_id}/requeue,requeue_admin_stuck_job_admin_operations_jobs__job_id__requeue_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/jobs/{job_id}/retry,retry_admin_stuck_job_admin_operations_jobs__job_id__retry_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/operations/queues,get_admin_queue_metrics_admin_operations_queues_get,admin-superadmin,tested,200,9226e19a-2277-48de-91ca-8e05672691e3,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/operations/retention,get_retention_overview_admin_operations_retention_get,admin-superadmin,tested,200,1fe569ce-0f40-4288-8914-d5cf5e40bb0c,live GET sweep 2026-11-27; request_id in row,
+PATCH,/admin/operations/retention/{data_class},update_retention_policy_admin_operations_retention__data_class__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/retention/{data_class}/dry-run,preview_retention_class_admin_operations_retention__data_class__dry_run_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/retention/{data_class}/purge,purge_retention_class_admin_operations_retention__data_class__purge_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/operations/stuck-jobs,list_admin_stuck_jobs_admin_operations_stuck_jobs_get,admin-superadmin,tested,200,77e6f5f3-772a-454c-a2cb-921da6eb0484,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/operations/stuck-jobs/{job_id}/cancel,cancel_admin_stuck_job_admin_operations_stuck_jobs__job_id__cancel_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/stuck-jobs/{job_id}/fence,fence_admin_stuck_job_admin_operations_stuck_jobs__job_id__fence_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/stuck-jobs/{job_id}/requeue,requeue_admin_stuck_job_admin_operations_stuck_jobs__job_id__requeue_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/operations/stuck-jobs/{job_id}/retry,retry_admin_stuck_job_admin_operations_stuck_jobs__job_id__retry_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/plan-catalog,get_plan_catalog_admin_plan_catalog_get,admin-superadmin,tested,200,190d82f6-173f-4ce2-aca7-31b50ee811a9,live GET sweep 2026-11-27; request_id in row,
+PATCH,/admin/plan-catalog/{sku},update_plan_catalog_admin_plan_catalog__sku__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/admin/plan-catalog/{sku}/quotas/{dimension},update_plan_quota_admin_plan_catalog__sku__quotas__dimension__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/receipts/search,search_admin_receipts_admin_receipts_search_get,admin-superadmin,tested,422,2d580038-a342-46b1-b377-98136c9189f2,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+GET,/admin/referrals/summary,get_admin_referral_summary_admin_referrals_summary_get,admin-superadmin,tested,200,269f9c85-9cc2-45ca-ba58-97285a551032,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/revenue/coupon-student-performance,get_coupon_student_performance_admin_revenue_coupon_student_performance_get,admin-superadmin,tested,200,802fe286-b105-44d7-8d40-6c925ed6e9ea,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/saved-views,list_saved_views_admin_saved_views_get,admin-superadmin,tested,200,88dc1e69-2c46-4b5e-bf73-42fa66b2c876,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/saved-views,create_saved_view_admin_saved_views_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/saved-views/catalog,get_saved_view_catalog_admin_saved_views_catalog_get,admin-superadmin,tested,200,ef68cdf5-e9d8-487a-aec0-871cabf94e28,live GET sweep 2026-11-27; request_id in row,
+DELETE,/admin/saved-views/{view_id},delete_saved_view_admin_saved_views__view_id__delete,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/saved-views/{view_id},get_saved_view_admin_saved_views__view_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+PATCH,/admin/saved-views/{view_id},update_saved_view_admin_saved_views__view_id__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/segments,list_segments_admin_segments_get,admin-superadmin,tested,200,4d8906ef-ab1b-4952-b7b5-63610b7319b7,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/segments,create_segment_admin_segments_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/segments/fields,get_segment_fields_admin_segments_fields_get,admin-superadmin,tested,200,024bd006-9268-4965-84ad-4c80b316732d,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/segments/preview,preview_segment_definition_admin_segments_preview_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+DELETE,/admin/segments/{segment_id},delete_segment_admin_segments__segment_id__delete,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/segments/{segment_id},get_segment_admin_segments__segment_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+PATCH,/admin/segments/{segment_id},update_segment_admin_segments__segment_id__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/segments/{segment_id}/preview,preview_saved_segment_admin_segments__segment_id__preview_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/snippets/seed,seed_official_snippets_admin_snippets_seed_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/subscriptions/analytics,get_admin_subscription_analytics_admin_subscriptions_analytics_get,admin-superadmin,tested,200,9864f4e4-5484-4cbc-b339-695e9e7f3cb5,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/templates/health,get_admin_template_health_admin_templates_health_get,admin-superadmin,tested,200,804432fb-044f-4ed2-afc7-d5b1cfaa4065,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/templates/performance,get_admin_template_performance_admin_templates_performance_get,admin-superadmin,tested,200,6c4ff09a-772c-4a15-99e3-8fa23c8b33ed,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/templates/{template_id}/health/retry,retry_admin_template_health_admin_templates__template_id__health_retry_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/users,list_users_admin_users_get,admin-superadmin,tested,200,3bc5ed18-bded-4fc9-b650-dd79892f8d6b,live GET sweep 2026-11-27; request_id in row,
+GET,/admin/users/{user_id}/360,get_admin_user_360_admin_users__user_id__360_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/users/{user_id}/api-keys/revoke,revoke_admin_user_api_keys_admin_users__user_id__api_keys_revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/byok-keys/{key_id}/revoke,revoke_admin_user_byok_key_admin_users__user_id__byok_keys__key_id__revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/developer-keys/{key_id}/revoke,revoke_admin_user_developer_key_admin_users__user_id__developer_keys__key_id__revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/features/grant,grant_admin_user_feature_admin_users__user_id__features_grant_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/features/revoke,revoke_admin_user_feature_admin_users__user_id__features_revoke_post,admin-superadmin,tested,200,04a6938e-ac7b-4a55-bd92-6f5c28d9a9c9,reliability evidence (see audit/plans|events),
+GET,/admin/users/{user_id}/notes,list_admin_user_notes_admin_users__user_id__notes_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/users/{user_id}/notes,create_admin_user_note_admin_users__user_id__notes_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/admin/users/{user_id}/notes/{note_id},delete_admin_user_note_admin_users__user_id__notes__note_id__delete,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/admin/users/{user_id}/notes/{note_id},update_admin_user_note_admin_users__user_id__notes__note_id__patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/passkeys/revoke,revoke_admin_user_passkeys_admin_users__user_id__passkeys_revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/passkeys/{passkey_id}/revoke,revoke_admin_user_passkey_admin_users__user_id__passkeys__passkey_id__revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/users/{user_id}/payments/{payment_id}/receipt,get_admin_payment_receipt_admin_users__user_id__payments__payment_id__receipt_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/users/{user_id}/pii/reveal,reveal_admin_user_pii_legacy_admin_users__user_id__pii_reveal_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/plan,change_admin_user_plan_admin_users__user_id__plan_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/quota/reset,reset_admin_user_quota_admin_users__user_id__quota_reset_post,admin-superadmin,tested,200,97a3ab13-4433-425f-9c1f-e538fabc1f34,reliability evidence (see audit/plans|events),
+POST,/admin/users/{user_id}/reveal-pii,reveal_admin_user_pii_admin_users__user_id__reveal_pii_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/admin/users/{user_id}/role,update_user_role_admin_users__user_id__role_patch,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/sessions/revoke,revoke_admin_user_sessions_admin_users__user_id__sessions_revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/sessions/{session_id}/revoke,revoke_admin_user_session_admin_users__user_id__sessions__session_id__revoke_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/users/{user_id}/support-timeline,get_admin_user_support_timeline_admin_users__user_id__support_timeline_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/users/{user_id}/support/password-reset,send_admin_password_reset_admin_users__user_id__support_password_reset_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/support/resend-receipt,resend_admin_payment_receipt_admin_users__user_id__support_resend_receipt_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/support/resend-verification,resend_admin_verification_email_admin_users__user_id__support_resend_verification_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/admin/users/{user_id}/tags,list_admin_user_tags_admin_users__user_id__tags_get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/users/{user_id}/tags,create_admin_user_tag_admin_users__user_id__tags_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/admin/users/{user_id}/tags/{tag_id},remove_admin_user_tag_admin_users__user_id__tags__tag_id__delete,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/trial/eligibility,set_admin_user_trial_eligibility_admin_users__user_id__trial_eligibility_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/trial/extend,extend_admin_user_trial_admin_users__user_id__trial_extend_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/users/{user_id}/trial/reset,reset_admin_user_trial_admin_users__user_id__trial_reset_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/admin/view-as/requests,create_admin_view_as_request_admin_view_as_requests_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/view-as/sessions,list_admin_view_as_sessions_admin_view_as_sessions_get,admin-superadmin,tested,200,9d23f8ac-0432-453a-840e-27a1494a2301,live GET sweep 2026-11-27; request_id in row,
+POST,/admin/view-as/sessions,start_admin_view_as_session_admin_view_as_sessions_post,admin-superadmin,blocked,,,,admin mutation/global-config/destructive action not exercised under audit safety rules
+GET,/admin/view-as/sessions/{session_id},get_admin_view_as_snapshot_admin_view_as_sessions__session_id__get,admin-superadmin,blocked,,,,path parameter requires a domain fixture
+POST,/admin/view-as/sessions/{session_id}/end,end_admin_view_as_session_admin_view_as_sessions__session_id__end_post,admin-superadmin,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/ai/age-analysis,age_analysis_ai_age_analysis_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/ai/bullet-variants,list_bullet_variants_ai_bullet_variants_get,pro-monthly,tested,422,183f67bb-8e5f-46d1-865e-64e13cad6656,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+POST,/ai/bullet-variants,generate_bullet_variants_ai_bullet_variants_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/ai/bullet-variants/{variant_set_id},delete_bullet_variant_set_ai_bullet_variants__variant_set_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/ai/confidence-score,get_confidence_score_ai_confidence_score_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/document-assistant,document_assistant_ai_document_assistant_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/explain-error,explain_latex_error_ai_explain_error_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/format-contacts,format_contacts_ai_format_contacts_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-bullets,generate_bullets_ai_generate_bullets_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-latex,generate_latex_ai_generate_latex_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-math,generate_math_from_text_ai_generate_math_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-math-image,generate_math_from_image_ai_generate_math_image_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-publications,generate_publications_ai_generate_publications_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-summary,generate_summary_ai_generate_summary_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-table,generate_table_from_text_ai_generate_table_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/generate-table-image,generate_table_from_image_ai_generate_table_image_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/ai/personas,list_personas_ai_personas_get,pro-monthly,tested,200,9fd8ba98-b4e0-4d35-9cff-79d4b292ba78,live GET sweep 2026-11-27; request_id in row,
+POST,/ai/phrase-library,generate_phrase_library_ai_phrase_library_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/proofread,proofread_resume_ai_proofread_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/reorder-sections,reorder_sections_endpoint_ai_reorder_sections_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/rewrite,rewrite_text_ai_rewrite_post,pro-monthly,tested,200,d3131aac-bb6a-4e4b-a399-177df3338c13,free-basic evidence (see audit/plans|events),
+POST,/ai/salary-estimate,salary_estimate_ai_salary_estimate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/spell-check,spell_check_ai_spell_check_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/standardize-dates,standardize_dates_ai_standardize_dates_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/synonyms,suggest_synonyms_ai_synonyms_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ai/translate,translate_resume_ai_translate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/analytics/admin/overview,get_admin_analytics_overview_analytics_admin_overview_get,admin-superadmin,tested,200,7698d74c-5bdf-4b01-9ea4-180af6124190,live recheck with admin token 2026-11-27; pro returns 403,"admin-only; pro 403, admin 200"
+POST,/analytics/cohorts/evaluate,evaluate_cohort_flags_analytics_cohorts_evaluate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/consent,record_consent_event_analytics_consent_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/analytics/conversion-funnel,get_conversion_funnel_analytics_conversion_funnel_get,pro-monthly,tested,200,a999fbf5-ab09-4c49-a577-d9aee9f92163,live GET sweep 2026-11-27; request_id in row,rechecked with correct identity
+GET,/analytics/dashboard,get_analytics_dashboard_analytics_dashboard_get,pro-monthly,tested,200,bb4a4225-4b77-4c68-8dc4-006f693ce9c5,live GET sweep 2026-11-27; request_id in row,rechecked with correct identity
+POST,/analytics/experiments/assignment,record_experiment_assignment_analytics_experiments_assignment_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/flag-exposure,ingest_flag_exposure_analytics_flag_exposure_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/analytics/me,get_my_analytics_analytics_me_get,pro-monthly,tested,200,2fc0043a-e73a-40ee-99c6-29070b58f0f2,live GET sweep 2026-11-27; request_id in row,
+GET,/analytics/me/timeseries,get_my_analytics_timeseries_analytics_me_timeseries_get,pro-monthly,tested,200,f4fe4f33-1fac-4ace-9a38-bf5f418ce3a1,live GET sweep 2026-11-27; request_id in row,
+POST,/analytics/onboarding/events,ingest_onboarding_event_analytics_onboarding_events_post,pro-monthly,tested,200,,auth-gdpr report,
+POST,/analytics/signup/milestones,record_signup_milestones_analytics_signup_milestones_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/signup/oauth-failure,record_oauth_failure_analytics_signup_oauth_failure_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/analytics/signup/started,record_signup_started_analytics_signup_started_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/analytics/system,get_system_analytics_analytics_system_get,pro-monthly,tested,200,cb37d019-2139-4a7f-9bec-9dbcdc273661,live GET sweep 2026-11-27; request_id in row,rechecked with correct identity
+POST,/analytics/track,track_event_analytics_track_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/track/compilation,track_compilation_analytics_track_compilation_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/track/feature-usage,track_feature_usage_analytics_track_feature_usage_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/track/optimization,track_optimization_analytics_track_optimization_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/track/page-view,track_page_view_analytics_track_page_view_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/traffic/claim,claim_traffic_attribution_analytics_traffic_claim_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/traffic/landing,record_traffic_landing_analytics_traffic_landing_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/analytics/trial/claim,claim_trial_attribution_endpoint_analytics_trial_claim_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/analytics/user/{user_id},get_user_analytics_analytics_user__user_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/api/v1/ats/score,ats_score_v1_api_v1_ats_score_post,pro-monthly,tested,200,5503e029-d490-4a06-9049-11b5fafd3b1b,pro-byok report,
+POST,/api/v1/compile,compile_v1_api_v1_compile_post,pro-monthly,tested,200,,pro-byok report,
+GET,/api/v1/jobs/{job_id},get_job_v1_api_v1_jobs__job_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/api/v1/jobs/{job_id}/pdf,download_job_pdf_v1_api_v1_jobs__job_id__pdf_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/api/v1/optimize,optimize_v1_api_v1_optimize_post,pro-monthly,tested,200,,pro-byok report,
+POST,/apply/detect,detect_platform_apply_detect_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/apply/greenhouse,apply_greenhouse_apply_greenhouse_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/apply/greenhouse/preview,preview_greenhouse_job_apply_greenhouse_preview_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/apply/lever,apply_lever_apply_lever_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/apply/lever/preview,preview_lever_job_apply_lever_preview_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/apply/submissions,list_submissions_apply_submissions_get,pro-monthly,tested,200,24afba0f-6c5b-4c70-ae2a-ddab579f3cd4,live GET sweep 2026-11-27; request_id in row,
+GET,/apply/submissions/{submission_id},get_submission_apply_submissions__submission_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/ats/analyze-job-description,analyze_job_description_ats_ats_analyze_job_description_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/ats/benchmark,get_ats_benchmark_ats_benchmark_get,pro-monthly,tested,422,2dc08ebb-0a02-40d4-b4a0-389e53e5e035,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+POST,/ats/deep-analyze,deep_analyze_resume_ats_deep_analyze_post,pro-monthly,tested,200,1284439f-1fb3-4abc-9f1a-f750f4f91779,audit-lead report,
+GET,/ats/industry-keywords/{industry},get_industry_keywords_ats_industry_keywords__industry__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/ats/industry-profiles,get_industry_profiles_ats_industry_profiles_get,pro-monthly,tested,200,c5066df9-34d6-479f-8dad-388a5e7cd1bc,live GET sweep 2026-11-27; request_id in row,
+POST,/ats/keyword-density,keyword_density_ats_keyword_density_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/ats/locale-profiles,get_locale_profiles_ats_locale_profiles_get,pro-monthly,tested,200,09b14c5c-bf6c-4f87-a4c4-dff735cfd889,live GET sweep 2026-11-27; request_id in row,
+POST,/ats/quick-score,quick_score_ats_ats_quick_score_post,pro-monthly,tested,200,2d499f06-e838-47b9-83c5-9f215c19e598,free-basic evidence (see audit/plans|events),
+POST,/ats/recommendations,get_ats_recommendations_ats_recommendations_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ats/score,score_resume_ats_ats_score_post,pro-monthly,tested,200,57219ebd-50ec-4f9c-b29f-9d3abc95a106,free-basic evidence (see audit/plans|events),
+POST,/ats/semantic-match,semantic_match_resumes_ats_semantic_match_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/ats/simulate,simulate_ats_ats_simulate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/ats/simulate/profiles,list_ats_profiles_ats_simulate_profiles_get,pro-monthly,tested,200,f5d3e43b-428a-46c8-9523-a8322344d63f,live GET sweep 2026-11-27; request_id in row,
+GET,/ats/supported-industries,get_supported_industries_ats_supported_industries_get,pro-monthly,tested,200,5306e0ab-78d9-418f-9953-fdc7b6e481ca,live GET sweep 2026-11-27; request_id in row,
+POST,/billing/dodo/subscription/cancel,cancel_subscription_billing_dodo_subscription_cancel_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+POST,/billing/dodo/subscription/create,create_subscription_billing_dodo_subscription_create_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+POST,/billing/dodo/subscription/reconcile,reconcile_subscription_billing_dodo_subscription_reconcile_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+GET,/billing/dodo/subscription/student/verify/{token},verify_student_subscription_billing_dodo_subscription_student_verify__token__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/billing/dodo/webhook,dodo_webhook_billing_dodo_webhook_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+POST,/billing/validate-coupon,validate_coupon_billing_validate_coupon_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+POST,/billing/webhook,dodo_webhook_billing_webhook_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+GET,/byok/api-keys,get_user_api_keys_byok_api_keys_get,free,tested,200,8e1cc7f3-4c5b-49f2-ab2e-a7b7747d949b,live GET sweep 2026-11-27; request_id in row,
+POST,/byok/api-keys,add_api_key_byok_api_keys_post,free,tested,500/200,33537266-99d5-4f47-91dd-0c0a876fd9ec,pro-byok report,
+DELETE,/byok/api-keys/{key_id},delete_api_key_byok_api_keys__key_id__delete,free,tested,200,630e7c12-e297-4180-9867-9a4d0ceae682,pro-byok report,
+GET,/byok/capabilities/{provider},get_provider_capabilities_byok_capabilities__provider__get,free,blocked,,,,path parameter requires a domain fixture
+POST,/byok/generate,generate_with_provider_byok_generate_post,free,tested,200/400,d3c97528,pro-byok report,
+POST,/byok/load-providers,load_user_providers_byok_load_providers_post,free,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/byok/models/{provider},get_provider_models_byok_models__provider__get,free,blocked,,,,path parameter requires a domain fixture
+GET,/byok/providers,get_supported_providers_byok_providers_get,free,tested,200,7e64ee98-205a-4eaf-89c4-eb9427119ef4,live GET sweep 2026-11-27; request_id in row,
+GET,/byok/system/health,get_system_health_byok_system_health_get,free,tested,200,2800e12f-b1da-4748-a29f-82212a6ae055,live GET sweep 2026-11-27; request_id in row,rechecked with correct identity
+POST,/byok/test/{provider},test_provider_connection_byok_test__provider__post,free,tested,200,2476b989-3a2d-404d-a47f-710a2e8b778f,pro-byok report,
+GET,/byok/usage-stats,get_usage_stats_byok_usage_stats_get,free,tested,200,6b359563-8799-4319-ba06-b36ace291f1e,live GET sweep 2026-11-27; request_id in row,
+POST,/byok/validate,validate_api_key_byok_validate_post,free,tested,200,1bde83b3-9938-43be-b777-e6ae14b89d07,pro-byok report,
+GET,/career/analyses/{resume_id},list_career_analyses_career_analyses__resume_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/career/analysis/{analysis_id},get_career_analysis_career_analysis__analysis_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/career/analyze,analyze_career_path_career_analyze_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/career/roles,search_career_roles_career_roles_get,pro-monthly,tested,200,a1e66ff1-e0bd-42b6-9d78-d8a04419a9d5,live GET sweep 2026-11-27; request_id in row,
+GET,/career/skills,search_esco_skills_career_skills_get,pro-monthly,tested,422,76280b70-26a8-45d2-a420-d45f221e6a66,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+POST,/compile,compile_latex_endpoint_compile_post,pro-monthly,tested,200,233fbc81-7a79-4853-b6a7-6b0bd1cf66dc,free-basic evidence (see audit/plans|events),
+GET,/config/entitlements,get_entitlements_for_user_config_entitlements_get,pro-monthly,tested,200,f53a8388-3dae-4ce1-a849-13810fbf3080,live GET sweep 2026-11-27; request_id in row,
+GET,/config/feature-flags,get_public_feature_flags_config_feature_flags_get,pro-monthly,tested,200,b5b372fe-8a32-46af-b950-55b714e1cae1,live GET sweep 2026-11-27; request_id in row,
+GET,/cover-letters/,list_cover_letters_cover_letters__get,pro-monthly,tested,200,2959866f-8089-4086-98cd-781ad1f37e8f,live GET sweep 2026-11-27; request_id in row,
+POST,/cover-letters/generate,generate_cover_letter_cover_letters_generate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/cover-letters/resume/{resume_id},list_resume_cover_letters_cover_letters_resume__resume_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/cover-letters/stats,get_cover_letter_stats_cover_letters_stats_get,pro-monthly,tested,200,77ea577f-be23-45a0-9780-562d1f688e6a,live GET sweep 2026-11-27; request_id in row,
+DELETE,/cover-letters/{cover_letter_id},delete_cover_letter_cover_letters__cover_letter_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/cover-letters/{cover_letter_id},get_cover_letter_cover_letters__cover_letter_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PUT,/cover-letters/{cover_letter_id},update_cover_letter_cover_letters__cover_letter_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/developer/keys,list_developer_keys_developer_keys_get,free,tested,200,cbd36d79-8230-464b-b9e1-3a3020b52694,live GET sweep 2026-11-27; request_id in row,
+POST,/developer/keys,create_developer_key_developer_keys_post,free,tested,201,3485ae6d-d3f3-4b96-b27f-006e2309c4f1,pro-byok report,
+DELETE,/developer/keys/{key_id},revoke_developer_key_developer_keys__key_id__delete,free,tested,204,c254b3c4-873a-4bce-af4d-3956e6975830,pro-byok report,
+PATCH,/developer/keys/{key_id},rename_developer_key_developer_keys__key_id__patch,free,tested,200,40a0376c-9ad6-4f05-95a8-01cd2e952a4c,pro-byok report,
+GET,/developer/usage,get_developer_usage_developer_usage_get,free,tested,200,84988953-2bad-4845-b643-ec3d5bd35c74,live GET sweep 2026-11-27; request_id in row,
+GET,/download/{job_id},download_pdf_download__job_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/download/{job_id}/preview/{artifact_id},preview_pdf_download__job_id__preview__artifact_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/download/{job_id}/preview/{artifact_id}/geometry,preview_geometry_download__job_id__preview__artifact_id__geometry_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/download/{job_id}/preview/{artifact_id}/synctex,preview_synctex_download__job_id__preview__artifact_id__synctex_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/download/{job_id}/synctex,download_synctex_download__job_id__synctex_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/dropbox/callback,dropbox_callback_dropbox_callback_get,pro-monthly,tested,200,,live GET sweep 2026-11-27; request_id in row,
+POST,/dropbox/complete,dropbox_complete_dropbox_complete_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/dropbox/connect,dropbox_connect_dropbox_connect_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+DELETE,/dropbox/disconnect,dropbox_disconnect_dropbox_disconnect_delete,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/dropbox/resumes/{resume_id}/disable,disable_dropbox_sync_dropbox_resumes__resume_id__disable_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/dropbox/resumes/{resume_id}/enable,enable_dropbox_sync_dropbox_resumes__resume_id__enable_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/dropbox/resumes/{resume_id}/pull,pull_from_dropbox_dropbox_resumes__resume_id__pull_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/dropbox/resumes/{resume_id}/push,push_to_dropbox_dropbox_resumes__resume_id__push_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/dropbox/resumes/{resume_id}/status,get_resume_dropbox_status_dropbox_resumes__resume_id__status_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/dropbox/status,dropbox_status_dropbox_status_get,pro-monthly,tested,200,fa4afa1d-e7fc-4b27-a318-4a58619c2ed9,live GET sweep 2026-11-27; request_id in row,
+POST,/email/webhooks/resend,resend_email_webhook_email_webhooks_resend_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+GET,/export/builder/v1/{resume_id}/canva,export_canva_export_builder_v1__resume_id__canva_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/export/builder/v1/{resume_id}/figma,export_figma_export_builder_v1__resume_id__figma_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/export/builder/v1/{resume_id}/{fmt},export_resume_export_builder_v1__resume_id___fmt__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/export/content/{fmt},export_content_export_content__fmt__post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/export/formats,list_export_formats_export_formats_get,pro-monthly,tested,200,b36f1c7c-c3c7-4b72-af2c-11b1dc92c9f4,live GET sweep 2026-11-27; request_id in row,
+GET,/export/{resume_id}/canva,export_canva_export__resume_id__canva_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/export/{resume_id}/email,email_compiled_document_export__resume_id__email_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/export/{resume_id}/email/retry,retry_email_compiled_document_export__resume_id__email_retry_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/export/{resume_id}/email/status,email_compiled_document_status_export__resume_id__email_status_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/export/{resume_id}/figma,export_figma_export__resume_id__figma_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/export/{resume_id}/{fmt},export_resume_export__resume_id___fmt__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/formats/detect,detect_file_format_formats_detect_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/formats/info/{format_name},get_format_info_formats_info__format_name__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/formats/parse,parse_for_preview_formats_parse_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/formats/supported,get_supported_formats_formats_supported_get,pro-monthly,tested,200,bb613e48-8564-4ef2-a81c-11f828f089b7,live GET sweep 2026-11-27; request_id in row,
+POST,/formats/upload,upload_for_conversion_formats_upload_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/formats/validate,validate_file_format_formats_validate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/github/callback,github_callback_github_callback_get,pro-monthly,tested,200,,live GET sweep 2026-11-27; request_id in row,
+POST,/github/complete,github_complete_github_complete_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/github/connect,github_connect_github_connect_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+DELETE,/github/disconnect,github_disconnect_github_disconnect_delete,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/github/import-projects,import_github_projects_github_import_projects_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+GET,/github/import-projects/{job_id},get_github_import_result_github_import_projects__job_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/github/resumes/{resume_id}/disable,disable_github_sync_github_resumes__resume_id__disable_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/github/resumes/{resume_id}/enable,enable_github_sync_github_resumes__resume_id__enable_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/github/resumes/{resume_id}/pull,pull_from_github_github_resumes__resume_id__pull_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/github/resumes/{resume_id}/push,push_to_github_github_resumes__resume_id__push_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/github/resumes/{resume_id}/status,get_resume_github_status_github_resumes__resume_id__status_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/github/status,github_status_github_status_get,pro-monthly,tested,200,8c08f956-d8de-4516-b333-1efbf06c31e0,live GET sweep 2026-11-27; request_id in row,
+GET,/google-drive/callback,google_drive_callback_google_drive_callback_get,pro-monthly,tested,200,,live GET sweep 2026-11-27; request_id in row,
+POST,/google-drive/complete,google_drive_complete_google_drive_complete_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/google-drive/connect,google_drive_connect_google_drive_connect_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/google-drive/disconnect,google_drive_disconnect_google_drive_disconnect_delete,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/google-drive/resumes/{resume_id}/export,export_resume_to_google_drive_google_drive_resumes__resume_id__export_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/google-drive/status,google_drive_status_google_drive_status_get,pro-monthly,tested,200,efd77480-49e5-4e4c-9202-4914af0ad4ee,live GET sweep 2026-11-27; request_id in row,
+GET,/health,health_check_health_get,anonymous,tested,200,6bfafcfc-cb1a-4183-8e19-1f4ebedc5a50,live GET sweep 2026-11-27; request_id in row,
+POST,/interview-prep/generate,generate_interview_prep_interview_prep_generate_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/interview-prep/{prep_id},delete_interview_prep_interview_prep__prep_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/interview-prep/{prep_id},get_interview_prep_interview_prep__prep_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/interview-prep/{prep_id}/simulate,evaluate_interview_simulation_interview_prep__prep_id__simulate_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/jobs/,list_jobs_jobs__get,pro-monthly,tested,200,837005be-51d8-4ea5-872f-9ae1ecd64706,live GET sweep 2026-11-27; request_id in row,
+POST,/jobs/batch,create_batch_tailor_jobs_batch_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/jobs/batch/{batch_id},get_batch_status_jobs_batch__batch_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/jobs/compile-watermarked,compile_watermarked_jobs_compile_watermarked_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/jobs/health,jobs_health_jobs_health_get,anonymous,tested,200,a444762e-6e18-4c18-aedd-7f5d8146f096,live GET sweep 2026-11-27; request_id in row,
+POST,/jobs/submit,submit_job_jobs_submit_post,pro-monthly,tested,200,d1648554-5083-4cd1-a9d5-a2dde55712d8,free-basic evidence (see audit/plans|events),
+POST,/jobs/system/cleanup,trigger_cleanup_jobs_system_cleanup_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/jobs/{job_id},cancel_job_jobs__job_id__delete,pro-monthly,tested,200,4cf55738-2ed1-4a38-85c0-c608bba7230b,reliability evidence (see audit/plans|events),
+GET,/jobs/{job_id}/result,get_job_result_jobs__job_id__result_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/jobs/{job_id}/state,get_job_state_jobs__job_id__state_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/jobs/{job_id}/stream,get_job_stream_jobs__job_id__stream_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/logs/{job_id},get_compilation_logs_logs__job_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/macros,list_macros_macros_get,pro-monthly,tested,200,b59d3060-8c38-48fd-989e-28adec78de7a,live GET sweep 2026-11-27; request_id in row,
+POST,/macros,create_macro_macros_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/macros/{macro_id},delete_macro_macros__macro_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/macros/{macro_id},update_macro_macros__macro_id__patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/macros/{macro_id}/execute,execute_macro_macros__macro_id__execute_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/me,get_me_me_get,free,tested,200,15e4935a-ea64-4e4c-b618-d4d4cc2898fb,live GET sweep 2026-11-27; request_id in row,
+PATCH,/me/preferences,update_me_preferences_me_preferences_patch,free,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/mendeley/callback,mendeley_callback_mendeley_callback_get,free,tested,200,,live GET sweep 2026-11-27; request_id in row,
+POST,/mendeley/complete,mendeley_complete_mendeley_complete_post,free,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/mendeley/connect,mendeley_connect_mendeley_connect_post,free,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+DELETE,/mendeley/disconnect,mendeley_disconnect_mendeley_disconnect_delete,free,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/mendeley/import,mendeley_import_mendeley_import_post,free,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+GET,/mendeley/status,mendeley_status_mendeley_status_get,free,tested,200,de807e14-e5b8-4a95-83c0-ef7ca241f62c,live GET sweep 2026-11-27; request_id in row,
+POST,/optimize,optimize_resume_optimize_post,pro-monthly,tested,200,7532d0f1-bca5-432f-9237-60152e3f3151,free-basic evidence (see audit/plans|events),
+POST,/optimize-and-compile,optimize_and_compile_resume_optimize_and_compile_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/optimize/apply-changes,apply_changes_endpoint_optimize_apply_changes_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/optimize/segment-changes,segment_changes_endpoint_optimize_segment_changes_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/outreach/drafts,generate_outreach_draft_outreach_drafts_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/portfolio/analytics/claim-signup,claim_portfolio_signup_attribution_portfolio_analytics_claim_signup_post,anonymous,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/portfolio/check-username,check_username_portfolio_check_username_get,anonymous,tested,422,8a110ee7-6102-4f81-b612-62fa4c80452c,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+GET,/portfolio/resolve-domain,resolve_domain_portfolio_resolve_domain_get,anonymous,tested,422,d0a4419e-8f3b-4be8-ac27-20fb87cd0ff0,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+POST,/portfolio/setup,setup_portfolio_portfolio_setup_post,anonymous,tested,200,9c078958-1c32-4171-b629-445b52cf823d,free-basic evidence (see audit/plans|events),
+POST,/portfolio/verify-domain,verify_domain_portfolio_verify_domain_post,anonymous,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/portfolio/{username},get_portfolio_portfolio__username__get,anonymous,blocked,,,,path parameter requires a domain fixture
+POST,/portfolio/{username}/analytics/contact,record_portfolio_contact_portfolio__username__analytics_contact_post,anonymous,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/portfolio/{username}/analytics/view,record_portfolio_view_portfolio__username__analytics_view_post,anonymous,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/portfolio/{username}/contact,contact_portfolio_owner_portfolio__username__contact_post,anonymous,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/public/compile,compile_latex_anonymous_public_compile_post,anonymous,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/public/engine/capabilities,engine_capabilities_public_engine_capabilities_get,anonymous,tested,200,449cc3bf-c2e5-43a5-8792-813fceb8fc53,live GET sweep 2026-11-27; request_id in row,
+POST,/public/engine/document,project_guest_public_engine_document_post,anonymous,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/public/engine/document/patch,patch_guest_public_engine_document_patch_post,anonymous,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/public/track-usage,track_usage_public_track_usage_post,anonymous,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/public/trial-status,get_trial_status_public_trial_status_get,anonymous,tested,422,07d17fc7-9704-44e0-8211-4d2603541e7d,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+POST,/references/detect,detect_references_references_detect_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/references/fetch,fetch_references_references_fetch_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/references/fetch-orcid,fetch_orcid_publications_references_fetch_orcid_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/references/verify,verify_citations_references_verify_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/referral/claim,claim_referral_referral_claim_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/referral/status,referral_status_referral_status_get,pro-monthly,tested,200,71081966-03ca-4f8f-b26d-b794c65f7ced,live GET sweep 2026-11-27; request_id in row,
+GET,/resumes/,list_resumes_resumes__get,pro-monthly,tested,200,b9196e36-db3f-4609-ae43-45211d6074ea,live GET sweep 2026-11-27; request_id in row,
+POST,/resumes/,create_resume_resumes__post,pro-monthly,tested,201,444b9d17-f979-489d-9eae-0fbd7438b16a,free-basic evidence (see audit/plans|events),
+POST,/resumes/builder,create_builder_resume_resumes_builder_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/resumes/builder/capabilities,get_builder_capabilities_resumes_builder_capabilities_get,pro-monthly,tested,200,e9e78c3e-75ea-43c2-96e0-659e43dda4bb,live GET sweep 2026-11-27; request_id in row,
+POST,/resumes/builder/seed-upload,seed_builder_from_upload_resumes_builder_seed_upload_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/resumes/builder/templates,list_builder_templates_resumes_builder_templates_get,pro-monthly,tested,200,b3ce560d-6a29-4ba4-a47e-bd757808c8d1,live GET sweep 2026-11-27; request_id in row,
+POST,/resumes/builder/v1,create_builder_resume_resumes_builder_v1_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/resumes/builder/v1/seed-upload,seed_builder_from_upload_resumes_builder_v1_seed_upload_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/resumes/engine/providers,engine_providers_resumes_engine_providers_get,pro-monthly,tested,200,7d13b027-9df6-40fa-bf91-40dab7ab86ef,live GET sweep 2026-11-27; request_id in row,
+GET,/resumes/error-history,get_error_history_resumes_error_history_get,pro-monthly,tested,200,f28d8cfb-9868-4db3-8e50-9d56c8cca049,live GET sweep 2026-11-27; request_id in row,
+GET,/resumes/export/bulk,bulk_export_resumes_export_bulk_get,pro-monthly,tested,200,9d1580aa-735a-4003-bbea-80554502327a,live GET sweep 2026-11-27; request_id in row,
+POST,/resumes/imports/pdf,import_pdf_resumes_imports_pdf_post,pro-monthly,tested,201,02ecadca-a58f-42d1-a21b-665d8ce66b4c,free-basic evidence (see audit/plans|events),
+DELETE,/resumes/imports/{import_id},discard_import_resumes_imports__import_id__delete,pro-monthly,tested,404,7d2c62ad-b640-4181-a409-4870d0cd91f0,free-basic evidence (see audit/plans|events),
+GET,/resumes/imports/{import_id},get_import_resumes_imports__import_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/imports/{import_id}/adapt,adapt_import_resumes_imports__import_id__adapt_post,pro-monthly,tested,200,51da9ac9-ad31-4749-a14a-4db6c1c6ad12,free-basic evidence (see audit/plans|events),
+GET,/resumes/imports/{import_id}/original,original_pdf_resumes_imports__import_id__original_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/merge,merge_resumes_resumes_merge_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/resumes/search,search_resumes_resumes_search_get,pro-monthly,tested,422,f8920e7a-1ffc-4e35-b312-33013c5c0bdb,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+GET,/resumes/stats,get_resume_stats_resumes_stats_get,pro-monthly,tested,200,a57cd739-5efb-4671-9945-03b647785893,live GET sweep 2026-11-27; request_id in row,
+DELETE,/resumes/{resume_id},delete_resume_resumes__resume_id__delete,pro-monthly,tested,204,3021aed9-12c8-4a5f-99f9-5afba64e2abb,free-basic evidence (see audit/plans|events),
+GET,/resumes/{resume_id},get_resume_resumes__resume_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PUT,/resumes/{resume_id},update_resume_resumes__resume_id__put,pro-monthly,tested,428,5492ce37-72b4-457b-ac5f-3c9869a7cfb6,free-basic evidence (see audit/plans|events),
+POST,/resumes/{resume_id}/academic-cv-convert,convert_academic_cv_resumes__resume_id__academic_cv_convert_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/academic-cv-report,get_academic_cv_report_resumes__resume_id__academic_cv_report_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/resumes/{resume_id}/analytics,get_resume_analytics_resumes__resume_id__analytics_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/archive,archive_resume_resumes__resume_id__archive_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/builder,get_builder_resume_resumes__resume_id__builder_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/builder,update_builder_resume_resumes__resume_id__builder_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/builder/v1,get_builder_resume_resumes__resume_id__builder_v1_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/builder/v1,update_builder_resume_v1_resumes__resume_id__builder_v1_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/checkpoints,list_checkpoints_resumes__resume_id__checkpoints_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/{resume_id}/checkpoints,create_checkpoint_resumes__resume_id__checkpoints_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/resumes/{resume_id}/checkpoints/{checkpoint_id},delete_checkpoint_resumes__resume_id__checkpoints__checkpoint_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/checkpoints/{checkpoint_id}/content,get_checkpoint_content_resumes__resume_id__checkpoints__checkpoint_id__content_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/resumes/{resume_id}/collaborators,list_collaborators_resumes__resume_id__collaborators_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/{resume_id}/collaborators,invite_collaborator_resumes__resume_id__collaborators_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/resumes/{resume_id}/collaborators/{collab_user_id},remove_collaborator_resumes__resume_id__collaborators__collab_user_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/resumes/{resume_id}/collaborators/{collab_user_id},update_collaborator_role_resumes__resume_id__collaborators__collab_user_id__patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/comments,list_comments_resumes__resume_id__comments_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/{resume_id}/comments,add_comment_resumes__resume_id__comments_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/comments/participants,list_comment_participants_resumes__resume_id__comments_participants_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+DELETE,/resumes/{resume_id}/comments/{comment_id},delete_comment_resumes__resume_id__comments__comment_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/resumes/{resume_id}/comments/{comment_id},update_comment_resumes__resume_id__comments__comment_id__patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/resumes/{resume_id}/comments/{comment_id}/resolve,resolve_comment_resumes__resume_id__comments__comment_id__resolve_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/diff-with-parent,diff_with_parent_resumes__resume_id__diff_with_parent_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/resumes/{resume_id}/element-versions,list_element_versions_resumes__resume_id__element_versions_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/{resume_id}/element-versions,create_element_version_resumes__resume_id__element_versions_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/element-versions/{version_id}/fork,fork_element_version_resumes__resume_id__element_versions__version_id__fork_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/element-versions/{version_id}/restore,restore_element_version_resumes__resume_id__element_versions__version_id__restore_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/engine/document,get_document_resumes__resume_id__engine_document_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/engine/document,patch_document_resumes__resume_id__engine_document_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/engine/import,resume_import_resumes__resume_id__engine_import_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/{resume_id}/engine/optimize,optimize_document_resumes__resume_id__engine_optimize_post,pro-monthly,tested,404 control,f4c2f427,pro-byok report,
+GET,/resumes/{resume_id}/engine/runs/{run_id},get_run_resumes__resume_id__engine_runs__run_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/resumes/{resume_id}/engine/runs/{run_id}/decisions,decide_run_resumes__resume_id__engine_runs__run_id__decisions_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/engine/structure,reorder_document_resumes__resume_id__engine_structure_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/fork,fork_resume_resumes__resume_id__fork_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/generate-portfolio,generate_portfolio_resumes__resume_id__generate_portfolio_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/generate-references,generate_references_resumes__resume_id__generate_references_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/interview-prep,list_resume_interview_prep_resumes__resume_id__interview_prep_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/resumes/{resume_id}/latest-accepted-artifact,latest_accepted_artifact_resumes__resume_id__latest_accepted_artifact_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/resumes/{resume_id}/optimization-history,get_optimization_history_resumes__resume_id__optimization_history_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/pin,pin_resume_resumes__resume_id__pin_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/quick-tailor,quick_tailor_resume_resumes__resume_id__quick_tailor_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/resumes/{resume_id}/record-optimization,record_optimization_resumes__resume_id__record_optimization_post,pro-monthly,tested,201,809974e7-456e-4fac-8da9-37719abc92e0,free-basic evidence (see audit/plans|events),
+POST,/resumes/{resume_id}/restore-optimization/{opt_id},restore_optimization_resumes__resume_id__restore_optimization__opt_id__post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/review-comments,list_authenticated_review_comments_resumes__resume_id__review_comments_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/review-comments/{comment_id}/resolve,resolve_authenticated_review_comment_resumes__resume_id__review_comments__comment_id__resolve_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/score-history,get_score_history_resumes__resume_id__score_history_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/settings,update_resume_settings_resumes__resume_id__settings_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/resumes/{resume_id}/share,revoke_share_link_resumes__resume_id__share_delete,pro-monthly,tested,204,7d07b724-46d5-4baa-b6ec-dfc269896513,free-basic evidence (see audit/plans|events),
+POST,/resumes/{resume_id}/share,create_share_link_resumes__resume_id__share_post,pro-monthly,tested,200,831f9ff6-e479-425b-ac55-450086641d17,free-basic evidence (see audit/plans|events),
+POST,/resumes/{resume_id}/suggestion-decisions,decide_suggestion_resumes__resume_id__suggestion_decisions_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/suggestion-decisions/{suggestion_id},get_suggestion_decision_resumes__resume_id__suggestion_decisions__suggestion_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/tags,update_resume_tags_resumes__resume_id__tags_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/resumes/{resume_id}/unarchive,unarchive_resume_resumes__resume_id__unarchive_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/resumes/{resume_id}/unpin,unpin_resume_resumes__resume_id__unpin_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/variant-visibility,get_variant_visibility_resumes__resume_id__variant_visibility_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/resumes/{resume_id}/variant-visibility,update_variant_visibility_resumes__resume_id__variant_visibility_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/resumes/{resume_id}/variants,list_variants_resumes__resume_id__variants_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/scrape-job-description,scrape_job_description_scrape_job_description_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/settings/notifications,get_notification_prefs_settings_notifications_get,pro-monthly,tested,200,5e0f9649-3391-4245-9bfe-b5e6b2015b5a,live GET sweep 2026-11-27; request_id in row,
+PUT,/settings/notifications,update_notification_prefs_settings_notifications_put,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/share/{share_token},get_shared_resume_share__share_token__get,anonymous,blocked,,,,path parameter requires a domain fixture
+GET,/share/{share_token}/review-comments,list_public_review_comments_share__share_token__review_comments_get,anonymous,blocked,,,,path parameter requires a domain fixture
+POST,/share/{share_token}/review-comments,add_public_review_comment_share__share_token__review_comments_post,anonymous,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/snippets,list_snippets_snippets_get,pro-monthly,tested,200,1cb8c038-e76c-4747-86dc-41ac19d0d3fb,live GET sweep 2026-11-27; request_id in row,
+POST,/snippets,create_snippet_snippets_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/snippets/{snippet_id},delete_snippet_snippets__snippet_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/snippets/{snippet_id},get_snippet_snippets__snippet_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/snippets/{snippet_id},update_snippet_snippets__snippet_id__patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/snippets/{snippet_id}/install,uninstall_snippet_snippets__snippet_id__install_delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/snippets/{snippet_id}/install,install_snippet_snippets__snippet_id__install_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/snippets/{snippet_id}/upvote,toggle_upvote_snippets__snippet_id__upvote_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/sources/import-linkedin,import_linkedin_sources_import_linkedin_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/sources/import-url,import_from_url_sources_import_url_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/subscription/cancel,cancel_subscription_subscription_cancel_post,free,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/subscription/create,create_subscription_subscription_create_post,free,tested,200,31cc3b1c-7aeb-41d3-934c-be3db1b547c6,student-team evidence (see audit/plans|events),
+GET,/subscription/current,get_current_subscription_subscription_current_get,free,tested,200,67f84a5e-f9f8-4f00-9a75-846c671057eb,live GET sweep 2026-11-27; request_id in row,
+GET,/subscription/plans,get_subscription_plans_subscription_plans_get,free,tested,200,4f588ce1-4436-4b4c-8c19-e31c4501c112,live GET sweep 2026-11-27; request_id in row,
+POST,/subscription/reconcile,reconcile_subscription_subscription_reconcile_post,free,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/subscription/student/verify/{token},verify_student_subscription_subscription_student_verify__token__get,free,blocked,,,,path parameter requires a domain fixture
+POST,/team/invite,invite_team_member_team_invite_post,pro-monthly,tested,403,02f11693-a62c-4a8d-8e57-03ff42cc932d,student-team evidence (see audit/plans|events),
+GET,/team/join/{token},preview_team_seat_team_join__token__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/team/join/{token},join_team_seat_team_join__token__post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/team/seats,list_team_seats_team_seats_get,pro-monthly,tested,200,b926981a-dbd0-43bd-a4c7-51da3ac74ae3,live GET sweep 2026-11-27; request_id in row,rechecked with correct identity
+DELETE,/team/seats/{seat_id},remove_team_seat_team_seats__seat_id__delete,pro-monthly,tested,403,bad0c1b5-9d19-42ea-8cf7-2eb6e1247c2e,student-team evidence (see audit/plans|events),
+POST,/telemetry/editor,ingest_editor_telemetry_telemetry_editor_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/telemetry/errors,ingest_frontend_error_telemetry_errors_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/telemetry/frontend,ingest_frontend_telemetry_telemetry_frontend_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/telemetry/linter,ingest_linter_telemetry_telemetry_linter_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+POST,/templates,create_template_templates_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/templates/,list_templates_templates__get,pro-monthly,tested,200,789684eb-58e0-4553-a81a-8c1b090075cd,live GET sweep 2026-11-27; request_id in row,
+GET,/templates/categories,list_categories_templates_categories_get,pro-monthly,tested,200,340e2ca9-f8be-4e86-a17c-2e0d7ba0af0b,live GET sweep 2026-11-27; request_id in row,
+DELETE,/templates/{template_id},delete_template_templates__template_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/templates/{template_id},get_template_templates__template_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PUT,/templates/{template_id},update_template_templates__template_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/templates/{template_id}/activate,activate_template_templates__template_id__activate_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/templates/{template_id}/deactivate,deactivate_template_templates__template_id__deactivate_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/templates/{template_id}/events,track_template_event_templates__template_id__events_post,pro-monthly,tested,201,54a57ce0-2c60-49a6-8769-cfb8660358e3,free-basic evidence (see audit/plans|events),
+GET,/templates/{template_id}/pdf,get_template_pdf_templates__template_id__pdf_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+HEAD,/templates/{template_id}/pdf,head_template_pdf_templates__template_id__pdf_head,pro-monthly,tested,200,dcd59cb9-0091-47b7-99d4-08b1b6922ca7,free-basic evidence (see audit/plans|events),
+GET,/templates/{template_id}/thumbnail,get_template_thumbnail_templates__template_id__thumbnail_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+HEAD,/templates/{template_id}/thumbnail,head_template_thumbnail_templates__template_id__thumbnail_head,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/templates/{template_id}/use,use_template_templates__template_id__use_post,pro-monthly,tested,200,2c3b55e7-2079-4b70-8f2f-4bd1b97e46dc,free-basic evidence (see audit/plans|events),
+POST,/tenants,create_tenant_tenants_post,team-owner,tested,403,1a8dfe57-ca59-43cd-8492-a620b1bdcead,student-team evidence (see audit/plans|events),
+GET,/tenants/current-context,current_context_tenants_current_context_get,team-owner,tested,200,23204aed-84f3-4edb-9532-37d7f7399fd7,live GET sweep 2026-11-27; request_id in row,
+POST,/tenants/invitations/{token}/accept,accept_invitation_tenants_invitations__token__accept_post,team-owner,tested,404,36df6d32-9aa3-40cf-84d6-1d07706b1902,student-team evidence (see audit/plans|events),
+GET,/tenants/my,list_my_tenants_tenants_my_get,team-owner,tested,200,85d8fa48-fb76-4a1e-b133-08b22a6fd26c,live GET sweep 2026-11-27; request_id in row,
+GET,/tenants/resolve-host,resolve_tenant_host_tenants_resolve_host_get,team-owner,tested,422,1e92478d-4b83-4073-8c33-bf9baa4286cd,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+PATCH,/tenants/{tenant_id},update_tenant_tenants__tenant_id__patch,team-owner,tested,403,08114790-488e-42f3-8a8d-7d8afdeaab7b,student-team evidence (see audit/plans|events),
+GET,/tenants/{tenant_id}/billing,get_tenant_billing_tenants__tenant_id__billing_get,team-owner,blocked,,,,path parameter requires a domain fixture
+POST,/tenants/{tenant_id}/billing/upgrade-intent,record_tenant_upgrade_intent_tenants__tenant_id__billing_upgrade_intent_post,team-owner,tested,403,f47c9c59-edba-48d2-b236-616472ee35c9,student-team evidence (see audit/plans|events),
+GET,/tenants/{tenant_id}/cohorts,list_cohorts_tenants__tenant_id__cohorts_get,team-owner,blocked,,,,path parameter requires a domain fixture
+POST,/tenants/{tenant_id}/cohorts,create_cohort_tenants__tenant_id__cohorts_post,team-owner,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tenants/{tenant_id}/cohorts/{cohort_id}/engagement,get_cohort_engagement_tenants__tenant_id__cohorts__cohort_id__engagement_get,team-owner,blocked,,,,path parameter requires a domain fixture
+GET,/tenants/{tenant_id}/cohorts/{cohort_id}/submissions,list_cohort_submissions_tenants__tenant_id__cohorts__cohort_id__submissions_get,team-owner,blocked,,,,path parameter requires a domain fixture
+GET,/tenants/{tenant_id}/domain/health,get_domain_health_tenants__tenant_id__domain_health_get,team-owner,blocked,,,,path parameter requires a domain fixture
+POST,/tenants/{tenant_id}/domain/verify,verify_domain_tenants__tenant_id__domain_verify_post,team-owner,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tenants/{tenant_id}/members,list_members_tenants__tenant_id__members_get,team-owner,blocked,,,,path parameter requires a domain fixture
+POST,/tenants/{tenant_id}/members/invite,invite_member_tenants__tenant_id__members_invite_post,team-owner,tested,403,085ffb07-cea7-4fad-865b-f07da33d4960,student-team evidence (see audit/plans|events),
+DELETE,/tenants/{tenant_id}/members/{target_user_id},remove_member_tenants__tenant_id__members__target_user_id__delete,team-owner,tested,403,715b4622-b60b-4c1e-bd35-46b3916a6baa,student-team evidence (see audit/plans|events),
+DELETE,/tenants/{tenant_id}/membership,leave_tenant_tenants__tenant_id__membership_delete,team-owner,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tenants/{tenant_id}/stats,tenant_stats_tenants__tenant_id__stats_get,team-owner,blocked,,,,path parameter requires a domain fixture
+GET,/tracker/alerts,list_alerts_tracker_alerts_get,pro-monthly,tested,200,0d43a616-644b-4d87-9682-a2fa8ec35bb9,live GET sweep 2026-11-27; request_id in row,
+POST,/tracker/alerts,create_alert_tracker_alerts_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/tracker/alerts/{item_id},delete_alert_tracker_alerts__item_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PUT,/tracker/alerts/{item_id},update_alert_tracker_alerts__item_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tracker/applications,list_applications_tracker_applications_get,pro-monthly,tested,200,a6c653db-fba6-4c43-b711-d171a33ab450,live GET sweep 2026-11-27; request_id in row,
+POST,/tracker/applications,create_application_tracker_applications_post,pro-monthly,tested,201,d554e74f-ef05-43b9-bd61-3664575a8238,free-basic evidence (see audit/plans|events),
+DELETE,/tracker/applications/{app_id},delete_application_tracker_applications__app_id__delete,pro-monthly,tested,204,f5baaf2a-a077-4ab2-ac4f-9a030c8d63d1,free-basic evidence (see audit/plans|events),
+GET,/tracker/applications/{app_id},get_application_tracker_applications__app_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PUT,/tracker/applications/{app_id},update_application_tracker_applications__app_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tracker/applications/{app_id}/interviews,list_interviews_tracker_applications__app_id__interviews_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/tracker/applications/{app_id}/interviews,create_interview_tracker_applications__app_id__interviews_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/tracker/applications/{app_id}/interviews/{item_id},delete_interview_tracker_applications__app_id__interviews__item_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PUT,/tracker/applications/{app_id}/interviews/{item_id},update_interview_tracker_applications__app_id__interviews__item_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tracker/applications/{app_id}/interviews/{item_id}.ics,export_interview_calendar_tracker_applications__app_id__interviews__item_id__ics_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/tracker/applications/{app_id}/reminders,list_reminders_tracker_applications__app_id__reminders_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/tracker/applications/{app_id}/reminders,create_reminder_tracker_applications__app_id__reminders_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/tracker/applications/{app_id}/reminders/{item_id},delete_reminder_tracker_applications__app_id__reminders__item_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PUT,/tracker/applications/{app_id}/reminders/{item_id},update_reminder_tracker_applications__app_id__reminders__item_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/tracker/applications/{app_id}/status,update_application_status_tracker_applications__app_id__status_patch,pro-monthly,tested,422,d58c9a03-039a-41e4-b434-d954b535f77c,free-basic evidence (see audit/plans|events),
+GET,/tracker/companies,list_companies_tracker_companies_get,pro-monthly,tested,200,f677277b-f8d1-42c9-84f8-b9f5b4eefa4d,live GET sweep 2026-11-27; request_id in row,
+POST,/tracker/companies,create_company_tracker_companies_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/tracker/companies/{item_id},delete_company_tracker_companies__item_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PUT,/tracker/companies/{item_id},update_company_tracker_companies__item_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tracker/contacts,list_contacts_tracker_contacts_get,pro-monthly,tested,200,0bb31fd5-1599-4093-84bf-bff8d35f5c49,live GET sweep 2026-11-27; request_id in row,
+POST,/tracker/contacts,create_contact_tracker_contacts_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/tracker/contacts/{item_id},delete_contact_tracker_contacts__item_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PUT,/tracker/contacts/{item_id},update_contact_tracker_contacts__item_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/tracker/email-status/parse,parse_email_status_tracker_email_status_parse_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/tracker/saved-jobs,bulk_delete_saved_jobs_tracker_saved_jobs_delete,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+GET,/tracker/saved-jobs,list_saved_jobs_tracker_saved_jobs_get,pro-monthly,tested,200,efc87192-0e12-4322-921a-20a02870b1ad,live GET sweep 2026-11-27; request_id in row,
+POST,/tracker/saved-jobs,create_saved_job_tracker_saved_jobs_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/tracker/saved-jobs/{item_id},delete_saved_job_tracker_saved_jobs__item_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PUT,/tracker/saved-jobs/{item_id},update_saved_job_tracker_saved_jobs__item_id__put,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/tracker/saved-jobs/{item_id}/track,track_saved_job_tracker_saved_jobs__item_id__track_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/tracker/stale-applications,list_stale_applications_tracker_stale_applications_get,pro-monthly,tested,200,82271a24-dbe9-4aae-853a-42dc8ad67f7d,live GET sweep 2026-11-27; request_id in row,
+GET,/tracker/stats,get_tracker_stats_tracker_stats_get,pro-monthly,tested,200,c5639fa6-54bc-4aac-81e8-6011e3ffe4ac,live GET sweep 2026-11-27; request_id in row,
+POST,/webhooks/resend,resend_email_webhook_webhooks_resend_post,pro-monthly,blocked,,,,live payment/provider action; no charges or provider callbacks allowed
+GET,/workspaces,list_workspaces_workspaces_get,pro-monthly,tested,200,f4862038-c524-46fc-8360-182c7a8e1480,live GET sweep 2026-11-27; request_id in row,
+POST,/workspaces,create_workspace_workspaces_post,pro-monthly,blocked,,,,mutation requires a safe domain fixture not provisioned in this pass
+DELETE,/workspaces/{workspace_id},delete_workspace_workspaces__workspace_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/workspaces/{workspace_id},get_workspace_workspaces__workspace_id__get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+PATCH,/workspaces/{workspace_id},update_workspace_workspaces__workspace_id__patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/workspaces/{workspace_id}/members/invite,invite_member_workspaces__workspace_id__members_invite_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/workspaces/{workspace_id}/members/{target_user_id},remove_member_workspaces__workspace_id__members__target_user_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/workspaces/{workspace_id}/members/{target_user_id}/role,update_member_role_workspaces__workspace_id__members__target_user_id__role_patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/workspaces/{workspace_id}/resumes,list_workspace_resumes_workspaces__workspace_id__resumes_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+DELETE,/workspaces/{workspace_id}/resumes/{resume_id},remove_resume_from_workspace_workspaces__workspace_id__resumes__resume_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/workspaces/{workspace_id}/resumes/{resume_id},add_resume_to_workspace_workspaces__workspace_id__resumes__resume_id__post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/workspaces/{workspace_id}/resumes/{resume_id}/download,download_workspace_resume_workspaces__workspace_id__resumes__resume_id__download_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+GET,/workspaces/{workspace_id}/resumes/{resume_id}/notes,list_recruiter_notes_workspaces__workspace_id__resumes__resume_id__notes_get,pro-monthly,blocked,,,,path parameter requires a domain fixture
+POST,/workspaces/{workspace_id}/resumes/{resume_id}/notes,create_recruiter_note_workspaces__workspace_id__resumes__resume_id__notes_post,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+DELETE,/workspaces/{workspace_id}/resumes/{resume_id}/notes/{note_id},delete_recruiter_note_workspaces__workspace_id__resumes__resume_id__notes__note_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+PATCH,/workspaces/{workspace_id}/resumes/{resume_id}/notes/{note_id},update_recruiter_note_workspaces__workspace_id__resumes__resume_id__notes__note_id__patch,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+POST,/ws/ticket,create_websocket_ticket_ws_ticket_post,pro-monthly,tested,200,,events report,
+DELETE,/zotero/bibtex/{resume_id},clear_bibtex_zotero_bibtex__resume_id__delete,pro-monthly,blocked,,,,path parameter requires a domain fixture or destructive setup not provisioned
+GET,/zotero/callback,zotero_callback_zotero_callback_get,pro-monthly,tested,200,,live GET sweep 2026-11-27; request_id in row,
+GET,/zotero/collections,zotero_collections_zotero_collections_get,pro-monthly,tested,401,674a10f6-a0ce-46d1-9825-5f7d65c9dfe4,live GET sweep 2026-11-27; request_id in row,auth/entitlement/fixture response
+POST,/zotero/complete,zotero_complete_zotero_complete_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/zotero/connect,zotero_connect_zotero_connect_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+DELETE,/zotero/disconnect,zotero_disconnect_zotero_disconnect_delete,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+POST,/zotero/import,zotero_import_zotero_import_post,pro-monthly,blocked,,,,"requires provider callback, mailbox, authenticator or OAuth consent"
+GET,/zotero/status,zotero_status_zotero_status_get,pro-monthly,tested,200,986c6306-e70f-4026-942f-77726b7aa9b7,live GET sweep 2026-11-27; request_id in row,
