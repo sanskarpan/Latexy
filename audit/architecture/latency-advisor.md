@@ -1,5 +1,7 @@
 # Latency & cost architecture plan — compile pipeline
 
+> **Superseded in sequencing by the Claude Opus 5.5 review:** [`latency-advisor-opus.md`](latency-advisor-opus.md). The measured diagnosis below stands; Opus reorders the work (instrument first, CPU + container warm-up before the high-risk finalization rewrite, then finalize stage A, pool/admission, and client-perceived path) and adds invariants, gates and missed mechanisms.
+
 **Role:** independent architecture advisor (research only — no code changes, no deploys, no commits).
 **Basis:** production measurements 2026-11-27 in [`../latency/compile-stages.md`](../latency/compile-stages.md), [`../latency/load-test.md`](../latency/load-test.md), [`../latency/cost.md`](../latency/cost.md), [`../optimization-backlog.md`](../optimization-backlog.md), [`../AUDIT-MASTER.md`](../AUDIT-MASTER.md); source read at `backend/modal_app.py`, `backend/app/core/engine_capacity.py`, `backend/app/api/job_routes.py`, `backend/app/workers/latex_worker.py`, `backend/app/services/render_engine/{artifacts,retention,geometry}.py`, `backend/app/services/storage_service.py`, `backend/app/core/modal_dispatch.py`.
 

@@ -1,0 +1,82 @@
+{
+  "result": {
+    "wizardVisible": true,
+    "appearedAtMs": 6414,
+    "nameFieldCount": 0,
+    "enabledBeforeClick": true,
+    "createToEditorMs": 12812,
+    "url": "https://latexy.xyz/workspace/f8f479d8-fd92-404d-bd0b-b066bca29376/edit",
+    "text": "Skip to content\nWorkspace\nSaved\nImport\nExport\nTools\nCover Letter\nCareer Path\nVariant\nSave\nSave Checkpoint\nAsk AI\nShare\nAuto\nUpdate preview\nAI Optimize\nPDF Import Audit Resume\nOriginal PDF\nResume\nSource\nVisual\nEdit your resume\n\nChoose a field here or click a highlighted field on your PDF. Your finished PDF uses the same layout you see.\n\nLoading your resume fields…\n\nPreview\nAI\nMore\n\nYour PDF will appear here\n\nCompile to render a live preview\n\nLaTeX editor ready\n481 chars"
+  },
+  "log": {
+    "requests": [
+      {
+        "ms": 6140,
+        "method": "POST",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/imports/pdf"
+      },
+      {
+        "ms": 13124,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/imports/7621f33b-0848-4e82-9817-9336ae15f8c8/original"
+      },
+      {
+        "ms": 15889,
+        "method": "POST",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/imports/7621f33b-0848-4e82-9817-9336ae15f8c8/adapt"
+      },
+      {
+        "ms": 28298,
+        "method": "GET",
+        "url": "https://latexy.xyz/_next/static/chunks/app/workspace/%5BresumeId%5D/edit/page-240cb293feac4a9b.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+      },
+      {
+        "ms": 28518,
+        "method": "POST",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Fworkspace%2F%3AresumeId%2Fedit&device_fingerprint=fp_1795797884926_q492guy1"
+      },
+      {
+        "ms": 28521,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376"
+      },
+      {
+        "ms": 28521,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376"
+      },
+      {
+        "ms": 29748,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376/engine/document"
+      },
+      {
+        "ms": 30894,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376/academic-cv-report"
+      },
+      {
+        "ms": 30895,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376/latest-accepted-artifact"
+      },
+      {
+        "ms": 31252,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376/engine/import"
+      },
+      {
+        "ms": 31252,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376/engine/document"
+      },
+      {
+        "ms": 31260,
+        "method": "GET",
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/f8f479d8-fd92-404d-bd0b-b066bca29376/engine/document"
+      }
+    ],
+    "errors": [],
+    "console": []
+  }
+}

@@ -69,21 +69,21 @@ The evidence supports signing off the **functional baseline with the P0/P1 excep
 
 ## Front-end page audit (follow-up)
 
-All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 15 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342, #2343.
+All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 18 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342-#2345, #2347.
 
-- **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant.
+- **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant; compiled share links could not render their PDF because the R2 artifact URL was blocked by CORS — **fixed 2026-11-27** with a bucket CORS rule; PDF + public review comment verified (regression checks pending).
 - **P2:** Consent banner covers auth/pricing/admin controls; admin capability matrix is 21,101px/930 toggles; pricing hides prices; dashboard says 3.5s compile vs 20.7s measured; builder/auth controls are unlabeled; share says "Link unavailable" after compile; cover-letter generation hangs at "Generating…" for 45s.
 - **P3:** missing H1/small text, onboarding modal, PDF URL wrapping, tracker labels.
 
-The builder happy path works: create (201) → fill fields → preview PDF → download; the failures are latency and feedback, not the core edit model.
+The builder happy path works: create (201) → fill fields → preview PDF → download; PDF import completes end-to-end (~6s upload, ~16s adapt, 12.8s to editor after create). The failures are latency, feedback and artifact delivery (share CORS), not the core edit model.
 
 ## Architecture
 
-`audit/architecture/latency-advisor.md` is the independent plan. First code win: collapse the two serialized finalization pipelines (fresh NullPool engines, advisory locks, R2 HEADs, two pdftotext calls). First architecture win: explicit LATEX CPU/memory. Then warm pool + admission control as a pair. Target: warm p50 <=12s, 5-concurrent p50 <=25s, finalize <=2s. Tracked in #2337, with #2309/#2310 as specific defects.
+`audit/architecture/latency-advisor.md` is the measured plan; `audit/architecture/latency-advisor-opus.md` is the **actual Claude Opus 5.5** review (Anthropic API). Opus reorders the work: instrument first (cgroup CPU, cold/warm, per-stage spans), then ship explicit `MODAL_LATEX_CPU=1.0`/memory plus container font warm-up, then finalize stage A (parallel geometry/pdftotext, persistent loop/pool, no redundant HEADs) before any high-risk transaction rewrite, then warm pool + admission, then the client-perceived path (cache short-circuit, presigned URL + R2 CORS, preview semantics). Target: warm p50 <=12s, warm p95 <=18s, 5-concurrent p50 <=25s, finalize <=2s. Tracked in #2337, with #2309/#2310 as specific defects.
 
 ## Issue tracking
 
-**36 GitHub issues** were filed (#2295-#2339, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
+**51 GitHub issues** were filed (#2295-#2345, #2347, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
 
 ## Evidence index
 

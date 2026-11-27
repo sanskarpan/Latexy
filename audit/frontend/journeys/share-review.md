@@ -1,0 +1,101 @@
+# Share/review journey - 2026-11-27
+
+**Verdict:** BLOCKED by a new P1 (FE-16 / #2344). The share API and public payload work; the browser cannot render the PDF because the artifact URL is not CORS-enabled.
+
+## Setup
+
+- Fresh pro test user (`interact7.pro.*@example.test`), email verified, synthetic active `pro` subscription.
+- Flow: PDF import → adapt → compile via `POST /jobs/submit` (`latex_compilation`, `pdflatex`, `metadata.resume_id`) → wait for accepted artifact → `POST /resumes/{id}/share` → open `/r/{token}` anonymously.
+
+## Evidence
+
+- `share-review-journey.json` - compile states, artifact, share payload, timings.
+- `share-review-page.png` - public page after ~10s.
+- `share-review-45s.png` - public page after ~50s, showing "The review document could not be loaded."
+
+## Timeline
+
+| Step | Observed |
+|---|---|
+| PDF import | 201, 10.8s; extraction `partial`, 9 fields, 23 supported templates |
+| Adapt | 200, 14.2s; resume `c26ecbc4-...`, 481 LaTeX chars |
+| Compile submit | 200, 11.4s; job `4b3c08fb-...` |
+| Compile states | processing 0% at 14.1s → 10% at 18.8s → 90% at 44.8s → completed 100% at 54.7s |
+| Accepted artifact | 57.8s; 1 page |
+| `POST /resumes/{id}/share` | 200 in 7.3s; `share_url` returned |
+| `GET /share/{token}` (no auth) | 200; `pdf_url` present on R2; `accessible_text` 124 chars; `review_comments=true`; `anonymous_processing=false` |
+
+## Failure
+
+Public `/r/{token}` loads the title "Share Review Audit Resume", the PDF/accessible-text tabs, and the review panel. After ~50s:
+
+- PDF canvas/iframe count: **0**.
+- Review surface: **"The review document could not be loaded."**
+- Console: `Access to fetch at 'https://2ca2c...r2.cloudflarestorage.com/...pdf' ... has been blocked by CORS policy`, `Failed to load resource: net::ERR_FAILED`.
+- `curl -H 'Origin: https://latexy.xyz'` returns **200** with `Content-Type: application/pdf`, `Content-Length: 25008`, but **no `Access-Control-Allow-Origin`** header.
+- No HTTP >= 400 and no application error: the API and storage are healthy; the browser blocks the cross-origin response.
+
+## Root cause and fix
+
+The share API hands the browser a presigned R2 URL; pdf.js fetches it cross-origin and requires CORS headers. Either proxy the PDF through a same-origin backend route with Range support, or add an R2 CORS policy for `https://latexy.xyz` / `https://www.latexy.xyz` exposing `Content-Length, Content-Range, Accept-Ranges, ETag`.
+
+Tracked in **#2344** (P1). The no-accepted-artifact state remains tracked in **#2331**.
+
+## Not completed
+
+- Posting a public review comment through the UI: the button requires a PDF anchor, and the PDF never renders. The public comment POST path is therefore blocked by the same defect.
+- Anonymous share mode: not exercised in this pass (pro user, anonymous disabled); it uses a separate redacted-artifact path.
+
+## Cleanup
+
+- User, synthetic subscription, resume, compilation, job finalization and session rows deleted.
+- Remaining `interact7.%` users: **0**; resume rows: **0**.
+- The generated R2 artifact becomes an orphan and is eligible for the existing render-artifact retention sweep (no DB reference remains).
+
+## Fix verification - 2026-11-27
+
+Applied a bucket-level R2 CORS policy to the `latexy` bucket (previously `NoSuchCORSConfiguration`):
+
+- Allowed origins: `https://latexy.xyz`, `https://www.latexy.xyz`, `http://localhost:3000`.
+- Methods: `GET, HEAD`; headers: `Range, Content-Type, Authorization, Origin, Accept`.
+- Exposed: `Content-Length, Content-Range, Accept-Ranges, ETag, Content-Type`; max age 86400s.
+- `curl -H 'Origin: https://latexy.xyz'` now returns `Access-Control-Allow-Origin: https://latexy.xyz` and `Access-Control-Expose-Headers`.
+- Browser fetch from `https://latexy.xyz` succeeds for plain (200) and **Range (206)** requests.
+
+Fresh synthetic pro user, compiled/accepted resume, share link `https://latexy.xyz/r/lWmhD00q9oD-hS8N4Db8DidNVKDCd7qg`:
+
+- `/r/{token}` renders the PDF (**canvas present**, no "review document could not be loaded").
+- Anchoring a point selects **page 1**, and posting a public review comment succeeds; the comment appears with a pseudonymous reviewer label and a page-1 marker.
+
+Evidence: `share-review-fixed.png`, `share-review-comment.png`. This satisfies the PDF+comment part of #2344; revoked-token, anonymous-share and regression-test criteria remain to be checked before closing the issue.
+
+Change register: `audit/changes/production-changes.md`.
+
+## Revoked, anonymous and CORS checks - 2026-11-27
+
+Fresh synthetic pro user, compiled/accepted resume.
+
+| Check | Result |
+|---|---|
+| Normal share create | 200, 6.6s; public payload 200 with `pdf_url`; `is_anonymous=false`; `review_comments=true` |
+| CORS allowed origin | `Access-Control-Allow-Origin: https://latexy.xyz`; exposed `Content-Length, Content-Range, Accept-Ranges, ETag, Content-Type`; PDF GET 200 |
+| CORS disallowed origin | `Origin: https://evil.example` returns **no** `Access-Control-Allow-Origin` |
+| Revoke | `DELETE /resumes/{id}/share` 204 in 2.5s; `GET /share/{old_token}` **404** `Share link not found or has been revoked` |
+| Revoked page | `/r/{old_token}` shows **"Link unavailable / This share link has been revoked or does not exist."** - `share-review-revoked.png` |
+| Anonymous create | 200 in 12.3s; `anonymous_processing=true` at 17.0s, ready at 38.2s |
+| Anonymous payload | title **"Anonymous Resume"**, `is_anonymous=true`, accessible text starts `ANONYMIZED / Anonymous Candidate`; original resume title absent |
+| Anonymous PDF | 200 with allowed-origin CORS; page renders the PDF with ANONYMIZED watermark - `share-review-anonymous.png` |
+
+Remaining before closing #2344: Firefox/WebKit visual verification and a deployed regression test asserting the CORS/Range headers (or the same-origin proxy).
+
+### Cross-browser check
+
+Installed Playwright Firefox 157.0 and WebKit 27.2 and ran both against the anonymous share PDF and CORS fetch:
+
+| Engine | Plain fetch | Range fetch | Share page | Console |
+|---|---|---|---|---|
+| Firefox 157.0 | 200 | 206, `Content-Range: bytes 0-3/18222` | iframe PDF viewer present, no failure text | no errors |
+| WebKit 27.2 | 200 | 206, `Content-Range: bytes 0-3/18222` | iframe PDF viewer present, no failure text | no errors |
+
+Chromium also renders the PDF and accepts a pinned public comment. The only remaining #2344 item is a deployed regression test for the CORS/Range headers; the user-visible bug is fixed on Chrome, Firefox and WebKit.
+
