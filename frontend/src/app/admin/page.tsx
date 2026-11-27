@@ -16,6 +16,8 @@ import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminQualityTriage from '@/components/admin/AdminQualityTriage'
+import AdminErrorFeed from '@/components/admin/AdminErrorFeed'
+import AdminAccessReview from '@/components/admin/AdminAccessReview'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
@@ -33,7 +35,10 @@ import AdminLinterRules from '@/components/admin/AdminLinterRules'
 import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
 import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminFlagExposure from '@/components/admin/AdminFlagExposure'
+import AdminCohorts from '@/components/admin/AdminCohorts'
+import AdminExperiments from '@/components/admin/AdminExperiments'
 import AdminAudit from '@/components/admin/AdminAudit'
+import AdminAbuseQueue from '@/components/admin/AdminAbuseQueue'
 import AdminApprovals from '@/components/admin/AdminApprovals'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -44,6 +49,7 @@ import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
 import AdminReceiptLookup from '@/components/admin/AdminReceiptLookup'
 import AdminRetentionControls from '@/components/admin/AdminRetentionControls'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
+import AdminViewAs from '@/components/admin/AdminViewAs'
 import AdminSavedViews, { AdminSavedViewsBar } from '@/components/admin/AdminSavedViews'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -55,7 +61,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'approvals' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'access' | 'abuse' | 'approvals' | 'privacy' | 'flags' | 'experiments' | 'matrix' | 'plans' | 'views'
 
 const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
   'analytics',
@@ -88,9 +94,12 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'access', label: 'Access Review' },
+  { id: 'abuse', label: 'Abuse' },
   { id: 'approvals', label: 'Approvals' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
+  { id: 'experiments', label: 'Experiments' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
   { id: 'views', label: 'Saved Views' },
@@ -229,6 +238,7 @@ function FeatureFlagsTab() {
         </div>
       ))}
       <AdminFlagExposure />
+      <AdminCohorts />
     </div>
   )
 }
@@ -1071,6 +1081,8 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         />
       )}
 
+      <AdminViewAs canAdmin={canAdmin} />
+
       <div
         role="tabpanel"
         id={`admin-panel-${tab}`}
@@ -1110,6 +1122,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'quality' && (
           <div className="space-y-6">
             <AdminQualityTriage />
+            <AdminErrorFeed />
             <AdminTemplateHealth />
             <AdminTemplatePerformance />
           </div>
@@ -1141,15 +1154,18 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'exports' && <AdminExports />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
+        {tab === 'access' && <AdminAccessReview />}
         {tab === 'audit' && (
           <div className="space-y-10">
             <AdminAudit />
             <AdminChangeHistory />
           </div>
         )}
+        {tab === 'abuse' && <AdminAbuseQueue />}
         {tab === 'approvals' && <AdminApprovals />}
         {tab === 'privacy' && <AdminGdpr />}
         {tab === 'flags' && <FeatureFlagsTab />}
+        {tab === 'experiments' && <AdminExperiments />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}
         {tab === 'views' && <AdminSavedViews onApply={applySavedView} />}

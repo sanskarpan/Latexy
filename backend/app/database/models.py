@@ -232,6 +232,9 @@ class DeviceTrial(Base):
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    whitelisted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -1429,6 +1432,235 @@ class AdminApproval(Base):
     )
 
 
+class AdminExperiment(Base):
+    """Pre-registered A/B experiment with one primary metric and guardrails.
+
+    Registration fields are frozen by a database trigger after insert. Only the
+    lifecycle (status, start/stop metadata) may change, so a results read can
+    prove the analysis was registered before exposure. Rows never contain
+    customer documents, prompts, emails, tokens, IP addresses or user agents.
+    """
+
+    __tablename__ = "admin_experiments"
+    __table_args__ = (
+        CheckConstraint(
+            "experiment_key ~ '^[a-z][a-z0-9_]{1,63}$'",
+            name="ck_admin_experiments_key",
+        ),
+        CheckConstraint(
+            "length(trim(name)) BETWEEN 1 AND 160",
+            name="ck_admin_experiments_name",
+        ),
+        CheckConstraint(
+            "length(trim(hypothesis)) BETWEEN 20 AND 4000",
+            name="ck_admin_experiments_hypothesis",
+        ),
+        CheckConstraint(
+            "primary_metric IN ('activation', 'compile_success', "
+            "'checkout_started', 'retention_7d')",
+            name="ck_admin_experiments_primary_metric",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(guardrail_metrics) = 'array' "
+            "AND jsonb_array_length(guardrail_metrics) BETWEEN 1 AND 2",
+            name="ck_admin_experiments_guardrails",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(variants) = 'array' "
+            "AND jsonb_array_length(variants) BETWEEN 2 AND 4",
+            name="ck_admin_experiments_variants",
+        ),
+        CheckConstraint(
+            "flag_key IS NULL OR flag_key IN ('trial_limits', "
+            "'deep_analysis_trial', 'compile_timeouts', 'task_priority', "
+            "'billing', 'upgrade_ctas')",
+            name="ck_admin_experiments_flag_key",
+        ),
+        CheckConstraint(
+            "posthog_insight_url IS NULL OR posthog_insight_url ~ "
+            "'^https://(app|us|eu)[.]posthog[.]com/[A-Za-z0-9._~:/@!$&()*+,;=%-]*$'",
+            name="ck_admin_experiments_posthog_url",
+        ),
+        CheckConstraint(
+            "minimum_sample_per_variant BETWEEN 5 AND 1000000",
+            name="ck_admin_experiments_minimum_sample",
+        ),
+        CheckConstraint(
+            "status IN ('preregistered', 'running', 'stopped')",
+            name="ck_admin_experiments_status",
+        ),
+        CheckConstraint(
+            "registration_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_experiments_registration_hash",
+        ),
+        CheckConstraint(
+            "status = 'preregistered' OR started_at IS NOT NULL",
+            name="ck_admin_experiments_started",
+        ),
+        CheckConstraint(
+            "status <> 'stopped' OR (stopped_at IS NOT NULL AND stop_reason IS NOT NULL)",
+            name="ck_admin_experiments_stopped",
+        ),
+        Index("idx_admin_experiments_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_key: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    hypothesis: Mapped[str] = mapped_column(Text, nullable=False)
+    primary_metric: Mapped[str] = mapped_column(String(40), nullable=False)
+    guardrail_metrics: Mapped[List[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    variants: Mapped[List[Dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    flag_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    posthog_insight_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
+    minimum_sample_per_variant: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="preregistered", server_default="preregistered"
+    )
+    registration_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    started_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    stopped_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stopped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stop_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AdminExperimentAssignment(Base):
+    """Stable first-party variant assignment for one experiment and account.
+
+    The unique constraint prevents a subject from drifting between variants.
+    The row stores no direct identifier beyond the account UUID needed to keep
+    the assignment stable; admin responses expose aggregate counts only.
+    """
+
+    __tablename__ = "admin_experiment_assignments"
+    __table_args__ = (
+        CheckConstraint(
+            "variant ~ '^[a-z][a-z0-9_]{0,31}$'",
+            name="ck_admin_experiment_assignments_variant",
+        ),
+        CheckConstraint(
+            "bucket BETWEEN 0 AND 99",
+            name="ck_admin_experiment_assignments_bucket",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "user_id",
+            name="uq_admin_experiment_assignments_subject",
+        ),
+        Index(
+            "idx_admin_experiment_assignments_experiment_variant",
+            "experiment_id",
+            "variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant: Mapped[str] = mapped_column(String(32), nullable=False)
+    bucket: Mapped[int] = mapped_column(Integer, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reverted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class AdminExperimentExposure(Base):
+    """One deduped consent-covered exposure per experiment/account/UTC day."""
+
+    __tablename__ = "admin_experiment_exposures"
+    __table_args__ = (
+        CheckConstraint(
+            "variant ~ '^[a-z][a-z0-9_]{0,31}$'",
+            name="ck_admin_experiment_exposures_variant",
+        ),
+        CheckConstraint(
+            "source = 'first_party_experiment_evaluation'",
+            name="ck_admin_experiment_exposures_source",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "user_id",
+            "window_date",
+            name="uq_admin_experiment_exposures_window",
+        ),
+        Index(
+            "idx_admin_experiment_exposures_experiment_time",
+            "experiment_id",
+            "exposed_at",
+        ),
+        Index(
+            "idx_admin_experiment_exposures_experiment_variant",
+            "experiment_id",
+            "variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assignment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiment_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant: Mapped[str] = mapped_column(String(32), nullable=False)
+    window_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="first_party_experiment_evaluation",
+        server_default="first_party_experiment_evaluation",
+    )
+    exposed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class GdprRequest(Base):
     """One data-subject export or erasure request.
 
@@ -1627,6 +1859,10 @@ class AdminRefundRequest(Base):
             name="ck_admin_refund_status",
         ),
         CheckConstraint("amount IS NULL OR amount > 0", name="ck_admin_refund_amount"),
+        CheckConstraint(
+            "request_kind IN ('refund', 'goodwill')",
+            name="ck_admin_refund_request_kind",
+        ),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
@@ -1637,6 +1873,10 @@ class AdminRefundRequest(Base):
     amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
     provider_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    request_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="refund", server_default="refund"
+    )
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tax_inclusive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -3553,3 +3793,500 @@ class QuotaLedgerReservation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+class AdminViewAsSession(Base):
+    """Short-lived, read-only view-as snapshot bound to one approval.
+
+    This is deliberately not a target-user session: no target credential,
+    cookie or token is created. The row holds the operator, explicit target,
+    hashed start token, fixed read-only scope and a hard 15-minute deadline.
+    The unique approval binding makes the two-person approval single-use.
+    """
+
+    __tablename__ = "admin_view_as_sessions"
+    __table_args__ = (
+        CheckConstraint("scope = 'read_only'", name="ck_admin_view_as_scope"),
+        CheckConstraint("expires_at > created_at", name="ck_admin_view_as_expiry"),
+        CheckConstraint(
+            "expires_at <= created_at + interval '15 minutes'",
+            name="ck_admin_view_as_max_expiry",
+        ),
+        CheckConstraint(
+            "ended_at IS NULL OR ended_at >= created_at",
+            name="ck_admin_view_as_ended_after_start",
+        ),
+        CheckConstraint(
+            "token_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_view_as_token_hash",
+        ),
+        CheckConstraint(
+            "admin_user_id <> target_user_id",
+            name="ck_admin_view_as_distinct_target",
+        ),
+        Index("idx_admin_view_as_admin_created", "admin_user_id", "created_at"),
+        Index("idx_admin_view_as_target_created", "target_user_id", "created_at"),
+        Index("idx_admin_view_as_expires", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    approval_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_approvals.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    admin_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="read_only", server_default="read_only"
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    end_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class AdminUserNote(Base):
+    """Internal, operator-authored note attached to one user account.
+
+    Notes are never customer-facing. They carry the author identity and role at
+    write time, an allowlisted visibility, bounded tags and an optimistic
+    concurrency ``version``. Edits and deletes are soft; the body is retained
+    for operator review but is never copied into the append-only audit log
+    (audit snapshots store only a body length/hash and the changed field names).
+    """
+
+    __tablename__ = "admin_user_notes"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(body)) BETWEEN 3 AND 4000",
+            name="ck_admin_user_notes_body",
+        ),
+        CheckConstraint(
+            "visibility IN ('internal', 'admin_only')",
+            name="ck_admin_user_notes_visibility",
+        ),
+        CheckConstraint(
+            "author_role IN ('admin', 'support')",
+            name="ck_admin_user_notes_author_role",
+        ),
+        CheckConstraint("version >= 1", name="ck_admin_user_notes_version"),
+        CheckConstraint(
+            "jsonb_typeof(tags) = 'array'",
+            name="ck_admin_user_notes_tags_array",
+        ),
+        Index("idx_admin_user_notes_target_created", "target_user_id", "created_at"),
+        Index("idx_admin_user_notes_author_created", "author_user_id", "created_at"),
+        Index("idx_admin_user_notes_visibility", "visibility", "created_at"),
+        Index(
+            "idx_admin_user_notes_tags",
+            "tags",
+            postgresql_using="gin",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    target_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    author_user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    author_role: Mapped[str] = mapped_column(String(16), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    visibility: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="internal", server_default="internal"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    updated_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    delete_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class AdminUserTag(Base):
+    """A soft-deleted internal tag applied to one user account.
+
+    The tag text is a bounded lowercase label. Active rows are unique per
+    target and tag; removing a tag keeps the row for audit while allowing the
+    same label to be applied again later.
+    """
+
+    __tablename__ = "admin_user_tags"
+    __table_args__ = (
+        CheckConstraint(
+            "tag ~ '^[a-z0-9][a-z0-9_-]{0,31}$'",
+            name="ck_admin_user_tags_tag",
+        ),
+        CheckConstraint(
+            "created_by_role IN ('admin', 'support')",
+            name="ck_admin_user_tags_created_by_role",
+        ),
+        Index(
+            "uq_admin_user_tags_active",
+            "target_user_id",
+            "tag",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+        Index("idx_admin_user_tags_target_created", "target_user_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    target_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    tag: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_role: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    remove_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class AbuseReviewItem(Base):
+    """One human-reviewable abuse signal with an opaque subject.
+
+    The queue deliberately stores a hashed subject key, never a raw device
+    fingerprint, IP address, account identifier, email or document. A signal is
+    materialised by an admin-triggered scan and can advance only through reason-
+    and-confirm reviewed transitions. Enforcement actions additionally require a
+    two-person approval and are applied to ``device_trials`` only.
+    """
+
+    __tablename__ = "abuse_review_items"
+    __table_args__ = (
+        CheckConstraint(
+            "signal_type IN ('blocked_device', 'trial_limit_reached', "
+            "'repeat_ip_cluster', 'trial_velocity', 'payment_failure', "
+            "'referral_rejection', 'coupon_reuse', 'rate_limit_pressure')",
+            name="ck_abuse_review_signal_type",
+        ),
+        CheckConstraint(
+            "subject_type IN ('device', 'ip', 'account', 'reason', 'coupon')",
+            name="ck_abuse_review_subject_type",
+        ),
+        CheckConstraint(
+            "severity IN ('low', 'medium', 'high', 'critical')",
+            name="ck_abuse_review_severity",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'approved', 'dismissed', 'actioned')",
+            name="ck_abuse_review_status",
+        ),
+        CheckConstraint(
+            "decision IS NULL OR decision IN ('approve', 'dismiss', 'action')",
+            name="ck_abuse_review_decision",
+        ),
+        CheckConstraint(
+            "enforcement_action IS NULL OR enforcement_action IN "
+            "('block', 'unblock', 'whitelist')",
+            name="ck_abuse_review_enforcement_action",
+        ),
+        CheckConstraint(
+            "occurrence_count > 0",
+            name="ck_abuse_review_occurrences",
+        ),
+        CheckConstraint(
+            "execution_count >= 0",
+            name="ck_abuse_review_execution_count",
+        ),
+        CheckConstraint(
+            "status = 'open' OR (decision IS NOT NULL AND decided_by IS NOT NULL "
+            "AND decided_at IS NOT NULL)",
+            name="ck_abuse_review_decided",
+        ),
+        CheckConstraint(
+            "status <> 'approved' OR decision = 'approve'",
+            name="ck_abuse_review_approved",
+        ),
+        CheckConstraint(
+            "status <> 'dismissed' OR decision = 'dismiss'",
+            name="ck_abuse_review_dismissed",
+        ),
+        CheckConstraint(
+            "status <> 'actioned' OR (decision = 'action' "
+            "AND enforcement_action IS NOT NULL AND approval_id IS NOT NULL "
+            "AND execution_count > 0)",
+            name="ck_abuse_review_actioned",
+        ),
+        CheckConstraint(
+            "assigned_to IS NULL OR length(assigned_to) = 36",
+            name="ck_abuse_review_assignee",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(evidence) = 'object'",
+            name="ck_abuse_review_evidence_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(evidence_links) = 'array'",
+            name="ck_abuse_review_links_array",
+        ),
+        UniqueConstraint("dedupe_key", name="uq_abuse_review_dedupe"),
+        Index("idx_abuse_review_status_severity", "status", "severity", "last_seen_at"),
+        Index("idx_abuse_review_signal_last_seen", "signal_type", "last_seen_at"),
+        Index("idx_abuse_review_assignee_status", "assigned_to", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    signal_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    subject_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="open", server_default="open"
+    )
+    dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    window_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evidence: Mapped[Dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    evidence_links: Mapped[List] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    assigned_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    decided_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    enforcement_action: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    approval_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    execution_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_executed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FeatureCohort(Base):
+    """PostHog cohort definition mapped to first-party feature flags.
+
+    The row stores only bounded configuration: a human key/name, an optional
+    opaque PostHog cohort id, an optional tenant scope, the sync freshness
+    budget and aggregate sync state. Individual members live in
+    :class:`FeatureCohortMember` and are never returned to an admin surface.
+    """
+
+    __tablename__ = "feature_cohorts"
+    __table_args__ = (
+        CheckConstraint("minimum_size >= 5", name="ck_feature_cohorts_minimum_size"),
+        CheckConstraint(
+            "stale_after_seconds >= 300 AND stale_after_seconds <= 604800",
+            name="ck_feature_cohorts_stale_window",
+        ),
+        CheckConstraint("synced_size >= 0", name="ck_feature_cohorts_synced_size"),
+        CheckConstraint(
+            "sync_state IN ('never_synced', 'synced', 'error', 'below_minimum')",
+            name="ck_feature_cohorts_sync_state",
+        ),
+        CheckConstraint(
+            "posthog_cohort_id IS NULL OR length(posthog_cohort_id) BETWEEN 1 AND 64",
+            name="ck_feature_cohorts_posthog_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tenant_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    posthog_cohort_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    minimum_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
+    stale_after_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="86400"
+    )
+    sync_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default="never_synced"
+    )
+    synced_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_sync_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # A bounded machine code, never an exception message or provider payload.
+    last_sync_error: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FeatureCohortMember(Base):
+    """Opaque account membership for one synced PostHog cohort.
+
+    Only the account UUID is stored. Email, name, document content, prompts,
+    tokens, IP addresses, user agents and provider payloads are never copied
+    into this table. Rows are replaced atomically by a successful sync.
+    """
+
+    __tablename__ = "feature_cohort_members"
+    __table_args__ = (
+        PrimaryKeyConstraint("cohort_id", "user_id"),
+        Index("ix_feature_cohort_members_user", "user_id"),
+    )
+
+    cohort_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("feature_cohorts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class FeatureCohortFlagMapping(Base):
+    """Which first-party feature flags are gated by a synced cohort."""
+
+    __tablename__ = "feature_cohort_flag_mappings"
+    __table_args__ = (
+        PrimaryKeyConstraint("cohort_id", "flag_key"),
+        Index("ix_feature_cohort_flag_mappings_flag", "flag_key"),
+    )
+
+    cohort_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("feature_cohorts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    flag_key: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("feature_flags.key", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+class AdminErrorGroup(Base):
+    """Sanitized, aggregate-only exception group for the admin error feed.
+
+    A row is keyed by ``(source, route, release, error_class)``. It never stores
+    an exception message, stack trace, source snippet, prompt, document content,
+    email, token, user id, IP address or user agent. Route, release and class
+    values are sanitized before they reach this table and again when read.
+    """
+
+    __tablename__ = "admin_error_groups"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('frontend', 'backend')",
+            name="ck_admin_error_groups_source",
+        ),
+        CheckConstraint(
+            "occurrence_count >= 0 AND window_events >= 0 AND alert_count >= 0",
+            name="ck_admin_error_groups_non_negative",
+        ),
+        CheckConstraint(
+            "length(trim(route)) > 0 AND length(trim(release)) > 0 "
+            "AND length(trim(error_class)) > 0",
+            name="ck_admin_error_groups_required_text",
+        ),
+        UniqueConstraint(
+            "source",
+            "route",
+            "release",
+            "error_class",
+            name="uq_admin_error_groups_key",
+        ),
+        Index("idx_admin_error_groups_last_seen", "last_seen_at"),
+        Index(
+            "idx_admin_error_groups_source_last_seen",
+            "source",
+            "last_seen_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    route: Mapped[str] = mapped_column(String(128), nullable=False)
+    release: Mapped[str] = mapped_column(String(64), nullable=False)
+    error_class: Mapped[str] = mapped_column(String(80), nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    window_events: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    window_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_alerted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    alert_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

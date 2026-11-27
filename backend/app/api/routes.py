@@ -102,6 +102,14 @@ from .admin_flag_exposure_routes import router as flag_exposure_router
 router.include_router(flag_exposure_router)
 router.include_router(admin_flag_exposure_router)
 
+# Pre-registered A/B experiments: consent-covered first-party assignment and
+# aggregate-only admin results (issue #2158).
+from .admin_experiment_routes import admin_router as admin_experiment_router
+from .admin_experiment_routes import router as experiment_assignment_router
+
+router.include_router(experiment_assignment_router)
+router.include_router(admin_experiment_router)
+
 # Privacy-safe editor mode, auto-compile and SyncTeX usage (issue #2077).
 from .editor_mode_telemetry_routes import router as editor_mode_telemetry_router
 
@@ -198,6 +206,8 @@ from .reference_routes import router as reference_router
 router.include_router(reference_router)
 
 # Include Admin routes (feature flags + public config)
+from .admin_abuse_routes import router as admin_abuse_router
+from .admin_access_review_routes import router as admin_access_review_router
 from .admin_activity_routes import router as admin_activity_router
 from .admin_ai_credential_mix_routes import router as admin_ai_credential_mix_router
 from .admin_ai_latency_retry_routes import router as admin_ai_latency_retry_router
@@ -208,6 +218,8 @@ from .admin_ats_score_routes import router as admin_ats_score_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
 from .admin_career_adoption_routes import router as admin_career_adoption_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
+from .admin_cohort_routes import admin_router as admin_cohort_router
+from .admin_cohort_routes import router as cohort_evaluation_router
 from .admin_collaboration_routes import router as admin_collaboration_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
@@ -217,6 +229,7 @@ from .admin_document_complexity_routes import router as admin_document_complexit
 from .admin_dunning_routes import router as admin_dunning_router
 from .admin_editor_mode_routes import router as admin_editor_mode_router
 from .admin_email_health_routes import router as admin_email_health_router
+from .admin_error_routes import router as admin_error_router
 from .admin_export_routes import router as admin_export_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
@@ -240,12 +253,18 @@ from .admin_team_seat_routes import router as admin_team_seat_router
 from .admin_template_health_routes import router as admin_template_health_router
 from .admin_template_performance_routes import router as admin_template_performance_router
 from .admin_trial_health_routes import router as admin_trial_health_router
+from .admin_user_notes_routes import router as admin_user_notes_router
+from .admin_view_as_routes import router as admin_view_as_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
+router.include_router(admin_cohort_router)
+router.include_router(cohort_evaluation_router)
 router.include_router(admin_approval_router)
+router.include_router(admin_abuse_router)
 router.include_router(admin_activity_router)
+router.include_router(admin_access_review_router)
 router.include_router(admin_ai_latency_retry_router)
 router.include_router(admin_ai_credential_mix_router)
 router.include_router(admin_feature_adoption_router)
@@ -254,6 +273,7 @@ router.include_router(admin_career_adoption_router)
 router.include_router(admin_checkout_funnel_router)
 router.include_router(admin_collaboration_router)
 router.include_router(admin_compile_error_router)
+router.include_router(admin_error_router)
 router.include_router(admin_document_complexity_router)
 router.include_router(admin_daily_metrics_router)
 router.include_router(admin_content_library_router)
@@ -274,6 +294,7 @@ router.include_router(admin_revenue_lifecycle_router)
 router.include_router(admin_saved_views_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
+router.include_router(admin_user_notes_router)
 router.include_router(admin_team_seat_router)
 router.include_router(admin_dunning_router)
 router.include_router(admin_editor_mode_router)
@@ -284,6 +305,7 @@ router.include_router(admin_gdpr_router)
 router.include_router(admin_email_health_router)
 router.include_router(admin_export_router)
 router.include_router(admin_trial_health_router)
+router.include_router(admin_view_as_router)
 router.include_router(admin_referral_analytics_router)
 
 # Signed Resend delivery/bounce/complaint evidence. Kept outside the admin
@@ -425,11 +447,13 @@ router.include_router(team_router)
 
 # Include One-Click Application routes (Feature 87)
 from .application_routes import router as application_router
+from .error_telemetry_routes import router as error_telemetry_router
 from .linter_telemetry_routes import router as linter_telemetry_router
 from .telemetry_routes import router as telemetry_router
 
 router.include_router(application_router)
 router.include_router(telemetry_router)
+router.include_router(error_telemetry_router)
 router.include_router(linter_telemetry_router)
 
 # Include per-change accept/reject review routes (Feature 2 / P0)

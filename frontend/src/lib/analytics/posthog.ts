@@ -21,11 +21,13 @@ import {
   type ConsentDecision,
   type ConsentSurface,
 } from './consent'
+import { reportClientErrorSignal } from './error-signals'
 import {
   replayTriageLinks,
   type ReplayLinkConfig,
   type ReplayTriageLinks,
 } from './replay-links'
+import type { SavedInsightLinkConfig } from './saved-insights'
 import { externalReferrerHost, readUtmParams, sanitizeLandingPath, UTM_KEYS, UTM_PATTERN, type UtmKey } from './traffic-source'
 
 export const ANALYTICS_CONSENT_KEY = 'latexy-analytics-consent'
@@ -45,6 +47,16 @@ const POSTHOG_KEY = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBL
 const POSTHOG_HOST = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_HOST)?.trim() || 'https://us.i.posthog.com'
 const POSTHOG_UI_HOST = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_UI_HOST)?.trim() || 'https://us.posthog.com'
 const POSTHOG_PROJECT_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID)?.trim() || ''
+
+// Optional saved-insight short ids. Each is read directly from a
+// `NEXT_PUBLIC_*` member expression so Next can inline it at build time. A
+// blank value is valid: the admin catalog then opens a prefilled draft view
+// instead of failing.
+const POSTHOG_INSIGHT_FUNNEL_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_INSIGHT_FUNNEL_ID)?.trim() || ''
+const POSTHOG_INSIGHT_TRENDS_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_INSIGHT_TRENDS_ID)?.trim() || ''
+const POSTHOG_INSIGHT_PATHS_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_INSIGHT_PATHS_ID)?.trim() || ''
+const POSTHOG_INSIGHT_RETENTION_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_INSIGHT_RETENTION_ID)?.trim() || ''
+const POSTHOG_INSIGHT_STICKINESS_ID = (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_POSTHOG_INSIGHT_STICKINESS_ID)?.trim() || ''
 
 // Keys that may contain personal or document content. These are dropped even
 // when a caller accidentally passes them. A small allowlist keeps genuinely
@@ -479,7 +491,14 @@ async function loadClient(): Promise<PostHogClient | null> {
         rageclick: true,
         // Applies to every SDK-created event, including autocapture, dead
         // clicks, and exceptions, not just the wrapper's explicit captures.
-        before_send: (event) => sanitizeAnalyticsEvent(event),
+        before_send: (event) => {
+          const sanitized = sanitizeAnalyticsEvent(event)
+          // Mirror only the sanitized identity of an exception to the backend
+          // aggregate feed. This runs after the consent-gated SDK loaded and the
+          // sanitizer stripped document surfaces and free-form exception text.
+          if (sanitized) reportClientErrorSignal(sanitized)
+          return sanitized
+        },
         persistence: 'localStorage+cookie',
         // Never record until the explicit consent path below starts it.
         disable_session_recording: true,
@@ -696,4 +715,27 @@ export function analyticsQualityLinkConfig(days: number): ReplayLinkConfig | nul
 export function analyticsReplayTriageLinks(days: number): ReplayTriageLinks | null {
   const config = analyticsReplayLinkConfig(days)
   return config ? replayTriageLinks(config) : null
+}
+
+/**
+ * Project/date-range configuration for the admin saved-insight catalog. Only
+ * the public project id and optional saved short ids are used; the write token
+ * is never read, so the catalog still works when browser capture is blocked or
+ * unconfigured. Returns null when the project id is absent, which lets the
+ * Analytics tab keep rendering the authoritative first-party KPI cards.
+ */
+export function analyticsSavedInsightConfig(days: number): SavedInsightLinkConfig | null {
+  if (!POSTHOG_PROJECT_ID) return null
+  return {
+    projectId: POSTHOG_PROJECT_ID,
+    uiHost: POSTHOG_UI_HOST,
+    days,
+    savedInsightIds: {
+      funnel: POSTHOG_INSIGHT_FUNNEL_ID,
+      trends: POSTHOG_INSIGHT_TRENDS_ID,
+      paths: POSTHOG_INSIGHT_PATHS_ID,
+      retention: POSTHOG_INSIGHT_RETENTION_ID,
+      stickiness: POSTHOG_INSIGHT_STICKINESS_ID,
+    },
+  }
 }

@@ -112,6 +112,21 @@ class Settings(BaseSettings):
     RATE_LIMIT_CALLS_PER_HOUR: int = 1000
     FRONTEND_TELEMETRY_ENABLED: bool = True
 
+    # Aggregate-only error tracking and threshold alert delivery. Ingestion
+    # accepts only a sanitized route, release and error class; alert payloads
+    # never include exception text, user identifiers, emails or tokens.
+    ERROR_TRACKING_ENABLED: bool = True
+    ERROR_ALERT_THRESHOLD: int = Field(default=10, ge=1, le=10000)
+    ERROR_ALERT_WINDOW_MINUTES: int = Field(default=15, ge=1, le=1440)
+    ERROR_ALERT_COOLDOWN_MINUTES: int = Field(default=60, ge=1, le=10080)
+    ALERT_SLACK_WEBHOOK_URL: str = Field(
+        default="", description="Slack incoming webhook used for threshold alerts"
+    )
+    ALERT_SLACK_CHANNEL: str = Field(default="#alerts", description="Slack channel label for alert delivery")
+    ALERT_EMAIL_TO: str = Field(
+        default="", description="Comma-separated operator inboxes for threshold alerts"
+    )
+
     # OpenAI Configuration
     OPENAI_API_KEY: str = Field(default="", description="OpenAI API key for LLM services")
     # Optional override of the OpenAI API base URL. When set, the PLATFORM key is

@@ -57,6 +57,11 @@ the CI guard in the same pull request.
 | `NEXT_PUBLIC_POSTHOG_HOST` | Ingestion host, `https://us.i.posthog.com`. |
 | `NEXT_PUBLIC_POSTHOG_UI_HOST` | App host for admin links, `https://us.posthog.com`. |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_ID` | `756020`; enables admin deep links. |
+| `NEXT_PUBLIC_POSTHOG_INSIGHT_FUNNEL_ID` | Optional PostHog short id for the saved **Activation funnel**. Blank opens a prefilled funnel draft. |
+| `NEXT_PUBLIC_POSTHOG_INSIGHT_TRENDS_ID` | Optional short id for **Product event trends**. |
+| `NEXT_PUBLIC_POSTHOG_INSIGHT_PATHS_ID` | Optional short id for **Navigation paths**. |
+| `NEXT_PUBLIC_POSTHOG_INSIGHT_RETENTION_ID` | Optional short id for **Weekly retention**. |
+| `NEXT_PUBLIC_POSTHOG_INSIGHT_STICKINESS_ID` | Optional short id for **Feature stickiness**. |
 | `NEXT_PUBLIC_APP_RELEASE` | Deployed git SHA or semver tag. Bounded to 64 safe characters and sent as `release` / `$release_id`; leave blank when unattested rather than inventing a version. |
 
 Leave the key blank to disable analytics without changing code. If the release
@@ -138,35 +143,103 @@ linked to card data. No endpoint sends a customer email or name to PostHog.
 - 24-hour operations counters (queued, processing, completed, failed, webhook
   failures, active users).
 
-The admin **Analytics** tab renders this payload and links to PostHog replays,
-dashboards, people, replay privacy settings, and a set of **pre-filtered replay
-triage** links (see below). The admin **Replays** tab hosts the fuller replay
+The admin **Analytics** tab renders this payload and links to PostHog saved
+funnels, trends, paths, retention, and stickiness, plus replays, dashboards,
+people, replay privacy settings, and a set of **pre-filtered replay triage**
+links (see below). The admin **Replays** tab hosts the fuller replay
 library/browser with saved filters and a custom filter builder. The admin
 **Quality** tab hosts route-level JavaScript-error, rage-click, and dead-click
 triage.
 
-## Dashboards to create in PostHog
+## Dashboards and saved insights to create in PostHog
 
-Create these once in the project; the admin deep links assume the project.
+Create these once in the project; the admin deep links assume the project. The
+five **saved insight** names match the typed catalog and are opened directly by
+the admin Analytics tab when their short ids are configured.
 
-1. **Acquisition → activation**: `$pageview` → `product_event` (sign-up) →
-   `compilation_tracked` → `optimization_tracked` → `checkout_started`.
-2. **Compile health**: `compilation_tracked` broken down by `status`; alert on
+1. **Activation funnel** (saved insight): `$pageview` → `product_event`
+   (sign-up) → `compilation_tracked` → `optimization_tracked` →
+   `checkout_started`.
+2. **Product event trends** (saved insight): daily `compilation_tracked`,
+   `optimization_tracked`, and `checkout_started`, grouped by sanitized `route`.
+3. **Compile health**: `compilation_tracked` broken down by `status`; alert on
    failure rate over 10% for 30 minutes.
-3. **AI adoption and cost**: `optimization_tracked` by `model`; sum
+4. **AI adoption and cost**: `optimization_tracked` by `model`; sum
    `tokens_used`; compare against plan.
-4. **Billing funnel**: `checkout_started` → `backend_payment_succeeded` →
+5. **Billing funnel**: `checkout_started` → `backend_payment_succeeded` →
    `backend_subscription_status_changed`.
-5. **Retention**: weekly retained users after first `compilation_tracked`.
-6. **Replay review**: filter to `/dashboard`, `/templates`, `/tracker`,
+6. **Weekly retention** (saved insight): weekly retained users after first
+   `compilation_tracked`.
+7. **Navigation paths** (saved insight): `$pageview` paths starting at
+   `/dashboard`.
+8. **Feature stickiness** (saved insight): daily `feature_used` grouped by the
+   bounded `feature` key.
+9. **Replay review**: filter to `/dashboard`, `/templates`, `/tracker`,
    `/billing`, `/pricing`, and `/settings`; exclude `/r/:token`,
    `/u/:username`, `/share/:token`, `/portfolio/:username`, and workspace/editor
    paths (already blocked at capture).
-7. **Admin actions**: `backend_admin_*` events grouped by admin ID.
-8. **Quality triage**: `$exception` (breakdowns: `error_type`, `route`,
-   `$release_id`), `$rageclick`, and `$dead_click` (breakdowns: `route`,
-   `$release_id`) as tables over 7 and 30 days. Add a minimum-count filter in
-   PostHog if a saved view needs to exclude groups below five events.
+10. **Admin actions**: `backend_admin_*` events grouped by admin ID.
+11. **Quality triage**: `$exception` (breakdowns: `error_type`, `route`,
+    `$release_id`), `$rageclick`, and `$dead_click` (breakdowns: `route`,
+    `$release_id`) as tables over 7 and 30 days. Add a minimum-count filter in
+    PostHog if a saved view needs to exclude groups below five events.
+
+## Saved insight catalog (admin Analytics)
+
+`frontend/src/lib/analytics/saved-insights.ts` is the typed catalog behind the
+**PostHog saved insights** panel on the admin Analytics tab. It covers five
+aggregate views:
+
+| Descriptor | PostHog type | Events / grouping |
+| --- | --- | --- |
+| Activation funnel | `FUNNELS` | `$pageview` → `product_event` → `compilation_tracked` → `checkout_started` |
+| Product event trends | `TRENDS` | daily `compilation_tracked`, `optimization_tracked`, `checkout_started`, grouped by sanitized `route` |
+| Navigation paths | `PATHS` | `$pageview` paths starting at `/dashboard` |
+| Weekly retention | `RETENTION` | weekly recurring `compilation_tracked` cohorts |
+| Feature stickiness | `STICKINESS` | daily `feature_used`, grouped by bounded `feature` |
+
+Every descriptor carries the selected 7/30/90-day range. The panel is rendered
+inside `AdminAnalytics`, which is reachable only through the admin tab list;
+there is no public page, share link, or export.
+
+There is no public share URL for these views; the only links point at the
+authenticated PostHog project.
+
+**Saved ids are optional.** No database migration is needed: the ids are
+deployment configuration, and the catalog always has a prefilled-draft
+fallback. When a `NEXT_PUBLIC_POSTHOG_INSIGHT_*_ID` is set, the link opens
+`{UI_HOST}/project/{PROJECT_ID}/insights/{SHORT_ID}?filters_override=...` with
+`{"date_from":"-30d","date_to":null}` so the saved view re-runs over the admin's
+selected range. When an id is blank or invalid, the same card opens
+`.../insights/new?insight={TYPE}&q=...` with a complete, prefilled
+`InsightVizNode` query that already embeds the date range. Save that view once
+in PostHog and set the environment variable if you want a stable saved id.
+
+**First-party fallback.** If `NEXT_PUBLIC_POSTHOG_PROJECT_ID` is missing, the
+panel labels the exploration links as unavailable and lists the five
+descriptors without hrefs. The authoritative first-party KPI cards continue to
+load from the Latexy database; no count is zero-filled from a missing PostHog
+project.
+
+**Privacy guardrails.**
+
+- Breakdowns are limited to `route`, `plan`, `feature`, `event_type`, `status`,
+  `format`, `provider`, `model`, `billing_period`, and a few browser/enums.
+  Emails, names, user/distinct ids, person histories, document paths, prompts,
+  and tokens are rejected by the catalog before a URL is built.
+- PostHog groups with fewer than five users or events are suppressed during
+  review. The panel states the policy and the helper in the module suppresses
+  any small local aggregate before display.
+- **No embed.** The panel renders no iframe and generates no PostHog share or
+  embed token. PostHog embeds require a public sharing token plus a CSP
+  `frame-src` review, so this surface deliberately links out to the
+  authenticated project instead. There is no CSP exception to review for the
+  current implementation.
+
+Tests live in `frontend/src/__tests__/saved-insights.test.ts` (URL, project,
+range, saved-id validation, breakdown allowlist, fallback, and cohort
+suppression) and `frontend/src/__tests__/admin-posthog-insights.test.ts`
+(admin-only wiring, rendering, embedded-content guardrail, and docs).
 
 ## Replay review workflow
 
@@ -312,6 +385,29 @@ The module and UI are unit tested in
 `frontend/src/__tests__/quality-triage.test.ts` and
 `frontend/src/__tests__/admin-quality-triage.test.ts`.
 
+### Backend error grouping and threshold alerts
+
+PostHog remains the source of truth for browser exception grouping, error
+tracking, and masked replay. In addition, the backend keeps an aggregate-only
+error feed keyed by `(source, route, release, error_class)`:
+
+- The consent-gated `before_send` hook mirrors a sanitized
+  `{route, release, error_class}` signal to `POST /telemetry/errors`; it never
+  sends an exception message or stack.
+- Unhandled backend 5xx responses record the route template and
+  `type(exc).__name__` only.
+- `/admin/analytics/errors` returns groups with at least five occurrences,
+  suppression counts, the current threshold, delivery configuration, and a
+  runbook link. It never returns per-user rows.
+- `/admin/analytics/errors/evaluate` previews or dispatches one aggregate
+  Slack/email message per group per cooldown window. A real dispatch requires
+  `confirm: true` and an audited reason.
+
+Alert payloads carry the sanitized route, release, error class, counters,
+environment, and the
+[error alert runbook](observability/error-alert-runbook.md) link. Document,
+share, portfolio, and guest-editor routes are dropped before storage.
+
 ## Retention and deletion
 
 - Session replay: 30 days (PostHog project setting).
@@ -326,7 +422,7 @@ The module and UI are unit tested in
 bash scripts/ci/no-session-recording.sh
 
 # Frontend unit tests
-cd frontend && pnpm exec vitest run src/__tests__/analytics-posthog.test.ts src/__tests__/replay-links.test.ts src/__tests__/replay-browser.test.ts src/__tests__/quality-triage.test.ts src/__tests__/admin-quality-triage.test.ts
+cd frontend && pnpm exec vitest run src/__tests__/analytics-posthog.test.ts src/__tests__/replay-links.test.ts src/__tests__/replay-browser.test.ts src/__tests__/quality-triage.test.ts src/__tests__/admin-quality-triage.test.ts src/__tests__/saved-insights.test.ts src/__tests__/admin-posthog-insights.test.ts
 
 # Backend data-boundary tests
 cd backend && SKIP_INFRA_CHECK=1 .venv/Scripts/python.exe -m pytest test/test_posthog_analytics.py -q

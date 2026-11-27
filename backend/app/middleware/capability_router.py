@@ -264,8 +264,19 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "admin_flag_exposure_routes": frozenset({
         "ingest_flag_exposure", "get_admin_flag_exposure",
     }),
+    "admin_experiment_routes": frozenset({
+        "record_experiment_assignment", "get_admin_experiment_catalog",
+        "list_admin_experiments", "create_admin_experiment",
+        "get_admin_experiment", "get_admin_experiment_results",
+        "start_admin_experiment", "revert_admin_experiment_assignments",
+        "stop_admin_experiment",
+    }),
     "admin_career_adoption_routes": frozenset({
         "get_admin_career_adoption", "get_admin_career_feature_adoption",
+    }),
+    "admin_cohort_routes": frozenset({
+        "evaluate_cohort_flags", "list_feature_cohorts", "create_feature_cohort",
+        "map_cohort_flag", "unmap_cohort_flag", "sync_feature_cohort",
     }),
     "ai_routes": frozenset({
         "list_bullet_variants", "delete_bullet_variant_set", "list_personas",
@@ -421,7 +432,7 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "tenant_routes": frozenset({
         "current_context", "resolve_tenant_host",
         "list_my_tenants", "list_cohorts",
-        "list_cohort_submissions", "list_members",
+        "list_cohort_submissions", "get_cohort_engagement", "list_members",
         "remove_member", "leave_tenant", "tenant_stats",
         "get_domain_health",
     }),

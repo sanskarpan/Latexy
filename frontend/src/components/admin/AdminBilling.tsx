@@ -18,6 +18,7 @@ import AdminCheckoutFunnel from './AdminCheckoutFunnel'
 
 const RANGES = [7, 30, 90] as const
 const PAGE_SIZE = 25
+const PAYMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type AckFilter = 'all' | 'unacknowledged' | 'acknowledged'
 
@@ -395,10 +396,10 @@ function RefundQueue({
   return (
     <section className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
-        <h3 className="text-sm font-semibold text-fg">Refund approval queue</h3>
+        <h3 className="text-sm font-semibold text-fg">Refund and goodwill approval queue</h3>
         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
-          Requests require a different admin to approve. Execution never happens automatically; the provider webhook
-          remains the authoritative settlement record.
+          Refunds and goodwill compensation both require a different admin to approve. Execution never happens
+          automatically; the provider webhook remains the authoritative settlement record.
         </p>
       </div>
       {loading && !data ? (
@@ -442,7 +443,13 @@ function RefundQueue({
                     </td>
                     <td className="px-4 py-3 font-mono text-[10px] text-fg-3">{shortId(row.payment_id, 14)}</td>
                     <td className="max-w-[320px] px-4 py-3 text-xs text-fg-3">
+                      {row.request_kind === 'goodwill' && (
+                        <span className="mb-1 inline-flex rounded border border-warn/30 bg-warn/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-warn">
+                          Goodwill
+                        </span>
+                      )}
                       <p>{summarize(row.reason, 160)}</p>
+                      {row.evidence && <p className="mt-1 text-[10px] text-fg-2">Evidence: {summarize(row.evidence, 120)}</p>}
                       {row.decision_note && <p className="mt-1 text-[10px]">Decision: {summarize(row.decision_note, 120)}</p>}
                       {row.last_error && <p className="mt-1 text-[10px] text-err">{summarize(row.last_error, 120)}</p>}
                       {row.provider_refund_id && <p className="mt-1 font-mono text-[10px] text-ok">{row.provider_refund_id}</p>}
@@ -779,9 +786,11 @@ export default function AdminBilling() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [showCreate, setShowCreate] = useState(false)
   const [refundPaymentId, setRefundPaymentId] = useState('')
+  const [refundKind, setRefundKind] = useState<'refund' | 'goodwill'>('refund')
   const [refundAmount, setRefundAmount] = useState('')
   const [refundItemId, setRefundItemId] = useState('')
   const [refundReason, setRefundReason] = useState('')
+  const [refundEvidence, setRefundEvidence] = useState('')
   const requestGeneration = useRef(0)
   const busyRef = useRef(false)
 
@@ -998,26 +1007,39 @@ export default function AdminBilling() {
 
   const createRefund = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!refundPaymentId.trim() || !refundReason.trim()) return
+    const paymentReference = refundPaymentId.trim()
+    if (!paymentReference || !refundReason.trim()) return
     const amount = refundAmount.trim() ? Number(refundAmount) : null
     if (amount !== null && (!Number.isInteger(amount) || amount <= 0)) {
       toast.error('Refund amount must be a positive whole number')
       return
     }
+    if (amount === null && refundItemId.trim()) {
+      toast.error('A full refund must not include a provider line-item ID')
+      return
+    }
     if (!beginBusy('create-refund')) return
     try {
       await apiClient.createAdminRefundRequest({
-        payment_id: refundPaymentId.trim(),
+        ...(PAYMENT_UUID_RE.test(paymentReference)
+          ? { payment_id: paymentReference }
+          : { provider_payment_id: paymentReference }),
+        request_kind: refundKind,
         amount,
         provider_item_id: refundItemId.trim() || null,
         reason: refundReason.trim(),
+        evidence: refundEvidence.trim() || null,
       })
-      toast.success('Refund request created; a different admin must approve it')
+      toast.success(
+        `${refundKind === 'goodwill' ? 'Goodwill' : 'Refund'} request created; a different admin must approve it`,
+      )
       setShowCreate(false)
       setRefundPaymentId('')
+      setRefundKind('refund')
       setRefundAmount('')
       setRefundItemId('')
       setRefundReason('')
+      setRefundEvidence('')
       setRefreshKey((value) => value + 1)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Refund request failed')
@@ -1195,10 +1217,10 @@ export default function AdminBilling() {
       <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-fg">Create refund request</h3>
+            <h3 className="text-sm font-semibold text-fg">Create refund or goodwill request</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-3">
-              Use the local payment UUID. A full refund leaves the amount blank. Partial refunds require the provider
-              line-item ID and are submitted through Dodo only after a second admin approves.
+              Use the local payment UUID or the Dodo payment ID. A full refund leaves the amount blank. Partial refunds
+              require the provider line-item ID and are submitted through Dodo only after a different admin approves.
             </p>
           </div>
           <button type="button" onClick={() => setShowCreate((value) => !value)} className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
@@ -1206,10 +1228,17 @@ export default function AdminBilling() {
           </button>
         </div>
         {showCreate && (
-          <form onSubmit={createRefund} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <form onSubmit={createRefund} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-[11px] text-fg-2">
-              Payment UUID
-              <input value={refundPaymentId} onChange={(event) => setRefundPaymentId(event.target.value)} required className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
+              Payment UUID or Dodo payment ID
+              <input value={refundPaymentId} onChange={(event) => setRefundPaymentId(event.target.value)} required minLength={4} maxLength={255} className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs text-fg" />
+            </label>
+            <label className="text-[11px] text-fg-2">
+              Request type
+              <select value={refundKind} onChange={(event) => setRefundKind(event.target.value as 'refund' | 'goodwill')} className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-xs text-fg">
+                <option value="refund">Refund</option>
+                <option value="goodwill">Goodwill</option>
+              </select>
             </label>
             <label className="text-[11px] text-fg-2">
               Amount (paise, blank = full)
@@ -1222,6 +1251,10 @@ export default function AdminBilling() {
             <label className="text-[11px] text-fg-2 sm:col-span-2">
               Reason
               <input value={refundReason} onChange={(event) => setRefundReason(event.target.value)} required minLength={3} maxLength={1000} className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-xs text-fg" />
+            </label>
+            <label className="text-[11px] text-fg-2 sm:col-span-2 lg:col-span-3">
+              Evidence (optional, admin-only)
+              <textarea value={refundEvidence} onChange={(event) => setRefundEvidence(event.target.value)} maxLength={2000} rows={2} className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-xs text-fg" placeholder="Ticket IDs, policy reference, or customer correspondence summary. Never paste card data." />
             </label>
             <button type="submit" disabled={Boolean(busyId)} className="min-h-[40px] rounded-md bg-accent px-4 py-2 text-xs font-semibold text-accent-fg disabled:opacity-40 sm:col-span-2 lg:col-span-1">
               Submit request

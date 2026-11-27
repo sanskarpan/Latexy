@@ -118,7 +118,8 @@ def test_environment_precedence_is_allowlisted_without_startup(tmp_path):
     ("0090_ats_score_baseline", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0091_dunning_history", current_columns(), "known_mainline_dodo_upgrade_required"),
     ("0092_document_complexity", current_columns(), "known_mainline_dodo_upgrade_required"),
-    ("0100_daily_metrics", current_columns(), "current_dodo_head"),
+    ("0100_daily_metrics", current_columns(), "known_mainline_dodo_upgrade_required"),
+    ("0109_error_alerts", current_columns(), "current_dodo_head"),
     ("0068", {}, "schema_revision_mismatch_requires_review"),
     ("secret", current_columns(), "unknown_requires_review"),
 ])
@@ -185,7 +186,7 @@ def test_stamped_capability_revision_rejects_partial_columns(revision, table, co
 
 
 def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
-    assert preflight.EXPECTED_HEAD == "0100_daily_metrics"
+    assert preflight.EXPECTED_HEAD == "0109_error_alerts"
     assert preflight.CAPABILITY_SCHEMA_COLUMNS["0073_d14_subfeatures"] == {}
     previous_columns = {
         **{table: set(names) for table, names in preflight.CURRENT_BILLING_COLUMNS.items()},
@@ -193,7 +194,7 @@ def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
         **{table: set(names) for revision, tables in preflight.CAPABILITY_SCHEMA_COLUMNS.items()
            if revision not in {"0073_d14_subfeatures", "0074_redis_authority_freeze", "0075_durable_quota_ledger",
                                "0076_spare_authority_handover", "0077_admin_control_room",
-                               "0078_admin_alerts", "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution", "0087_email_delivery_events", "0088_admin_incidents", "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history", "0092_document_complexity", "0100_daily_metrics"}
+                               "0078_admin_alerts", "0084_subscription_history", "0085_gdpr_requests", "0086_trial_attribution", "0087_email_delivery_events", "0088_admin_incidents", "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history", "0092_document_complexity", "0093_admin_saved_views", "0094_template_health", "0096_retention_controls", "0097_two_person_approvals", "0099_tenant_domain_health", "0100_daily_metrics", "0101_view_as_user", "0102_admin_user_notes", "0103_abuse_review", "0104_refund_requests", "0106_admin_experiments", "0108_cohort_sync", "0109_error_alerts"}
            for table, names in tables.items()},
     }
     previous_tables = {
@@ -202,6 +203,13 @@ def test_d14_insert_only_revision_reuses_previous_schema_without_new_tables():
         "subscription_history", "gdpr_requests", "gdpr_request_events",
         "gdpr_legal_holds", "trial_attributions", "email_delivery_events",
         "email_recipient_suppressions", "admin_incidents", "admin_daily_metrics",
+        "admin_experiments", "admin_experiment_assignments",
+        "admin_experiment_exposures", "admin_saved_views", "admin_segments",
+        "template_health_checks", "retention_policies", "retention_policy_revisions",
+        "retention_runs", "admin_approvals", "tenant_domain_events",
+        "admin_view_as_sessions", "admin_user_notes", "admin_user_tags",
+        "abuse_review_items", "feature_cohorts", "feature_cohort_members",
+        "feature_cohort_flag_mappings", "admin_error_groups",
     }
     assert previous_columns == {table: names for table, names in current_columns().items()
                                 if table not in previous_tables}
@@ -745,7 +753,8 @@ def test_rollout_allows_explicitly_safe_disabled_sales(sales_mode, mode, api, ho
     ("0089_ai_latency_retry", "known_mainline_dodo_upgrade_required"),
     ("0090_ats_score_baseline", "known_mainline_dodo_upgrade_required"),
     ("0092_document_complexity", "known_mainline_dodo_upgrade_required"),
-    ("0100_daily_metrics", "current_dodo_head"),
+    ("0100_daily_metrics", "known_mainline_dodo_upgrade_required"),
+    ("0109_error_alerts", "current_dodo_head"),
 ])
 def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, schema):
     assert preflight.rollout_assessment(rollout_report(revision=revision, schema=schema))["safe_to_rollout"]
@@ -755,7 +764,7 @@ def test_rollout_allows_recognized_ordinary_mainline_migration_paths(revision, s
     ("0072_capability_roles", "current_dodo_head"),
     ("0080_queue_snapshots", "current_dodo_head"),
     ("0092_document_complexity", "current_dodo_head"),
-    ("0100_daily_metrics", "known_mainline_dodo_upgrade_required"),
+    ("0109_error_alerts", "known_mainline_dodo_upgrade_required"),
     ("0073_d14_subfeatures", "current_dodo_head"),
 ])
 def test_rollout_rejects_head_revision_classification_mismatch(revision, schema):

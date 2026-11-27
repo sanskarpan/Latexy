@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { apiClient, type AdminUser360, type AdminUserTimelineItem } from '@/lib/api-client'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
 import AdminSupportActions from './AdminSupportActions'
+import AdminUserNotes from './AdminUserNotes'
 
 const TIMELINE_LIMIT = 20
 const TIMELINE_KIND_LABELS: Record<AdminUserTimelineItem['kind'], string> = {
@@ -429,6 +430,8 @@ export default function AdminUserDetail({
           </div>
         </div>
 
+        <AdminUserNotes userId={userId} canAdmin={canAdmin} />
+
         <Section
           title="Subscription and payment timeline"
           description="Newest first. Composed from subscription history, subscriptions, payments, refunds and admin billing changes. No document content, prompts, credentials, provider payloads or tokens are included."
@@ -847,7 +850,7 @@ export default function AdminUserDetail({
               <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Refund requests</p>
               {data.billing.refund_requests.map((row) => (
                 <p key={row.id} className="text-[11px] text-fg-3">
-                  {row.status} · {row.amount == null ? 'full' : formatMoney(row.amount / 100, row.currency || 'INR')} · {formatDateTime(row.requested_at)}
+                  {row.request_kind === 'goodwill' ? 'goodwill' : 'refund'} · {row.status} · {row.amount == null ? 'full' : formatMoney(row.amount / 100, row.currency || 'INR')} · {formatDateTime(row.requested_at)}
                 </p>
               ))}
             </div>

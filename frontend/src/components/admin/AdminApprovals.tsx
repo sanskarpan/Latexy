@@ -37,6 +37,7 @@ const TYPE_LABELS: Record<AdminApprovalRequestType, string> = {
     impersonation: 'Impersonation / view-as',
     role_escalation: 'Role escalation',
     bulk_entitlement_change: 'Bulk entitlement change',
+    abuse_review_action: 'Abuse review enforcement',
 }
 
 function statusTone(status: AdminApprovalStatus): string {
@@ -66,6 +67,16 @@ function payloadSummary(approval: AdminApproval): string {
     if (approval.request_type === 'bulk_entitlement_change') {
         const changes = Array.isArray(payload.changes) ? payload.changes.length : 0
         return `${changes} entitlement cell${changes === 1 ? '' : 's'} in one atomic change`
+    }
+    if (approval.request_type === 'impersonation') {
+        return `Read-only view-as snapshot for ${String(payload.target_user_id || '')}`
+    }
+    if (approval.request_type === 'abuse_review_action') {
+        const action = String(payload.action || 'action')
+        const subject = String(payload.subject_key || '').slice(0, 12)
+        return `${action} device subject ${subject} for queue item ${String(
+            payload.queue_item_id || ''
+        )}`
     }
     return 'Reserved request type'
 }
@@ -199,9 +210,13 @@ export default function AdminApprovals() {
 
     const canExecuteHere =
         selected?.can_execute &&
-        ['refund', 'account_deletion', 'role_escalation', 'bulk_entitlement_change'].includes(
-            selected.request_type
-        )
+        [
+            'refund',
+            'account_deletion',
+            'role_escalation',
+            'bulk_entitlement_change',
+            'abuse_review_action',
+        ].includes(selected.request_type)
 
     return (
         <div id="admin-approvals" className="space-y-6">
@@ -533,9 +548,9 @@ export default function AdminApprovals() {
                             )}
 
                             {selected.can_execute && selected.request_type === 'impersonation' && (
-                                <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-xs text-err">
-                                    No impersonation/view-as surface is enabled. The approval cannot
-                                    be executed.
+                                <p className="rounded-[var(--radius-md)] bg-surface-2 px-3 py-2 text-xs text-fg-2">
+                                    Approved. Start this read-only preview from the View-as panel at the top
+                                    of the admin page. The approval can start exactly one session.
                                 </p>
                             )}
 

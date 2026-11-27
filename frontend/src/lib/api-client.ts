@@ -1833,6 +1833,92 @@ export interface AdminCompileErrorsResponse {
   generated_at: string
 }
 
+export interface AdminErrorGroup {
+  id: string
+  source: 'frontend' | 'backend'
+  route: string
+  release: string
+  error_class: string
+  occurrence_count: number
+  window_events: number
+  window_started_at: string | null
+  first_seen_at: string | null
+  last_seen_at: string | null
+  last_alerted_at: string | null
+  alert_count: number
+}
+
+export interface AdminErrorFeedResponse {
+  generated_at: string
+  days: number
+  window: { start: string; end: string }
+  filters: {
+    source: 'frontend' | 'backend' | null
+    route: string | null
+    error_class: string | null
+  }
+  threshold: {
+    occurrences: number
+    window_minutes: number
+    cooldown_minutes: number
+  }
+  groups: AdminErrorGroup[]
+  totals: {
+    events: number
+    groups: number
+    visible_groups: number
+    routes: number
+    releases: number
+    suppressed_groups: number
+    suppressed_events: number
+  }
+  suppression: {
+    minimum_cohort_size: number
+    user_dimension_included: false
+    messages_included: false
+  }
+  delivery: {
+    configured: boolean
+    channels: string[]
+  }
+  runbook_url: string
+}
+
+export interface AdminErrorAlertEvaluation {
+  dry_run: boolean
+  threshold: {
+    occurrences: number
+    window_minutes: number
+    cooldown_minutes: number
+  }
+  candidate_count: number
+  selected_count: number
+  skipped_cooldown: number
+  delivery_configured: boolean
+  runbook_url: string
+  alerts: Array<{
+    kind: 'error_threshold'
+    source: 'frontend' | 'backend'
+    route: string
+    release: string
+    error_class: string
+    window_events: number
+    total_events: number
+    threshold: number
+    window_minutes: number
+    first_seen_at: string | null
+    last_seen_at: string | null
+    environment: string
+    runbook_url: string
+  }>
+  delivery: {
+    attempted: boolean
+    delivered: boolean
+    channels: Array<{ channel: string; status: string }>
+  }
+  alerted: number
+}
+
 export interface AdminDocumentComplexityBucket {
   bucket: string
   lower_bound: number | null
@@ -1987,6 +2073,141 @@ export interface AdminDocumentComplexityResponse {
   }
   notes: string[]
   generated_at: string
+}
+
+export interface AdminAccessReviewAccount {
+  user_id: string
+  email_masked: string | null
+  name_masked: string | null
+  role: 'admin' | 'support'
+  two_factor_enabled: boolean
+  passkey_count: number
+  strong_auth: boolean
+  missing_two_factor: boolean
+  missing_strong_auth: boolean
+  last_login_at: string | null
+  last_activity_at: string | null
+  last_session_expires_at: string | null
+  session_count: number
+  active_sessions: number
+  account_age_days: number | null
+  stale: boolean
+  never_used: boolean
+  flags: string[]
+}
+
+export interface AdminAccessReviewFlag {
+  code: string
+  label: string
+  severity: 'high' | 'medium' | 'low'
+  count: number
+  account_ids: string[]
+  truncated: boolean
+}
+
+export interface AdminAccessReviewSummary {
+  total: number
+  admins: number
+  support: number
+  two_factor_enabled: number
+  without_two_factor: number
+  admins_without_2fa: number
+  support_without_2fa: number
+  strong_auth_enabled: number
+  without_strong_auth: number
+  admins_without_strong_auth: number
+  stale: number
+  stale_admins: number
+  stale_support: number
+  never_used: number
+  never_used_admins: number
+  never_used_support: number
+  active_sessions: number
+  flagged: number
+  two_factor_coverage_pct: number
+  strong_auth_coverage_pct: number
+}
+
+export type AdminAccessReviewDecision = 'attested' | 'follow_up_required'
+
+export interface AdminAccessReviewAttestation {
+  audit_id: string
+  quarter: string | null
+  decision: AdminAccessReviewDecision | null
+  note: string | null
+  attested_at: string | null
+  attested_by_user_id: string | null
+  attested_by_email_masked: string | null
+  roster_size: number | null
+  admins: number | null
+  support: number | null
+  admins_without_2fa: number | null
+  support_without_2fa: number | null
+  stale: number | null
+  never_used: number | null
+  active_sessions: number | null
+  snapshot_hash: string | null
+  automatic_demotion: boolean
+}
+
+export interface AdminAccessReviewAttestationState {
+  quarter: string
+  required: boolean
+  current: boolean
+  latest: AdminAccessReviewAttestation | null
+  roster_changed_since_attestation: boolean
+  history: AdminAccessReviewAttestation[]
+}
+
+export interface AdminAccessReviewResponse {
+  quarter: string
+  quarter_bounds: { start: string; end: string; timezone: 'UTC' }
+  generated_at: string
+  stale_after_days: number
+  review_policy: {
+    read_only: boolean
+    automatic_demotion: boolean
+    quarterly_attestation: boolean
+    requires_confirmation: boolean
+    requires_reason: boolean
+    minimum_note_length: number
+    role_change_detection: string
+    attestation_store: string
+    attestation_retention: string
+  }
+  summary: AdminAccessReviewSummary
+  flags: AdminAccessReviewFlag[]
+  accounts: AdminAccessReviewAccount[]
+  snapshot_hash: string
+  attestation: AdminAccessReviewAttestationState
+  privacy: {
+    admin_only: boolean
+    read_only: boolean
+    scope: string
+    minimum_user_suppression: boolean
+    suppression_exception: string
+    per_user_histories: boolean
+    fields_read: string[]
+    fields_excluded: string[]
+  }
+  notes: string[]
+}
+
+export interface AdminAccessReviewAttestRequest {
+  quarter: string
+  expected_snapshot_hash: string
+  expected_accounts: Array<{ user_id: string; role: 'admin' | 'support' }>
+  decision: AdminAccessReviewDecision
+  note: string
+  confirm: boolean
+  idempotency_key?: string
+}
+
+export interface AdminAccessReviewAttestResponse {
+  quarter: string
+  duplicate: boolean
+  automatic_demotion: boolean
+  attestation: AdminAccessReviewAttestation
 }
 
 export interface AdminTemplatePerformanceRow {
@@ -3009,11 +3230,13 @@ export interface AdminRefundRequest {
   id: string
   payment_id: string
   status: 'pending' | 'approved' | 'rejected' | 'executing' | 'executed' | 'failed' | 'cancelled'
+  request_kind: 'refund' | 'goodwill'
   amount: number | null
   currency: string | null
   provider_item_id: string | null
   tax_inclusive: boolean
   reason: string
+  evidence: string | null
   decision_note: string | null
   requested_by: string
   requested_email: string | null
@@ -3811,6 +4034,7 @@ export type AdminApprovalRequestType =
   | 'impersonation'
   | 'role_escalation'
   | 'bulk_entitlement_change'
+  | 'abuse_review_action'
 
 export interface AdminApproval {
   id: string
@@ -3846,6 +4070,208 @@ export interface AdminApprovalList {
   offset: number
   counts: Record<AdminApprovalStatus, number>
   pending_by_type: Record<string, number>
+}
+
+export interface AdminViewAsTarget {
+  id: string
+  email: string | null
+  name: string | null
+  pii_masked: true
+  role: string
+  subscription_plan: string
+  subscription_status: string
+  trial_used: boolean
+  created_at: string | null
+}
+
+export interface AdminViewAsSession {
+  id: string
+  approval_id: string
+  target: AdminViewAsTarget
+  scope: 'read_only'
+  status: 'active' | 'ended' | 'expired'
+  reason: string
+  read_only: true
+  banner: string
+  created_at: string | null
+  expires_at: string
+  ended_at: string | null
+  end_reason: string | null
+  seconds_remaining: number
+}
+
+export interface AdminViewAsRequestResult {
+  approval: AdminApproval
+  target: AdminViewAsTarget
+  expires_in_minutes: number
+}
+
+export interface AdminViewAsStartResult {
+  session: AdminViewAsSession
+  token: string
+  approval: AdminApproval
+}
+
+export interface AdminViewAsDashboard {
+  resumes: number
+  compilations: number
+  successful_compilations: number
+  failed_compilations: number
+  last_compilation_at: string | null
+  optimizations: number
+  last_optimization_at: string | null
+  usage_events_30d: number
+  last_activity_at: string | null
+  has_export: boolean
+  has_active_subscription: boolean
+}
+
+export interface AdminViewAsResume {
+  id: string
+  title: string | null
+  document_type: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type AdminAbuseSignalType =
+  | 'blocked_device'
+  | 'trial_limit_reached'
+  | 'repeat_ip_cluster'
+  | 'trial_velocity'
+  | 'payment_failure'
+  | 'referral_rejection'
+  | 'coupon_reuse'
+  | 'rate_limit_pressure'
+
+export type AdminAbuseSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type AdminAbuseStatus = 'open' | 'approved' | 'dismissed' | 'actioned'
+export type AdminAbuseDecision = 'approve' | 'dismiss' | 'action'
+export type AdminAbuseEnforcementAction = 'block' | 'unblock' | 'whitelist'
+
+export interface AdminAbuseEvidenceLink {
+  kind: string
+  label: string
+  href: string
+}
+
+export interface AdminAbuseQueueItem {
+  id: string
+  signal_type: AdminAbuseSignalType
+  signal_label: string
+  subject_type: 'device' | 'ip' | 'account' | 'reason' | 'coupon'
+  subject_key: string
+  subject_ref: string
+  severity: AdminAbuseSeverity
+  status: AdminAbuseStatus
+  occurrence_count: number
+  window_days: number
+  first_seen_at: string | null
+  last_seen_at: string | null
+  evidence: Record<string, unknown>
+  evidence_links: AdminAbuseEvidenceLink[]
+  assigned_to: string | null
+  assigned_by: string | null
+  assigned_at: string | null
+  decision: AdminAbuseDecision | null
+  decided_by: string | null
+  decided_at: string | null
+  decision_reason: string | null
+  enforcement_action: AdminAbuseEnforcementAction | null
+  approval_id: string | null
+  execution_count: number
+  last_executed_at: string | null
+  can_acknowledge: boolean
+  can_dismiss: boolean
+  can_enforce: boolean
+  enforcement_actions: AdminAbuseEnforcementAction[]
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminViewAsPlan {
+  subscription_plan: string
+  subscription_status: string
+  trial_used: boolean
+  subscriptions: Array<{
+    id: string
+    plan_id: string
+    status: string
+    provider: string | null
+    current_period_start: string | null
+    current_period_end: string | null
+    cancelled_at: string | null
+    created_at: string | null
+  }>
+  entitlements: {
+    features: Record<string, boolean>
+    available: boolean
+  }
+  quota: AdminUser360['quota']
+}
+
+export interface AdminViewAsUsage {
+  actions: Array<{ action: string; count: number; last_at: string | null }>
+  recent_events: Array<{ action: string; resource_type: string | null; created_at: string | null }>
+}
+
+export interface AdminViewAsSnapshot {
+  session: AdminViewAsSession
+  dashboard: AdminViewAsDashboard
+  resumes: AdminViewAsResume[]
+  plan: AdminViewAsPlan
+  usage: AdminViewAsUsage
+  support_timeline: AdminUserTimeline
+  limitations: string
+}
+
+export interface AdminViewAsSessionList {
+  items: AdminViewAsSession[]
+  total: number
+  limit: number
+}
+
+export interface AdminAbuseQueueList {
+  items: AdminAbuseQueueItem[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  counts: Record<AdminAbuseStatus, number>
+  by_severity: Record<AdminAbuseSeverity, number>
+  open_total: number
+  aggregation_unit: string
+  minimum_cohort_size: number
+  enforcement: {
+    automatic: boolean
+    sensitive_actions: AdminAbuseEnforcementAction[]
+    two_person_required: boolean
+    device_only: boolean
+  }
+  notes: string[]
+}
+
+export interface AdminAbuseDecisionResponse {
+  item: AdminAbuseQueueItem
+  approval_required: boolean
+  approval: AdminApproval | null
+  idempotent: boolean
+}
+
+export interface AdminAbuseScanResponse {
+  created: number
+  updated: number
+  candidates: number
+  window_days: number
+  bucket: string
+  generated_at: string
+  truncated: Record<string, boolean>
+  audit_id: string
+  summary: {
+    total: number
+    counts: Record<AdminAbuseStatus, number>
+    by_severity: Record<AdminAbuseSeverity, number>
+  }
 }
 
 export interface AdminBulkEntitlementChange {
@@ -3927,6 +4353,139 @@ export interface AdminUserTimeline {
   }
 }
 
+export type AdminUserNoteVisibility = 'internal' | 'admin_only'
+
+export interface AdminUserNote {
+  id: string
+  target_user_id: string
+  author_user_id: string | null
+  author_role: 'admin' | 'support'
+  body: string
+  tags: string[]
+  visibility: AdminUserNoteVisibility
+  version: number
+  created_at: string | null
+  updated_at: string | null
+  edited_at: string | null
+  updated_by: string | null
+  deleted_at: string | null
+  deleted_by: string | null
+  delete_reason: string | null
+  can_edit: boolean
+  can_delete: boolean
+  admin_only: boolean
+  already_deleted?: boolean
+}
+
+export interface AdminUserNotesResponse {
+  items: AdminUserNote[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  viewer_role: string
+  available_tags: string[]
+  retention: AdminUserNoteRetention
+}
+
+export interface AdminUserNoteRetention {
+  soft_delete: boolean
+  automatic_purge: boolean
+  default_retention_days: number
+  policy: string
+}
+
+export interface AdminUserTag {
+  id: string
+  target_user_id: string
+  tag: string
+  created_by: string | null
+  created_by_role: 'admin' | 'support'
+  created_at: string | null
+  removed_at: string | null
+  removed_by: string | null
+  remove_reason: string | null
+  can_remove: boolean
+  created?: boolean
+  already_removed?: boolean
+}
+
+export interface AdminUserTagsResponse {
+  items: AdminUserTag[]
+  total: number
+  limit: number
+  offset: number
+  viewer_role: string
+  retention: AdminUserNoteRetention
+}
+
+export type AdminUserSupportTimelineKind =
+  | 'note'
+  | 'role_change'
+  | 'entitlement_change'
+  | 'trial_change'
+  | 'quota_change'
+  | 'credential_revocation'
+  | 'support_action'
+  | 'pii_reveal'
+  | 'plan_change'
+  | 'refund'
+  | 'refund_request'
+  | 'subscription'
+  | 'payment'
+  | 'approval'
+
+export interface AdminUserSupportTimelineItem {
+  id: string
+  kind: AdminUserSupportTimelineKind
+  occurred_at: string | null
+  summary: string | null
+  event_type: string | null
+  source: string | null
+  actor_user_id: string | null
+  actor_role: string | null
+  status: string | null
+  amount_minor: number | null
+  currency: string | null
+  reference: string | null
+  admin_only: boolean
+  details: Record<string, unknown>
+}
+
+export interface AdminUserSupportTimeline {
+  items: AdminUserSupportTimelineItem[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  order: 'desc'
+  viewer_role: string
+  restricted_kinds: string[]
+  kinds: AdminUserSupportTimelineKind[]
+  counts: Record<string, number>
+  sources: {
+    notes: number
+    admin_actions: number
+    payments: number
+    refunds: number
+    refund_requests: number
+    subscription_history: number
+    approvals: number
+  }
+  retention: AdminUserNoteRetention
+}
+
+export interface AdminUserSupportBundle {
+  notes: AdminUserNote[]
+  note_count: number
+  available_tags: string[]
+  tags: AdminUserTag[]
+  timeline: AdminUserSupportTimeline
+  retention: AdminUserNoteRetention
+}
+
 export interface AdminUser360 {
   user: {
     id: string
@@ -3991,6 +4550,7 @@ export interface AdminUser360 {
       id: string
       payment_id: string
       status: string
+      request_kind: 'refund' | 'goodwill'
       amount: number | null
       currency: string | null
       requested_at: string | null
@@ -4000,6 +4560,7 @@ export interface AdminUser360 {
     timeline?: AdminUserTimeline
   }
   timeline?: AdminUserTimeline
+  support?: AdminUserSupportBundle
   security: {
     sessions: Array<{
       id: string
@@ -4917,6 +5478,265 @@ export interface AdminFlagExposureResponse {
   }
   notes: string[]
   generated_at: string
+}
+
+export type AdminCohortStatus =
+  | 'never_synced'
+  | 'synced'
+  | 'stale'
+  | 'error'
+  | 'below_minimum'
+
+export interface AdminCohortFlag {
+  key: string
+  label: string
+  enabled: boolean
+}
+
+export interface AdminCohort {
+  id: string
+  key: string
+  name: string
+  description: string | null
+  tenant_id: string | null
+  tenant_slug: string | null
+  posthog_cohort_id: string | null
+  minimum_size: number
+  stale_after_seconds: number
+  status: AdminCohortStatus
+  is_stale: boolean
+  size: number | null
+  size_suppressed: boolean
+  suppression_note: string | null
+  last_sync_attempt_at: string | null
+  last_synced_at: string | null
+  last_sync_error: string | null
+  created_at: string | null
+  updated_at: string | null
+  flags: AdminCohortFlag[]
+  evaluation_allowed: boolean
+  exposures_30d: number | null
+  exposures_30d_suppressed: boolean
+  consent_basis: string
+}
+
+export interface AdminCohortSummary {
+  total: number
+  synced: number
+  stale: number
+  error: number
+  never_synced: number
+  below_minimum: number
+  with_flag_mappings: number
+  without_flag_mappings: number
+  evaluation_allowed: number
+}
+
+export interface AdminCohortListResponse {
+  cohorts: AdminCohort[]
+  summary: AdminCohortSummary
+  minimum_size: number
+  exposure_lookback_days: number
+  consent_basis: string
+  aggregate_only: boolean
+  member_identifiers_returned: boolean
+}
+
+export interface AdminCohortCreatePayload {
+  key: string
+  name: string
+  description?: string | null
+  tenant_id?: string | null
+  posthog_cohort_id?: string | null
+  minimum_size?: number
+  stale_after_seconds?: number
+  reason: string
+  confirm: true
+}
+
+export interface AdminCohortSyncPayload {
+  members: string[]
+  error_code?: string | null
+  posthog_cohort_id?: string | null
+  reason: string
+  confirm: true
+}
+
+export interface AdminCohortEvaluationResult {
+  key: string
+  enabled: boolean
+  reason:
+    | 'cohort_match'
+    | 'not_in_cohort'
+    | 'flag_disabled'
+    | 'no_cohort_mapping'
+    | 'sync_not_current'
+    | 'consent_required'
+    | 'unknown_flag'
+  exposure_recorded: boolean
+}
+
+export interface AdminCohortEvaluationResponse {
+  evaluated_at: string
+  window: string
+  consent_required: boolean
+  exposure_recorded: number
+  results: AdminCohortEvaluationResult[]
+}
+
+export interface AdminExperimentVariant {
+  key: string
+  label: string
+  weight: number
+  flag_enabled: boolean | null
+}
+
+export interface AdminExperimentSampleVariant {
+  variant: string
+  label: string
+  sample_size: number | null
+  suppressed: boolean
+  minimum_sample: number
+}
+
+export interface AdminExperimentSample {
+  variants: AdminExperimentSampleVariant[]
+  sample_size: number | null
+  minimum_sample_per_variant: number
+  minimum_sample_met: boolean
+  suppressed: boolean
+}
+
+export interface AdminExperiment {
+  id: string
+  key: string
+  name: string
+  hypothesis: string
+  primary_metric: string
+  guardrail_metrics: string[]
+  variants: AdminExperimentVariant[]
+  flag_key: string | null
+  posthog_insight_url: string | null
+  minimum_sample_per_variant: number
+  status: 'preregistered' | 'running' | 'stopped'
+  registration_hash: string
+  registration_intact: boolean
+  started_at: string | null
+  stopped_at: string | null
+  stop_reason: string | null
+  created_at: string | null
+  updated_at: string | null
+  sample: AdminExperimentSample
+  results_ready: boolean
+  reverted_assignments?: number
+}
+
+export interface AdminExperimentMetricCell {
+  numerator: number | null
+  denominator: number | null
+  rate_pct: number | null
+  suppressed: boolean
+}
+
+export interface AdminExperimentComparison {
+  variant: string
+  variant_label: string
+  control_variant: string
+  control_label: string
+  lift_pp: number | null
+  relative_lift_pct: number | null
+  ci_low_pp: number | null
+  ci_high_pp: number | null
+  confidence_level: number
+  comparable: boolean
+  suppressed: boolean
+  method: string
+  approximate: boolean
+}
+
+export interface AdminExperimentMetric {
+  key: string
+  label: string
+  kind: 'outcome' | 'guardrail'
+  direction: 'up' | 'down'
+  definition: string
+  cells: Record<string, AdminExperimentMetricCell>
+  comparisons: AdminExperimentComparison[]
+  ready: boolean
+  suppressed: boolean
+}
+
+export interface AdminExperimentClaim {
+  policy: string
+  causality: string
+  confidence_level: number
+  peeking: string
+  winner: string
+  automatic_rollout: boolean
+  multiple_looks_corrected: boolean
+}
+
+export interface AdminExperimentCatalog {
+  primary_metrics: AdminFlagExposureDefinition[]
+  guardrail_metrics: AdminFlagExposureDefinition[]
+  metric_definitions: AdminFlagExposureDefinition[]
+  operational_flags: string[]
+  statuses: string[]
+  minimum_sample_floor: number
+  minimum_group_size: number
+  outcome_horizon_days: number
+  posthog_hosts: string[]
+  claim: AdminExperimentClaim
+  notes: string[]
+}
+
+export interface AdminExperimentListResponse {
+  experiments: AdminExperiment[]
+  total: number
+  limit: number
+  offset: number
+  statuses: string[]
+  minimum_group_size: number
+  outcome_horizon_days: number
+  catalog: AdminExperimentCatalog
+  generated_at: string
+}
+
+export interface AdminExperimentResults {
+  experiment: AdminExperiment
+  analysis_window: {
+    started_at: string | null
+    stopped_at: string | null
+    as_of: string
+    analysis_end: string
+    outcome_horizon_days: number
+  }
+  sample: AdminExperimentSample
+  ready: boolean
+  primary_metric: AdminExperimentMetric
+  guardrails: AdminExperimentMetric[]
+  claim: AdminExperimentClaim
+  message: string
+  notes: string[]
+  generated_at: string
+}
+
+export interface AdminExperimentCreateInput {
+  key: string
+  name: string
+  hypothesis: string
+  primary_metric: string
+  guardrail_metrics: string[]
+  variants: Array<{
+    key: string
+    label: string
+    weight: number
+    flag_enabled?: boolean | null
+  }>
+  flag_key?: string | null
+  posthog_insight_url?: string | null
+  minimum_sample_per_variant: number
+  reason: string
 }
 
 export interface AdminLinterRuleRoute {
@@ -9988,6 +10808,149 @@ class ApiClient {
     return this.request<AdminFlagExposureResponse>('/admin/analytics/flag-exposure')
   }
 
+  async getAdminCohorts(tenantId?: string): Promise<AdminCohortListResponse> {
+    const qs = new URLSearchParams()
+    if (tenantId) qs.set('tenant_id', tenantId)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCohortListResponse>(`/admin/cohorts${suffix}`)
+  }
+
+  async createAdminCohort(payload: AdminCohortCreatePayload): Promise<AdminCohort> {
+    return this.request<AdminCohort>('/admin/cohorts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async mapAdminCohortFlag(
+    cohortId: string,
+    flagKey: string,
+    reason: string,
+  ): Promise<AdminCohort> {
+    return this.request<AdminCohort>(
+      `/admin/cohorts/${encodeURIComponent(cohortId)}/mappings`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ flag_key: flagKey, reason, confirm: true }),
+      },
+    )
+  }
+
+  async getAdminExperiments(params?: {
+    status?: AdminExperiment['status']
+    limit?: number
+    offset?: number
+  }): Promise<AdminExperimentListResponse> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminExperimentListResponse>(`/admin/experiments${suffix}`)
+  }
+
+  async createAdminExperiment(
+    payload: AdminExperimentCreateInput,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>('/admin/experiments', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, confirm: true }),
+    })
+  }
+
+  async getAdminExperiment(experimentId: string): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}`,
+    )
+  }
+
+  async getAdminExperimentResults(
+    experimentId: string,
+  ): Promise<AdminExperimentResults> {
+    return this.request<AdminExperimentResults>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/results`,
+    )
+  }
+
+  async startAdminExperiment(
+    experimentId: string,
+    reason: string,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason, confirm: true }),
+      },
+    )
+  }
+
+  async unmapAdminCohortFlag(
+    cohortId: string,
+    flagKey: string,
+    reason: string,
+  ): Promise<AdminCohort> {
+    const qs = new URLSearchParams({ reason, confirm: 'true' })
+    return this.request<AdminCohort>(
+      `/admin/cohorts/${encodeURIComponent(cohortId)}/mappings/${encodeURIComponent(flagKey)}?${qs}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  async syncAdminCohort(
+    cohortId: string,
+    payload: AdminCohortSyncPayload,
+  ): Promise<AdminCohort> {
+    return this.request<AdminCohort>(
+      `/admin/cohorts/${encodeURIComponent(cohortId)}/sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+  }
+
+  async revertAdminExperimentAssignments(
+    experimentId: string,
+    reason: string,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/revert`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason, confirm: true }),
+      },
+    )
+  }
+
+  async evaluateCohortFlags(
+    anonymousId: string,
+    flagKeys: string[],
+  ): Promise<AdminCohortEvaluationResponse> {
+    return this.request<AdminCohortEvaluationResponse>('/analytics/cohorts/evaluate', {
+      method: 'POST',
+      body: JSON.stringify({ anonymous_id: anonymousId, flag_keys: flagKeys }),
+    })
+  }
+
+  async stopAdminExperiment(
+    experimentId: string,
+    reason: string,
+    revertAssignments = true,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/stop`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          reason,
+          confirm: true,
+          revert_assignments: revertAssignments,
+        }),
+      },
+    )
+  }
+
   async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {
     const qs = new URLSearchParams({ days: String(days) })
     return this.request<AdminLinterRulesResponse>(`/admin/linter/rules?${qs}`)
@@ -10157,6 +11120,34 @@ class ApiClient {
     return this.request<AdminCompileErrorsResponse>(`/admin/analytics/compile-errors${suffix}`)
   }
 
+  async getAdminErrorFeed(params?: {
+    days?: number
+    source?: 'frontend' | 'backend'
+    route?: string
+    error_class?: string
+    limit?: number
+  }): Promise<AdminErrorFeedResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.source) qs.set('source', params.source)
+    if (params?.route) qs.set('route', params.route)
+    if (params?.error_class) qs.set('error_class', params.error_class)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminErrorFeedResponse>(`/admin/analytics/errors${suffix}`)
+  }
+
+  async evaluateAdminErrorAlerts(body: {
+    reason: string
+    confirm: boolean
+    dry_run?: boolean
+  }): Promise<AdminErrorAlertEvaluation> {
+    return this.request<AdminErrorAlertEvaluation>('/admin/analytics/errors/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   async getAdminDocumentComplexity(params?: {
     days?: number
     plan?: string
@@ -10172,6 +11163,29 @@ class ApiClient {
     return this.request<AdminDocumentComplexityResponse>(
       `/admin/analytics/document-complexity${suffix}`,
     )
+  }
+
+  async getAdminAccessReview(): Promise<AdminAccessReviewResponse> {
+    return this.request<AdminAccessReviewResponse>('/admin/access-review')
+  }
+
+  async downloadAdminAccessReviewCsv(): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/access-review/export.csv`,
+    )
+    if (!response.ok) {
+      throw new Error(`Access review CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async attestAdminAccessReview(
+    body: AdminAccessReviewAttestRequest,
+  ): Promise<AdminAccessReviewAttestResponse> {
+    return this.request<AdminAccessReviewAttestResponse>('/admin/access-review/attest', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   async getAdminFilteredTimeseries(params: {
@@ -11006,11 +12020,14 @@ class ApiClient {
   }
 
   async createAdminRefundRequest(body: {
-    payment_id: string
+    payment_id?: string
+    provider_payment_id?: string
+    request_kind?: 'refund' | 'goodwill'
     amount?: number | null
     provider_item_id?: string | null
     tax_inclusive?: boolean
     reason: string
+    evidence?: string | null
   }): Promise<AdminRefundRequest> {
     return this.request<AdminRefundRequest>('/admin/billing/refunds', {
       method: 'POST',
@@ -11097,6 +12114,110 @@ class ApiClient {
     )
   }
 
+  async requestAdminViewAs(body: {
+    target_user_id: string
+    reason: string
+    expires_in_minutes?: number
+  }): Promise<AdminViewAsRequestResult> {
+    return this.request<AdminViewAsRequestResult>('/admin/view-as/requests', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getAdminAbuseQueue(params?: {
+    status?: AdminAbuseStatus | 'all'
+    severity?: AdminAbuseSeverity
+    signal_type?: AdminAbuseSignalType
+    assigned_to?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminAbuseQueueList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.signal_type) qs.set('signal_type', params.signal_type)
+    if (params?.assigned_to) qs.set('assigned_to', params.assigned_to)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAbuseQueueList>(`/admin/abuse/queue${suffix}`)
+  }
+
+  async scanAdminAbuseQueue(body: {
+    window_days?: 7 | 30 | 90
+    reason: string
+    confirm: boolean
+  }): Promise<AdminAbuseScanResponse> {
+    return this.request<AdminAbuseScanResponse>('/admin/abuse/queue/scan', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async startAdminViewAsSession(body: {
+    approval_id: string
+    note?: string
+  }): Promise<AdminViewAsStartResult> {
+    return this.request<AdminViewAsStartResult>('/admin/view-as/sessions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getAdminViewAsSnapshot(
+    sessionId: string,
+    token: string,
+    params?: { timelineLimit?: number; timelineOffset?: number },
+  ): Promise<AdminViewAsSnapshot> {
+    const query = new URLSearchParams()
+    if (params?.timelineLimit != null) query.set('timeline_limit', String(params.timelineLimit))
+    if (params?.timelineOffset != null) query.set('timeline_offset', String(params.timelineOffset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminViewAsSnapshot>(
+      `/admin/view-as/sessions/${encodeURIComponent(sessionId)}${suffix}`,
+      { headers: { 'X-View-As-Token': token } },
+    )
+  }
+
+  async endAdminViewAsSession(sessionId: string, reason: string): Promise<AdminViewAsSession> {
+    return this.request<AdminViewAsSession>(
+      `/admin/view-as/sessions/${encodeURIComponent(sessionId)}/end`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async getAdminViewAsSessions(): Promise<AdminViewAsSessionList> {
+    return this.request<AdminViewAsSessionList>('/admin/view-as/sessions')
+  }
+
+  async assignAdminAbuseItem(
+    id: string,
+    body: { assignee_id: string | null; reason: string; confirm: boolean },
+  ): Promise<AdminAbuseQueueItem> {
+    return this.request<AdminAbuseQueueItem>(
+      `/admin/abuse/queue/${encodeURIComponent(id)}/assign`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async decideAdminAbuseItem(
+    id: string,
+    body: {
+      decision: AdminAbuseDecision
+      action?: AdminAbuseEnforcementAction
+      reason: string
+      confirm: boolean
+      approval_id?: string
+      note?: string
+    },
+  ): Promise<AdminAbuseDecisionResponse> {
+    return this.request<AdminAbuseDecisionResponse>(
+      `/admin/abuse/queue/${encodeURIComponent(id)}/decision`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
   async bulkUpdateAdminEntitlements(body: {
     approval_id: string
     changes: AdminBulkEntitlementChange[]
@@ -11117,6 +12238,125 @@ class ApiClient {
     if (params?.timelineOffset != null) query.set('timeline_offset', String(params.timelineOffset))
     const suffix = query.toString() ? `?${query.toString()}` : ''
     return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360${suffix}`)
+  }
+
+  async getAdminUserNotes(
+    id: string,
+    params?: {
+      tag?: string
+      authorUserId?: string
+      visibility?: AdminUserNoteVisibility
+      includeDeleted?: boolean
+      limit?: number
+      offset?: number
+    },
+  ): Promise<AdminUserNotesResponse> {
+    const query = new URLSearchParams()
+    if (params?.tag) query.set('tag', params.tag)
+    if (params?.authorUserId) query.set('author_user_id', params.authorUserId)
+    if (params?.visibility) query.set('visibility', params.visibility)
+    if (params?.includeDeleted) query.set('include_deleted', 'true')
+    if (params?.limit != null) query.set('limit', String(params.limit))
+    if (params?.offset != null) query.set('offset', String(params.offset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUserNotesResponse>(
+      `/admin/users/${encodeURIComponent(id)}/notes${suffix}`,
+    )
+  }
+
+  async createAdminUserNote(
+    id: string,
+    body: {
+      body: string
+      tags?: string[]
+      visibility?: AdminUserNoteVisibility
+      reason: string
+    },
+  ): Promise<AdminUserNote> {
+    return this.request<AdminUserNote>(`/admin/users/${encodeURIComponent(id)}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminUserNote(
+    id: string,
+    noteId: string,
+    body: {
+      expected_version: number
+      body?: string
+      tags?: string[]
+      visibility?: AdminUserNoteVisibility
+      reason: string
+      confirm: true
+    },
+  ): Promise<AdminUserNote> {
+    return this.request<AdminUserNote>(
+      `/admin/users/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminUserNote(
+    id: string,
+    noteId: string,
+    body: { expected_version: number; reason: string; confirm: true },
+  ): Promise<AdminUserNote> {
+    return this.request<AdminUserNote>(
+      `/admin/users/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`,
+      { method: 'DELETE', body: JSON.stringify(body) },
+    )
+  }
+
+  async getAdminUserTags(
+    id: string,
+    params?: { includeRemoved?: boolean },
+  ): Promise<AdminUserTagsResponse> {
+    const query = new URLSearchParams()
+    if (params?.includeRemoved) query.set('include_removed', 'true')
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUserTagsResponse>(
+      `/admin/users/${encodeURIComponent(id)}/tags${suffix}`,
+    )
+  }
+
+  async createAdminUserTag(
+    id: string,
+    body: { tag: string; reason: string },
+  ): Promise<AdminUserTag> {
+    return this.request<AdminUserTag>(`/admin/users/${encodeURIComponent(id)}/tags`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async removeAdminUserTag(
+    id: string,
+    tagId: string,
+    body: { reason: string; confirm: true },
+  ): Promise<AdminUserTag> {
+    return this.request<AdminUserTag>(
+      `/admin/users/${encodeURIComponent(id)}/tags/${encodeURIComponent(tagId)}`,
+      { method: 'DELETE', body: JSON.stringify(body) },
+    )
+  }
+
+  async getAdminUserSupportTimeline(
+    id: string,
+    params?: {
+      kind?: AdminUserSupportTimelineKind[]
+      limit?: number
+      offset?: number
+    },
+  ): Promise<AdminUserSupportTimeline> {
+    const query = new URLSearchParams()
+    for (const kind of params?.kind ?? []) query.append('kind', kind)
+    if (params?.limit != null) query.set('limit', String(params.limit))
+    if (params?.offset != null) query.set('offset', String(params.offset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUserSupportTimeline>(
+      `/admin/users/${encodeURIComponent(id)}/support-timeline${suffix}`,
+    )
   }
 
   async revealAdminUserPii(
@@ -12761,6 +14001,12 @@ class ApiClient {
     )
   }
 
+  async getTenantCohortEngagement(tenantId: string, cohortId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantCohortEngagement> {
+    return this.request<TenantCohortEngagement>(
+      `/tenants/${tenantId}/cohorts/${cohortId}/engagement`, {}, accountContext,
+    )
+  }
+
   async getTenantStats(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantStats> {
     return this.request<TenantStats>(`/tenants/${tenantId}/stats`, {}, accountContext)
   }
@@ -13940,6 +15186,55 @@ export interface TenantCohort {
   member_count: number
   resume_count: number
   created_at: string
+  progress?: TenantCohortProgress | null
+}
+
+export interface TenantCohortProgressSuppression {
+  suppressed: boolean
+  reason: string | null
+  minimum_cohort_size: number
+  minimum_submissions: number
+  cohort_size: number
+  submissions: number
+  note: string
+}
+
+export interface TenantCohortFunnel {
+  submitted: number
+  candidate_opened: number
+  candidate_downloaded: number
+  reviewed: number
+}
+
+export interface TenantCohortProgress {
+  cohort_id: string
+  generated_at: string
+  suppressed: boolean
+  suppression: TenantCohortProgressSuppression
+  submissions: number
+  reviewed: number | null
+  unreviewed: number | null
+  reviewer_count: number | null
+  reviewer_actions: number | null
+  reviewer_coverage: number | null
+  median_time_to_review_hours: number | null
+  stale_submissions: number | null
+  stale_after_days: number
+  funnel: TenantCohortFunnel | null
+}
+
+export interface CohortEngagementTrendPoint {
+  date: string
+  submissions: number
+  reviewed: number
+  reviewer_actions: number
+}
+
+export interface TenantCohortEngagement {
+  cohort_id: string
+  generated_at: string
+  summary: TenantCohortProgress
+  trends: Record<string, CohortEngagementTrendPoint[]> | null
 }
 
 export interface CohortSubmission {

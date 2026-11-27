@@ -73,11 +73,13 @@ def _refund_row(row: AdminRefundRequest) -> dict[str, Any]:
         "id": row.id,
         "payment_id": row.payment_id,
         "status": row.status,
+        "request_kind": row.request_kind or "refund",
         "amount": row.amount,
         "currency": row.currency,
         "provider_item_id": row.provider_item_id,
         "tax_inclusive": bool(row.tax_inclusive),
         "reason": row.reason,
+        "evidence": row.evidence,
         "decision_note": row.decision_note,
         "requested_by": row.requested_by,
         "requested_email": row.requested_email,
@@ -865,15 +867,38 @@ class AdminBillingService:
         self,
         db: AsyncSession,
         *,
-        payment_id: str,
+        payment_id: str | None = None,
+        provider_payment_id: str | None = None,
+        request_kind: str = "refund",
         amount: int | None,
         provider_item_id: str | None,
         tax_inclusive: bool,
         reason: str,
+        evidence: str | None = None,
         actor: AdminActor,
         request=None,
     ) -> dict[str, Any]:
-        payment = await db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
+        if bool(payment_id) == bool(provider_payment_id):
+            raise ValueError("Provide exactly one of payment_id or provider_payment_id")
+        if request_kind not in {"refund", "goodwill"}:
+            raise ValueError("Refund kind must be refund or goodwill")
+
+        if payment_id:
+            payment = await db.scalar(
+                select(Payment).where(Payment.id == payment_id).with_for_update()
+            )
+        else:
+            cleaned_provider_payment_id = str(provider_payment_id or "").strip()
+            if not cleaned_provider_payment_id:
+                raise ValueError("A Dodo payment ID is required")
+            payment = await db.scalar(
+                select(Payment)
+                .where(
+                    Payment.provider == "dodo",
+                    Payment.provider_payment_id == cleaned_provider_payment_id,
+                )
+                .with_for_update()
+            )
         if payment is None:
             raise KeyError("Payment not found")
         if payment.provider != "dodo":
@@ -907,24 +932,30 @@ class AdminBillingService:
             raise ValueError(
                 "This payment was partially refunded; specify the remaining amount and provider line-item ID"
             )
+        cleaned_item_id = str(provider_item_id or "").strip() or None
+        if amount is None and cleaned_item_id is not None:
+            raise ValueError("A full refund must not include a provider line-item ID")
         if amount is not None:
             if type(amount) is not int or amount <= 0:
                 raise ValueError("Refund amount must be a positive integer")
             if amount > remaining:
                 raise ValueError("Refund amount cannot exceed the unrefunded payment balance")
-            if not provider_item_id:
+            if not cleaned_item_id:
                 raise ValueError("A partial refund requires the provider line-item ID")
         cleaned_reason = " ".join(reason.split())[:1000]
         if not cleaned_reason:
             raise ValueError("A refund reason is required")
+        cleaned_evidence = " ".join((evidence or "").split())[:2000] or None
         row = AdminRefundRequest(
             payment_id=payment.id,
             status="pending",
+            request_kind=request_kind,
             amount=amount,
             currency=payment.currency or "INR",
-            provider_item_id=provider_item_id,
+            provider_item_id=cleaned_item_id,
             tax_inclusive=bool(tax_inclusive),
             reason=cleaned_reason,
+            evidence=cleaned_evidence,
             requested_by=actor.user_id[:36],
             requested_email=actor.email[:255] if actor.email else None,
         )
@@ -940,8 +971,10 @@ class AdminBillingService:
             payload={
                 "refund_request_id": row.id,
                 "payment_id": row.payment_id,
+                "request_kind": row.request_kind,
                 "amount": row.amount,
                 "currency": row.currency,
+                "evidence": row.evidence,
             },
             reason=cleaned_reason,
             actor=actor,
@@ -961,11 +994,16 @@ class AdminBillingService:
             before=None,
             after={
                 "status": row.status,
+                "request_kind": row.request_kind,
                 "payment_id": row.payment_id,
                 "amount": row.amount,
                 "currency": row.currency,
+                "has_evidence": row.evidence is not None,
             },
-            metadata={"provider_payment_id": payment.provider_payment_id},
+            metadata={
+                "provider_payment_id": payment.provider_payment_id,
+                "request_kind": row.request_kind,
+            },
             request=request,
         )
         await db.commit()
@@ -1003,7 +1041,11 @@ class AdminBillingService:
             actor=actor,
             request=request,
         )
-        before = {"status": row.status, "approved_by": row.approved_by}
+        before = {
+            "status": row.status,
+            "approved_by": row.approved_by,
+            "request_kind": row.request_kind,
+        }
         if decision == "approve":
             row.status = "approved"
             row.approved_by = actor.user_id[:36]
@@ -1088,7 +1130,11 @@ class AdminBillingService:
             note=note,
             request=request,
         )
-        before = {"status": row.status, "provider_refund_id": row.provider_refund_id}
+        before = {
+            "status": row.status,
+            "provider_refund_id": row.provider_refund_id,
+            "request_kind": row.request_kind,
+        }
         row.status = "executing"
         row.executed_by = actor.user_id[:36]
         row.last_error = None
@@ -1100,8 +1146,16 @@ class AdminBillingService:
             target_id=row.id,
             reason=note,
             before=before,
-            after={"status": row.status, "payment_id": row.payment_id, "amount": row.amount},
-            metadata={"provider_payment_id": payment.provider_payment_id},
+            after={
+                "status": row.status,
+                "request_kind": row.request_kind,
+                "payment_id": row.payment_id,
+                "amount": row.amount,
+            },
+            metadata={
+                "provider_payment_id": payment.provider_payment_id,
+                "request_kind": row.request_kind,
+            },
             request=request,
         )
         await db.commit()
@@ -1193,7 +1247,11 @@ class AdminBillingService:
                 "provider_refund_id": row.provider_refund_id,
                 "last_error": row.last_error,
             },
-            metadata={"payment_id": row.payment_id, "amount": row.amount},
+            metadata={
+                "payment_id": row.payment_id,
+                "amount": row.amount,
+                "request_kind": row.request_kind,
+            },
             request=request,
         )
         if row.status == "executed":

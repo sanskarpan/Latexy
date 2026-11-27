@@ -21,6 +21,7 @@ from ..core.logging import get_logger
 from ..core.redis import cache_manager, get_redis_client
 from ..database import models
 from .admin_audit_service import AdminActor, audit_row_summary, record_admin_audit
+from .admin_user_notes_service import build_user_support_bundle
 from .admin_user_timeline_service import (
     DEFAULT_TIMELINE_LIMIT,
     build_subscription_timeline,
@@ -233,6 +234,7 @@ async def build_user_360(
     *,
     user_id: str,
     actor_role: str,
+    actor_user_id: str | None = None,
     timeline_limit: int = DEFAULT_TIMELINE_LIMIT,
     timeline_offset: int = 0,
 ) -> dict[str, Any]:
@@ -241,7 +243,9 @@ async def build_user_360(
     Revealed PII is never overlaid here and never cached; the UI calls the
     single-field reveal endpoint and holds the value client-side. The timeline
     is composed live for every request so pagination and newly arrived billing
-    rows never serve a stale cached page.
+    rows never serve a stale cached page. Internal notes, tags and the merged
+    support timeline are also composed live and are never part of the cached
+    masked account snapshot.
     """
     cached = await _read_user_360_cache(user_id, actor_role)
     if cached is not None:
@@ -260,11 +264,27 @@ async def build_user_360(
         limit=timeline_limit,
         offset=timeline_offset,
     )
+    support = await build_user_support_bundle(
+        db,
+        actor=AdminActor(
+            user_id=actor_user_id or "",
+            email=None,
+            role=actor_role,
+        ),
+        target_user_id=user_id,
+    )
     billing = dict(payload.get("billing") or {})
     billing["timeline"] = timeline
     # Keep the canonical page under billing for the existing card and mirror it
-    # at the top level for clients that read the 360 timeline directly.
-    return {**payload, "billing": billing, "timeline": timeline}
+    # at the top level for clients that read the 360 timeline directly. The
+    # support block is deliberately separate so its note/approval visibility is
+    # evaluated for the current viewer on every request.
+    return {
+        **payload,
+        "billing": billing,
+        "timeline": timeline,
+        "support": support,
+    }
 
 
 async def _compose_user_360(
@@ -583,6 +603,7 @@ async def _compose_user_360(
                     "id": row.id,
                     "payment_id": row.payment_id,
                     "status": row.status,
+                    "request_kind": row.request_kind or "refund",
                     "amount": row.amount,
                     "currency": row.currency,
                     "requested_at": _iso(row.requested_at),
