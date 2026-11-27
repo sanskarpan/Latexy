@@ -1,6 +1,6 @@
 # Front-end page audit - results
 
-**Verdict:** all 44 routes load in production, but the page-by-page audit found a blocked core flow (Optimize), a broken path for imported/legacy LaTeX resumes, a 21,101px admin capability page, consent overlays on critical forms, missing accessible names, and several misleading empty states/metrics. Cover-letter generation also stays at 'Generating…' for 45s with no logs or error (FE-13).
+**Verdict:** all 44 routes load in production, but the page-by-page audit found a blocked core flow (Optimize), a broken path for imported/legacy LaTeX resumes, a 21,101px admin capability page, consent overlays on critical forms, missing accessible names, and several misleading empty states/metrics. Cover-letter generation also stays at 'Generating…' for 45s with no logs or error (FE-13). The share/review journey found a P1: compiled share links cannot render their PDF because the R2 artifact URL is blocked by CORS (FE-16).
 
 ## Coverage
 
@@ -100,6 +100,7 @@
 | FE-13 | [#2339](https://github.com/sanskarpan/Latexy/issues/2339) |
 | FE-14 | [#2342](https://github.com/sanskarpan/Latexy/issues/2342) |
 | FE-15 | [#2343](https://github.com/sanskarpan/Latexy/issues/2343) |
+| FE-16 | [#2344](https://github.com/sanskarpan/Latexy/issues/2344) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
 
 ## Visual disposition by page
@@ -152,12 +153,13 @@
 | `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter` | Clean empty recruiter dashboard. |
 
 
-## Additional interaction results (template use, PDF import)
+## Additional interaction results (template use, PDF import, share/review)
 
 - **Templates:** a fresh authenticated free user initially saw **0 TEMPLATES** for ~10s; after the API calls completed it showed 61. Clicking **Use Template** left the card at **"CREATING…"** for >7s. This is FE-15.
-- **PDF import:** `/workspace/new` → Import File accepted the PDF and started "Preserving your PDF and extracting its text…"; after 8s it was still extracting. The upload control and wizard are present; end-to-end creation was not completed in this pass.
+- **PDF import:** `/workspace/new` → Import File accepted the PDF and started "Preserving your PDF and extracting its text…"; after 8s the UI was still in the extraction state, but the import does complete: with a non-empty reviewed field and a layout selected, "Create editable resume" succeeded in 12.8s and reached `/workspace/{id}/edit`; the upload POST took ~6s and adapt ~16s. This is a PASS (FE-15 covers the perceived-wait issue).
+- **Share/review:** a compiled/accepted resume produced a valid share link, but the public page could not render the PDF because the R2 presigned URL has no `Access-Control-Allow-Origin`; console shows a CORS block and the review surface says "The review document could not be loaded." This is FE-16 / #2344.
 - **Builder:** create/fill/preview/PDF works; creation can take ~30s and preview ~20–60s (FE-14/FE-01).
 - **Cover letter:** generation stayed at "Generating…" for 45s with no logs (FE-13).
 - **Tracker:** a fresh account saved an application (`POST /tracker/applications` 201) and the board updated.
 
-Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `tracker-pro-result.json`.
+Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `pdf-import-completion.json`, `pdf-import-created-final.png`, `share-review-journey.json`, `share-review-45s.png`, `tracker-pro-result.json`.

@@ -46,3 +46,19 @@ All 16 user identities and 1 anonymous device trial created by `provision_identi
 `cleanup-after.json` confirms all zero; no `audit+%` user remains; DB head is still `0109_error_alerts`. Six `gdpr_requests` rows remain by database trigger (legal retention): the disposable signup's export/deletion, the free identity's expired/ready exports and rejected deletion, and the security export. Four have `user_id=NULL`; the disposable signup keeps its anonymized subject UUID. They are listed in `cleanup-verification.md`.
 
 Redis compile streams and R2 PDF artifacts are not deleted by the Postgres cleanup; their 24 h/TTL and object list are recorded in the parent reports. No global config, plan, role, flag or deploy change remains.
+
+## Front-end interaction cleanup - 2026-11-27T16:20-17:00Z
+
+| Pass | Identities | Rows deleted | Remaining |
+|---|---|---|---|
+| interact5 (PDF import attempt) | 1 free user | jobs/resume via user cascade, session | 0 |
+| interact6 (PDF import PASS) | 1 free user | 1 compilation, 1 resume, session, user | 0 |
+| interact7 (share/review) | 1 pro user + synthetic subscription | 1 compilation, 1 job finalization, 1 resume, 1 subscription, session, user | 0 |
+| ATS attempt (interact3) | 3 users (free/admin/team) + tenant/workspace | tenant members, tenant, workspace members, workspace, dependent rows, sessions, users | 0 |
+| Admin/team attempt (interact4) | 2 users + tenant/workspace | tenant/workspace rows, 2 subscriptions, sessions, users | 0 |
+
+- All audit/interaction users matching `interact%` and `audit.fe.%`: **0**.
+- DB head remains `0109_error_alerts`.
+- The interact7 render artifact in R2 has no DB reference and is eligible for the existing `render-artifacts/v1` orphan sweep (retention prefix, 1 h grace).
+- No live payment, global flag, plan catalog or entitlement change was made by these passes; the only plan row was the synthetic pro subscription deleted with interact7.
+

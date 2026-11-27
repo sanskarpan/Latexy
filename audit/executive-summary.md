@@ -69,13 +69,13 @@ The evidence supports signing off the **functional baseline with the P0/P1 excep
 
 ## Front-end page audit (follow-up)
 
-All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 15 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342, #2343.
+All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 16 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342-#2344.
 
-- **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant.
+- **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant; compiled share links cannot render their PDF because the R2 artifact URL is blocked by CORS.
 - **P2:** Consent banner covers auth/pricing/admin controls; admin capability matrix is 21,101px/930 toggles; pricing hides prices; dashboard says 3.5s compile vs 20.7s measured; builder/auth controls are unlabeled; share says "Link unavailable" after compile; cover-letter generation hangs at "Generating…" for 45s.
 - **P3:** missing H1/small text, onboarding modal, PDF URL wrapping, tracker labels.
 
-The builder happy path works: create (201) → fill fields → preview PDF → download; the failures are latency and feedback, not the core edit model.
+The builder happy path works: create (201) → fill fields → preview PDF → download; PDF import completes end-to-end (~6s upload, ~16s adapt, 12.8s to editor after create). The failures are latency, feedback and artifact delivery (share CORS), not the core edit model.
 
 ## Architecture
 
@@ -83,7 +83,7 @@ The builder happy path works: create (201) → fill fields → preview PDF → d
 
 ## Issue tracking
 
-**36 GitHub issues** were filed (#2295-#2339, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
+**49 GitHub issues** were filed (#2295-#2344, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
 
 ## Evidence index
 

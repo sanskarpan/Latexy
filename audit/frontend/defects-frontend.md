@@ -204,3 +204,17 @@ Severity follows the audit scale. Every finding is from live production `https:/
 **Proposed fix:** show a skeleton/“Loading templates…” instead of 0; prefetch templates/categories during auth; show a progress step for template use and import; add a timeout.
 
 **Acceptance:** templates skeleton or count appears immediately; no "0 templates" flash; template use/import shows step progress and reaches the destination or an error within 15s.
+
+## FE-16 - P1 - Public share links cannot render the compiled PDF (R2 CORS)
+
+**Surface:** `/r/{shareToken}` (PDF tab and review surface), `GET /share/{token}`.
+
+**Observed:** with a freshly compiled and accepted artifact (compile completed 54.7s, accepted 57.8s), `POST /resumes/{id}/share` returned 200 and `GET /share/{token}` returned 200 with a valid R2 `pdf_url`. Opening the share page in a clean browser loaded the title and review panel, but the PDF never rendered. The console showed `Access to fetch at 'https://2ca2c...r2.cloudflarestorage.com/...pdf' ... blocked by CORS policy` and `net::ERR_FAILED`; the review surface displayed **"The review document could not be loaded."** A direct `curl -H 'Origin: https://latexy.xyz'` on the same URL returned 200 with `Content-Type: application/pdf` but **no `Access-Control-Allow-Origin`** header.
+
+**Evidence:** `journeys/share-review-journey.json`, `journeys/share-review-page.png`, `journeys/share-review-45s.png`, `journeys/pdf-import-completion.json`.
+
+**Impact:** every non-anonymous share link fails to show the resume PDF, defeating the sharing and review feature. Accessible text still renders, but the visual document and pinned comments do not.
+
+**Proposed fix:** serve shared artifacts through a same-origin backend route (`/share/{token}/pdf`) with HTTP Range support, or configure the R2 bucket CORS policy to allow the production web origins with `GET, HEAD, OPTIONS`, `Range, Content-Type, Authorization` request headers and exposed `Content-Length, Content-Range, Accept-Ranges, ETag`.
+
+**Acceptance:** a compiled accepted resume's share link renders the PDF in Chrome/Firefox/Safari with no CORS console error; the review surface loads and accepts a pinned comment; Range requests work; revoked/no-artifact states stay distinct; anonymous shares are unaffected. Full issue: [#2344](https://github.com/sanskarpan/Latexy/issues/2344).

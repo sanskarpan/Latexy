@@ -102,7 +102,7 @@ Compile stage baseline (warm single 1-page, n=5): queue/acquisition **1.35 s**, 
 
 All **44 App Router pages** were loaded in production at 1440x900 and 390x844 with anonymous/free/pro/admin/team roles. Evidence: `audit/frontend/AUDIT.md`, `page-inventory.csv`, 44 `report.json` files, desktop/mobile screenshots and the builder journey.
 
-**15 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2335, #2339, #2342, #2343. The critical ones:
+**16 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2335, #2339, #2342-#2344. The critical ones:
 - **FE-01 P1:** Optimize page can sit on a blank "Checking feature availability" spinner for 25s+ with no error.
 - **FE-02 P1:** Imported/legacy LaTeX resumes have no coherent edit path (edit read-only, builder 404, variant 409, optimize spinner).
 - **FE-03 P2:** Consent banner overlays sign-in, pricing and admin controls.
@@ -114,8 +114,9 @@ All **44 App Router pages** were loaded in production at 1440x900 and 390x844 wi
 - **FE-13 P2:** Cover-letter generation stays at "Generating…" for 45s with no logs/error.
 - **FE-14 P2:** Guided-builder creation can sit at "Creating your résumé…" for ~30s.
 - **FE-15 P2:** Templates page shows "0 templates" for ~10s; Use Template stays at "CREATING…" >7s; PDF import extraction >8s.
+- **FE-16 P1:** Compiled share links cannot render their PDF: the R2 presigned URL returns no `Access-Control-Allow-Origin`, so `/r/{token}` shows "The review document could not be loaded." (#2344).
 
-The page-load and visual coverage is complete; full interaction coverage remains partial (template use, PDF/LinkedIn import, ATS simulator, tracker CRUD, team invite, billing checkout, admin mutations).
+The page-load and visual coverage is complete. Interaction coverage now includes the full builder, PDF import (end-to-end), tracker add, cover-letter attempt and share/review (blocked by FE-16). Still partial: ATS simulator (Run checks disabled), LinkedIn import (no fixture), team invite acceptance (mailbox), billing checkout (no live charges), admin mutations (safety).
 
 ## Architecture review
 
