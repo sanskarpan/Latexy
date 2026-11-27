@@ -51,13 +51,22 @@ Screenshots: `browser-review/` (workspace/new, templates-0, billing-loading, set
 - **Developer/BYOK:** `/developer` (1 H1, 1,325 chars) and `/byok` (1 H1) load cleanly, no unlabeled controls.
 - **Legacy/fixture routes:** `/workspace/{id}/batch-tailor` shows the "Checking feature availability..." shell (same class as FE-01); `/workspace/builder/{id}` shows "Checking guided builder compatibility..." for a non-builder resume (FE-02). Both are covered by the existing reports.
 
-Total: **40 of 44 routes** exercised in the in-app browser (plus the 44/44 Playwright sweep): the editor was exercised through the synthetic LinkedIn import, and `/workspaces` empty state was reviewed. Remaining four are explicit fixture/safety blockers: `/workspaces/{id}` and `/workspaces/{id}/recruiter` need a live team workspace fixture; `/u/{username}` needs a public portfolio fixture; `/r/{token}` needs a live share token and is currently broken by FE-16/#2344. Their evidence remains in `pages/` from the controlled sweep.
+Total: **43 of 44 routes** exercised in the in-app browser (plus the 44/44 Playwright sweep). Team detail, recruiter dashboard and the public portfolio were reviewed with controlled fixtures (`workspace-detail.png`, `recruiter-dashboard.png`, `portfolio-public.png`). The only remaining route is `/r/{token}`: it needs a live share token and is currently broken by FE-16/#2344, so it is recorded as a blocker rather than rendered.
+
+The editor was exercised through the synthetic LinkedIn import; `/workspaces` empty state was reviewed separately. The public portfolio used a synthetic user and a synthetic tagline; it showed the empty "No public resumes yet" state and the contact form.
 
 ## Billing boundary and admin read-only
 
 - **Billing:** with the real account on Free, the page shows monthly prices (₹299/₹599/₹199/₹2,499) and annual prices after toggling **Annual** (₹2,871 Basic, ₹5,750 Pro, ₹1,910 BYOK). Plan actions are "Select Plan"; the current subscription is Free. **No plan was selected and no checkout was created** (no live-charge policy). Screenshot: `browser-review/billing-boundary.png`.
 - **Admin read-only:** `/admin?tab=analytics` loads after ~16s (bare "Loading analytics…" first) and renders a 17,198px operational page. It shows **1 active critical alert: unacknowledged billing webhook failures, 1,213 occurrences, last 3m ago** (owner/ack/snooze are mutating and were not touched). Screenshot: `browser-review/admin-analytics-loading.png`. This alert is a production operator item, not a front-end defect; it is recorded here as a blocker observation.
 - **Admin mutations** remain intentionally unexercised (global flags/plans/entitlements); read-only tabs are covered.
+
+## Controlled-fixture pages
+
+- **`/workspaces/{id}`** (synthetic team): clean two-panel layout, 1/5 members, owner row, invite-by-email form with Editor/Viewer selector and an **icon-only Plus button** (no accessible name; FE-18/FE-07), empty shared-resume panel. Screenshot: `workspace-detail.png`.
+- **`/workspaces/{id}/recruiter`** (same fixture): clear "Recruiter Dashboard / 0 resumes / No resumes shared yet" empty state. Screenshot: `recruiter-dashboard.png`.
+- **`/u/{username}`** (synthetic portfolio): light-theme public page with name, tagline, "No public resumes yet", contact form (Name/Email/Message), footer. No overflow or console errors. Screenshot: `portfolio-public.png`.
+- **`/r/{token}`**: not rendered in-app because the only safe synthetic token was deleted and any new token is subject to the known CORS failure (#2344). Recorded as an explicit blocker; the Playwright evidence shows the "review document could not be loaded" state.
 
 ## Verdict on this pass
 
