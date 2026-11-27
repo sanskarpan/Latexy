@@ -1931,6 +1931,123 @@ class AdminSegment(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AdminUserNote(Base):
+    """Internal, operator-authored note attached to one user account.
+
+    Notes are never customer-facing. They carry the author identity and role at
+    write time, an allowlisted visibility, bounded tags and an optimistic
+    concurrency ``version``. Edits and deletes are soft; the body is retained
+    for operator review but is never copied into the append-only audit log
+    (audit snapshots store only a body length/hash and the changed field names).
+    """
+
+    __tablename__ = "admin_user_notes"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(body)) BETWEEN 3 AND 4000",
+            name="ck_admin_user_notes_body",
+        ),
+        CheckConstraint(
+            "visibility IN ('internal', 'admin_only')",
+            name="ck_admin_user_notes_visibility",
+        ),
+        CheckConstraint(
+            "author_role IN ('admin', 'support')",
+            name="ck_admin_user_notes_author_role",
+        ),
+        CheckConstraint("version >= 1", name="ck_admin_user_notes_version"),
+        CheckConstraint(
+            "jsonb_typeof(tags) = 'array'",
+            name="ck_admin_user_notes_tags_array",
+        ),
+        Index("idx_admin_user_notes_target_created", "target_user_id", "created_at"),
+        Index("idx_admin_user_notes_author_created", "author_user_id", "created_at"),
+        Index("idx_admin_user_notes_visibility", "visibility", "created_at"),
+        Index(
+            "idx_admin_user_notes_tags",
+            "tags",
+            postgresql_using="gin",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    target_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    author_user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    author_role: Mapped[str] = mapped_column(String(16), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    visibility: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="internal", server_default="internal"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    updated_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    delete_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class AdminUserTag(Base):
+    """A soft-deleted internal tag applied to one user account.
+
+    The tag text is a bounded lowercase label. Active rows are unique per
+    target and tag; removing a tag keeps the row for audit while allowing the
+    same label to be applied again later.
+    """
+
+    __tablename__ = "admin_user_tags"
+    __table_args__ = (
+        CheckConstraint(
+            "tag ~ '^[a-z0-9][a-z0-9_-]{0,31}$'",
+            name="ck_admin_user_tags_tag",
+        ),
+        CheckConstraint(
+            "created_by_role IN ('admin', 'support')",
+            name="ck_admin_user_tags_created_by_role",
+        ),
+        Index(
+            "uq_admin_user_tags_active",
+            "target_user_id",
+            "tag",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+        Index("idx_admin_user_tags_target_created", "target_user_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    target_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    tag: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_role: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    remove_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class LLMCallAttempt(Base):
     """Append-only, privacy-safe telemetry for one LLM provider attempt.
 

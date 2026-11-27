@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0100_daily_metrics"
+EXPECTED_HEAD = "0102_admin_user_notes"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -36,7 +36,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
     "0092_document_complexity", "0093_admin_saved_views", "0094_template_health",
     "0096_retention_controls", "0097_two_person_approvals", "0099_tenant_domain_health",
-    "0100_daily_metrics",
+    "0100_daily_metrics", "0102_admin_user_notes",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -106,7 +106,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "llm_call_attempts", "subscription_status_history", "admin_saved_views",
           "admin_segments", "template_health_checks", "retention_policies",
           "retention_policy_revisions", "retention_runs", "admin_approvals",
-          "tenant_domain_events", "admin_daily_metrics")
+          "tenant_domain_events", "admin_daily_metrics", "admin_user_notes",
+          "admin_user_tags")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -353,6 +354,18 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "compilations", "completed_compilations", "failed_compilations",
             "optimizations", "payments_count", "gross_revenue_minor",
             "refunds_count", "refund_amount_minor", "refreshed_at",
+        },
+    },
+    "0102_admin_user_notes": {
+        "admin_user_notes": {
+            "id", "target_user_id", "author_user_id", "author_role", "body",
+            "tags", "visibility", "version", "updated_by", "edited_at",
+            "created_at", "updated_at", "deleted_at", "deleted_by",
+            "delete_reason",
+        },
+        "admin_user_tags": {
+            "id", "target_user_id", "tag", "created_by", "created_by_role",
+            "created_at", "removed_at", "removed_by", "remove_reason",
         },
     },
 }

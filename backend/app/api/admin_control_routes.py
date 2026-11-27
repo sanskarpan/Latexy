@@ -355,6 +355,7 @@ async def get_admin_user_360(
             db,
             user_id=user_id,
             actor_role=actor.role,
+            actor_user_id=actor.user_id,
             timeline_limit=timeline_limit,
             timeline_offset=timeline_offset,
         )
