@@ -4031,6 +4031,139 @@ export interface AdminUserTimeline {
   }
 }
 
+export type AdminUserNoteVisibility = 'internal' | 'admin_only'
+
+export interface AdminUserNote {
+  id: string
+  target_user_id: string
+  author_user_id: string | null
+  author_role: 'admin' | 'support'
+  body: string
+  tags: string[]
+  visibility: AdminUserNoteVisibility
+  version: number
+  created_at: string | null
+  updated_at: string | null
+  edited_at: string | null
+  updated_by: string | null
+  deleted_at: string | null
+  deleted_by: string | null
+  delete_reason: string | null
+  can_edit: boolean
+  can_delete: boolean
+  admin_only: boolean
+  already_deleted?: boolean
+}
+
+export interface AdminUserNotesResponse {
+  items: AdminUserNote[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  viewer_role: string
+  available_tags: string[]
+  retention: AdminUserNoteRetention
+}
+
+export interface AdminUserNoteRetention {
+  soft_delete: boolean
+  automatic_purge: boolean
+  default_retention_days: number
+  policy: string
+}
+
+export interface AdminUserTag {
+  id: string
+  target_user_id: string
+  tag: string
+  created_by: string | null
+  created_by_role: 'admin' | 'support'
+  created_at: string | null
+  removed_at: string | null
+  removed_by: string | null
+  remove_reason: string | null
+  can_remove: boolean
+  created?: boolean
+  already_removed?: boolean
+}
+
+export interface AdminUserTagsResponse {
+  items: AdminUserTag[]
+  total: number
+  limit: number
+  offset: number
+  viewer_role: string
+  retention: AdminUserNoteRetention
+}
+
+export type AdminUserSupportTimelineKind =
+  | 'note'
+  | 'role_change'
+  | 'entitlement_change'
+  | 'trial_change'
+  | 'quota_change'
+  | 'credential_revocation'
+  | 'support_action'
+  | 'pii_reveal'
+  | 'plan_change'
+  | 'refund'
+  | 'refund_request'
+  | 'subscription'
+  | 'payment'
+  | 'approval'
+
+export interface AdminUserSupportTimelineItem {
+  id: string
+  kind: AdminUserSupportTimelineKind
+  occurred_at: string | null
+  summary: string | null
+  event_type: string | null
+  source: string | null
+  actor_user_id: string | null
+  actor_role: string | null
+  status: string | null
+  amount_minor: number | null
+  currency: string | null
+  reference: string | null
+  admin_only: boolean
+  details: Record<string, unknown>
+}
+
+export interface AdminUserSupportTimeline {
+  items: AdminUserSupportTimelineItem[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  order: 'desc'
+  viewer_role: string
+  restricted_kinds: string[]
+  kinds: AdminUserSupportTimelineKind[]
+  counts: Record<string, number>
+  sources: {
+    notes: number
+    admin_actions: number
+    payments: number
+    refunds: number
+    refund_requests: number
+    subscription_history: number
+    approvals: number
+  }
+  retention: AdminUserNoteRetention
+}
+
+export interface AdminUserSupportBundle {
+  notes: AdminUserNote[]
+  note_count: number
+  available_tags: string[]
+  tags: AdminUserTag[]
+  timeline: AdminUserSupportTimeline
+  retention: AdminUserNoteRetention
+}
+
 export interface AdminUser360 {
   user: {
     id: string
@@ -4104,6 +4237,7 @@ export interface AdminUser360 {
     timeline?: AdminUserTimeline
   }
   timeline?: AdminUserTimeline
+  support?: AdminUserSupportBundle
   security: {
     sessions: Array<{
       id: string
@@ -11268,6 +11402,125 @@ class ApiClient {
     if (params?.timelineOffset != null) query.set('timeline_offset', String(params.timelineOffset))
     const suffix = query.toString() ? `?${query.toString()}` : ''
     return this.request<AdminUser360>(`/admin/users/${encodeURIComponent(id)}/360${suffix}`)
+  }
+
+  async getAdminUserNotes(
+    id: string,
+    params?: {
+      tag?: string
+      authorUserId?: string
+      visibility?: AdminUserNoteVisibility
+      includeDeleted?: boolean
+      limit?: number
+      offset?: number
+    },
+  ): Promise<AdminUserNotesResponse> {
+    const query = new URLSearchParams()
+    if (params?.tag) query.set('tag', params.tag)
+    if (params?.authorUserId) query.set('author_user_id', params.authorUserId)
+    if (params?.visibility) query.set('visibility', params.visibility)
+    if (params?.includeDeleted) query.set('include_deleted', 'true')
+    if (params?.limit != null) query.set('limit', String(params.limit))
+    if (params?.offset != null) query.set('offset', String(params.offset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUserNotesResponse>(
+      `/admin/users/${encodeURIComponent(id)}/notes${suffix}`,
+    )
+  }
+
+  async createAdminUserNote(
+    id: string,
+    body: {
+      body: string
+      tags?: string[]
+      visibility?: AdminUserNoteVisibility
+      reason: string
+    },
+  ): Promise<AdminUserNote> {
+    return this.request<AdminUserNote>(`/admin/users/${encodeURIComponent(id)}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminUserNote(
+    id: string,
+    noteId: string,
+    body: {
+      expected_version: number
+      body?: string
+      tags?: string[]
+      visibility?: AdminUserNoteVisibility
+      reason: string
+      confirm: true
+    },
+  ): Promise<AdminUserNote> {
+    return this.request<AdminUserNote>(
+      `/admin/users/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminUserNote(
+    id: string,
+    noteId: string,
+    body: { expected_version: number; reason: string; confirm: true },
+  ): Promise<AdminUserNote> {
+    return this.request<AdminUserNote>(
+      `/admin/users/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`,
+      { method: 'DELETE', body: JSON.stringify(body) },
+    )
+  }
+
+  async getAdminUserTags(
+    id: string,
+    params?: { includeRemoved?: boolean },
+  ): Promise<AdminUserTagsResponse> {
+    const query = new URLSearchParams()
+    if (params?.includeRemoved) query.set('include_removed', 'true')
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUserTagsResponse>(
+      `/admin/users/${encodeURIComponent(id)}/tags${suffix}`,
+    )
+  }
+
+  async createAdminUserTag(
+    id: string,
+    body: { tag: string; reason: string },
+  ): Promise<AdminUserTag> {
+    return this.request<AdminUserTag>(`/admin/users/${encodeURIComponent(id)}/tags`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async removeAdminUserTag(
+    id: string,
+    tagId: string,
+    body: { reason: string; confirm: true },
+  ): Promise<AdminUserTag> {
+    return this.request<AdminUserTag>(
+      `/admin/users/${encodeURIComponent(id)}/tags/${encodeURIComponent(tagId)}`,
+      { method: 'DELETE', body: JSON.stringify(body) },
+    )
+  }
+
+  async getAdminUserSupportTimeline(
+    id: string,
+    params?: {
+      kind?: AdminUserSupportTimelineKind[]
+      limit?: number
+      offset?: number
+    },
+  ): Promise<AdminUserSupportTimeline> {
+    const query = new URLSearchParams()
+    for (const kind of params?.kind ?? []) query.append('kind', kind)
+    if (params?.limit != null) query.set('limit', String(params.limit))
+    if (params?.offset != null) query.set('offset', String(params.offset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminUserSupportTimeline>(
+      `/admin/users/${encodeURIComponent(id)}/support-timeline${suffix}`,
+    )
   }
 
   async revealAdminUserPii(

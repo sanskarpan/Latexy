@@ -241,6 +241,7 @@ from .admin_template_health_routes import router as admin_template_health_router
 from .admin_template_performance_routes import router as admin_template_performance_router
 from .admin_trial_health_routes import router as admin_trial_health_router
 from .admin_view_as_routes import router as admin_view_as_router
+from .admin_user_notes_routes import router as admin_user_notes_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
@@ -275,6 +276,7 @@ router.include_router(admin_revenue_lifecycle_router)
 router.include_router(admin_saved_views_router)
 router.include_router(admin_subscription_router)
 router.include_router(admin_support_action_router)
+router.include_router(admin_user_notes_router)
 router.include_router(admin_team_seat_router)
 router.include_router(admin_dunning_router)
 router.include_router(admin_editor_mode_router)

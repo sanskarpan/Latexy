@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { apiClient, type AdminUser360, type AdminUserTimelineItem } from '@/lib/api-client'
 import { formatDateTime, formatMoney, formatNumber, shortId, summarize } from './admin-format'
 import AdminSupportActions from './AdminSupportActions'
+import AdminUserNotes from './AdminUserNotes'
 
 const TIMELINE_LIMIT = 20
 const TIMELINE_KIND_LABELS: Record<AdminUserTimelineItem['kind'], string> = {
@@ -428,6 +429,8 @@ export default function AdminUserDetail({
             <p className="mt-0.5 text-xl font-semibold text-fg">{formatNumber(activeSubscriptions.length)}</p>
           </div>
         </div>
+
+        <AdminUserNotes userId={userId} canAdmin={canAdmin} />
 
         <Section
           title="Subscription and payment timeline"
