@@ -71,3 +71,31 @@ Evidence: `share-review-fixed.png`, `share-review-comment.png`. This satisfies t
 
 Change register: `audit/changes/production-changes.md`.
 
+## Revoked, anonymous and CORS checks - 2026-11-27
+
+Fresh synthetic pro user, compiled/accepted resume.
+
+| Check | Result |
+|---|---|
+| Normal share create | 200, 6.6s; public payload 200 with `pdf_url`; `is_anonymous=false`; `review_comments=true` |
+| CORS allowed origin | `Access-Control-Allow-Origin: https://latexy.xyz`; exposed `Content-Length, Content-Range, Accept-Ranges, ETag, Content-Type`; PDF GET 200 |
+| CORS disallowed origin | `Origin: https://evil.example` returns **no** `Access-Control-Allow-Origin` |
+| Revoke | `DELETE /resumes/{id}/share` 204 in 2.5s; `GET /share/{old_token}` **404** `Share link not found or has been revoked` |
+| Revoked page | `/r/{old_token}` shows **"Link unavailable / This share link has been revoked or does not exist."** - `share-review-revoked.png` |
+| Anonymous create | 200 in 12.3s; `anonymous_processing=true` at 17.0s, ready at 38.2s |
+| Anonymous payload | title **"Anonymous Resume"**, `is_anonymous=true`, accessible text starts `ANONYMIZED / Anonymous Candidate`; original resume title absent |
+| Anonymous PDF | 200 with allowed-origin CORS; page renders the PDF with ANONYMIZED watermark - `share-review-anonymous.png` |
+
+Remaining before closing #2344: Firefox/WebKit visual verification and a deployed regression test asserting the CORS/Range headers (or the same-origin proxy).
+
+### Cross-browser check
+
+Installed Playwright Firefox 157.0 and WebKit 27.2 and ran both against the anonymous share PDF and CORS fetch:
+
+| Engine | Plain fetch | Range fetch | Share page | Console |
+|---|---|---|---|---|
+| Firefox 157.0 | 200 | 206, `Content-Range: bytes 0-3/18222` | iframe PDF viewer present, no failure text | no errors |
+| WebKit 27.2 | 200 | 206, `Content-Range: bytes 0-3/18222` | iframe PDF viewer present, no failure text | no errors |
+
+Chromium also renders the PDF and accepts a pinned public comment. The only remaining #2344 item is a deployed regression test for the CORS/Range headers; the user-visible bug is fixed on Chrome, Firefox and WebKit.
+
