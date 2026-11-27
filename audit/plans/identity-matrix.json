@@ -1,0 +1,190 @@
+{
+  "suffix": "20261127103328",
+  "created_at": "2026-11-27T10:33:28.439138+00:00",
+  "window_start": "2026-11-27T10:33:28.439138+00:00",
+  "window_end": null,
+  "identities": {
+    "free": {
+      "cohort": "free",
+      "email": "audit+free-20261127103328@example.test",
+      "user_id": "96c507cd-e7a2-4749-9153-96b6321742db",
+      "session_id": "audit_free_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "free",
+      "status": "active",
+      "role": "user"
+    },
+    "basic-monthly": {
+      "cohort": "basic-monthly",
+      "email": "audit+basic-monthly-20261127103328@example.test",
+      "user_id": "0e0b7f8d-e7d0-48da-9e66-dcee3e52f0cb",
+      "session_id": "audit_basic-monthly_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "basic",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "054244c6-dccb-4f6d-a3db-89efd335c91e"
+    },
+    "basic-annual": {
+      "cohort": "basic-annual",
+      "email": "audit+basic-annual-20261127103328@example.test",
+      "user_id": "2f49586c-570d-4802-82bc-187ec0a516df",
+      "session_id": "audit_basic-annual_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "basic_annual",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "5acde67b-f49e-465e-8ec1-63e7d665f73c"
+    },
+    "pro-monthly": {
+      "cohort": "pro-monthly",
+      "email": "audit+pro-monthly-20261127103328@example.test",
+      "user_id": "2c27be6f-138f-4e98-b311-38892520b1eb",
+      "session_id": "audit_pro-monthly_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "pro",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "e5b6ecf5-b2c6-4cb3-825c-0a967e085c70"
+    },
+    "pro-annual": {
+      "cohort": "pro-annual",
+      "email": "audit+pro-annual-20261127103328@example.test",
+      "user_id": "c30d524c-a2db-4a6c-8aee-d8d5d2a9f7f4",
+      "session_id": "audit_pro-annual_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "pro_annual",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "6e475768-3b12-4f97-82fe-108446eefef6"
+    },
+    "byok-monthly": {
+      "cohort": "byok-monthly",
+      "email": "audit+byok-monthly-20261127103328@example.test",
+      "user_id": "373bf051-a804-4ae5-a10e-46970964c508",
+      "session_id": "audit_byok-monthly_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "byok",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "a4141be5-f374-4bc3-b49c-18b670a52514"
+    },
+    "student": {
+      "cohort": "student",
+      "email": "audit+student-20261127103328@example.test",
+      "user_id": "d91e5bf0-bbc9-4558-9e10-151e728cdeec",
+      "session_id": "audit_student_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "student",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "412c693e-8120-4afc-926c-2a7687991973"
+    },
+    "trial-active": {
+      "cohort": "trial-active",
+      "email": "audit+trial-active-20261127103328@example.test",
+      "user_id": "3b8ddb07-2b18-486c-9c18-d32ce3fbbb47",
+      "session_id": "audit_trial-active_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "pro",
+      "status": "trialing",
+      "role": "user",
+      "subscription_id": "9c641be4-3702-4f2a-83f7-e9537036b903"
+    },
+    "trial-expired": {
+      "cohort": "trial-expired",
+      "email": "audit+trial-expired-20261127103328@example.test",
+      "user_id": "620c8a6e-db14-4be2-806a-13365c667fdd",
+      "session_id": "audit_trial-expired_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "free",
+      "status": "expired",
+      "role": "user"
+    },
+    "past-due": {
+      "cohort": "past-due",
+      "email": "audit+past-due-20261127103328@example.test",
+      "user_id": "a24f1fd9-34f9-4a84-8ba8-74d8fa431ca1",
+      "session_id": "audit_past-due_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "basic",
+      "status": "past_due",
+      "role": "user",
+      "subscription_id": "c977adc1-9c8e-460c-8e30-524439cd05cf"
+    },
+    "cancelled": {
+      "cohort": "cancelled",
+      "email": "audit+cancelled-20261127103328@example.test",
+      "user_id": "dfd20a28-a4d5-40db-aa77-597ce6f3e589",
+      "session_id": "audit_cancelled_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "basic",
+      "status": "cancelled",
+      "role": "user",
+      "subscription_id": "951d99ec-7a32-418d-99ae-2a114ddc351f"
+    },
+    "team-owner": {
+      "cohort": "team-owner",
+      "email": "audit+team-owner-20261127103328@example.test",
+      "user_id": "6bb81a84-860b-46a5-8ab4-f1c483068479",
+      "session_id": "audit_team-owner_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "team",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "a23dfc57-2a3b-4461-8223-c24ea97d86fd",
+      "tenant_id": "577149dd-ff83-4409-9d66-a14d61cb8a60",
+      "subscription_plan": "team"
+    },
+    "team-member": {
+      "cohort": "team-member",
+      "email": "audit+team-member-20261127103328@example.test",
+      "user_id": "7a3d3b80-000c-49f0-a067-96c177b7c848",
+      "session_id": "audit_team-member_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "team",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "6a06f64e-688b-4125-a1e3-2d3bc2517ec2",
+      "tenant_id": "577149dd-ff83-4409-9d66-a14d61cb8a60"
+    },
+    "admin-support": {
+      "cohort": "admin-support",
+      "email": "audit+admin-support-20261127103328@example.test",
+      "user_id": "942247dc-f834-43d9-b012-a552ec6632a4",
+      "session_id": "audit_admin-support_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "free",
+      "status": "active",
+      "role": "support"
+    },
+    "admin-superadmin": {
+      "cohort": "admin-superadmin",
+      "email": "audit+admin-superadmin-20261127103328@example.test",
+      "user_id": "8b2ee54b-a2ee-4009-9eee-4cc995b3d2ad",
+      "session_id": "audit_admin-superadmin_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "free",
+      "status": "active",
+      "role": "admin"
+    },
+    "developer-api": {
+      "cohort": "developer-api",
+      "email": "audit+developer-api-20261127103328@example.test",
+      "user_id": "dc001b15-2133-4c18-a1a1-d0af1952835c",
+      "session_id": "audit_developer-api_20261127103328",
+      "session_token": "REDACTED - valid only during the 2026-11-27 audit window; session deleted",
+      "plan": "pro",
+      "status": "active",
+      "role": "user",
+      "subscription_id": "c2a878b7-d512-478b-ab80-187cd20d0868",
+      "api_key": "REDACTED - fixture key; revoked and row deleted",
+      "api_key_id": "5066ad7f-d6b3-458c-8776-82416d276ffb"
+    },
+    "anonymous-device": {
+      "cohort": "anonymous-device",
+      "device_fingerprint": "audit-device-20261127103328"
+    }
+  },
+  "secrets_note": "Bearer tokens and the fixture developer key were redacted before merge. They were valid only during the 2026-11-27 audit window and were deleted by cleanup_identities.py. User, tenant, subscription and key IDs remain for reproducibility."
+}
