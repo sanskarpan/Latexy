@@ -3009,11 +3009,13 @@ export interface AdminRefundRequest {
   id: string
   payment_id: string
   status: 'pending' | 'approved' | 'rejected' | 'executing' | 'executed' | 'failed' | 'cancelled'
+  request_kind: 'refund' | 'goodwill'
   amount: number | null
   currency: string | null
   provider_item_id: string | null
   tax_inclusive: boolean
   reason: string
+  evidence: string | null
   decision_note: string | null
   requested_by: string
   requested_email: string | null
@@ -3991,6 +3993,7 @@ export interface AdminUser360 {
       id: string
       payment_id: string
       status: string
+      request_kind: 'refund' | 'goodwill'
       amount: number | null
       currency: string | null
       requested_at: string | null
@@ -11006,11 +11009,14 @@ class ApiClient {
   }
 
   async createAdminRefundRequest(body: {
-    payment_id: string
+    payment_id?: string
+    provider_payment_id?: string
+    request_kind?: 'refund' | 'goodwill'
     amount?: number | null
     provider_item_id?: string | null
     tax_inclusive?: boolean
     reason: string
+    evidence?: string | null
   }): Promise<AdminRefundRequest> {
     return this.request<AdminRefundRequest>('/admin/billing/refunds', {
       method: 'POST',

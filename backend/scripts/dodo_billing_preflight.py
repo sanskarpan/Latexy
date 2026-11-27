@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0100_daily_metrics"
+EXPECTED_HEAD = "0104_refund_requests"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -36,7 +36,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
     "0092_document_complexity", "0093_admin_saved_views", "0094_template_health",
     "0096_retention_controls", "0097_two_person_approvals", "0099_tenant_domain_health",
-    "0100_daily_metrics",
+    "0100_daily_metrics", "0104_refund_requests",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -354,6 +354,9 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "optimizations", "payments_count", "gross_revenue_minor",
             "refunds_count", "refund_amount_minor", "refreshed_at",
         },
+    },
+    "0104_refund_requests": {
+        "admin_refund_requests": {"request_kind", "evidence"},
     },
 }
 

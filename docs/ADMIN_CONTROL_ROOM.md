@@ -10,9 +10,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 | Revenue | `GET /admin/billing/webhooks` | Durable Dodo webhook receipts with local-ledger link, acknowledgement, and reconcile state |
 | Revenue | `POST /admin/billing/webhooks/{id}/acknowledge` | Record review of a known provider-side/dead-letter event; never changes provider state |
 | Revenue | `POST /admin/billing/webhooks/{id}/reconcile` | Re-read the linked checkout from Dodo; fails honestly when no local intent exists |
-| Revenue | `POST /admin/billing/refunds` | Create a refund request (full, or partial with a provider line-item ID) |
+| Revenue | `POST /admin/billing/refunds` | Create a refund or goodwill request from a local payment UUID or Dodo payment ID (full, or partial with a provider line-item ID), with bounded reason/evidence |
 | Revenue | `POST /admin/billing/refunds/{id}/approve\|reject` | Second-admin decision; the requester cannot decide their own request |
-| Revenue | `POST /admin/billing/refunds/{id}/execute` | Submit an approved/retryable refund to Dodo |
+| Revenue | `POST /admin/billing/refunds/{id}/execute` | Submit an approved/retryable refund to Dodo exactly once; retries require reconciliation |
+| Revenue | `POST /admin/billing/refunds/{id}/reconcile` | Re-read a stuck provider refund without resubmitting it |
 | Growth & Cost | `GET /admin/analytics/activation` | Signup → résumé → compile → export → AI optimize → paid funnel, with plan/provider segments plus the provider-segmented signup start → complete → verified funnel, median time-to-verify and OAuth-failure counters |
 | Growth & Cost | `GET /analytics/conversion-funnel` | Admin-only landing → trial → registration → subscription funnel; now includes the same server-derived signup/provider report |
 | Growth & Cost | `GET /admin/analytics/landing-conversion` | Landing visits and same-device first-touch trial/registration conversion by page key, experiment/variant, and mobile/tablet/desktop class; overall funnel summary kept as the authoritative sample, missing variants labelled, cells below five visits suppressed |
@@ -166,6 +167,10 @@ Status: Phase 1 implementation (billing/webhook control room, User 360, audit).
 - `admin_refund_requests` + one-open-request partial unique index
 - `billing_webhook_events` review/acknowledgement/reconcile columns and index
 
+`0104_refund_requests` classifies refund versus goodwill requests and retains
+bounded reviewer evidence. The downgrade refuses to discard evidence while
+financial-review rows still carry it.
+
 `0078_admin_alerts` creates:
 
 - `admin_alerts` with one active row per `dedupe_key` (partial unique index)
@@ -249,6 +254,10 @@ serve normal traffic; there is no application delete path or scheduled purge.
 - `backend/test/test_admin_control_room_api.py` covers audit immutability,
   billing summary, webhook acknowledgement/reconcile, dual-control refunds,
   masked User 360, PII reveal audit, quota/session/key actions, and plan changes.
+- `backend/test/test_admin_refund_requests.py` covers amount bounds, partial
+  and already-refunded balances, provider-ID lookup, self-approval, rejection,
+  double execution, provider failure redaction, requester/approver/executor
+  audit, legacy payload hashes and admin-only RBAC.
 - `backend/test/test_admin_audit_hardening.py` covers cursor stability under
   identical timestamps, filter echo, page-size bounds, changed-only redaction,
   the absence of audit mutation routes, and the database-role grant script.
