@@ -47,6 +47,10 @@ async def _clean_rows(db: AsyncSession, pattern: str = "test_%") -> None:
         {"pattern": pattern},
     )
     await db.execute(
+        text("DELETE FROM subscription_status_history WHERE user_id IN (SELECT id FROM users WHERE email LIKE :pattern)"),
+        {"pattern": pattern},
+    )
+    await db.execute(
         text("DELETE FROM subscription_history WHERE user_id IN (SELECT id FROM users WHERE email LIKE :pattern)"),
         {"pattern": pattern},
     )
@@ -69,7 +73,11 @@ async def _clean_our_rows(db: AsyncSession) -> None:
 
 @pytest.fixture(autouse=True)
 async def _clean_path_rows(db_session: AsyncSession):
-    await _clean_rows(db_session)
+    # The report scans the whole table. Clear aggregate leftovers from every
+    # synthetic account (all fixtures use the reserved example domains), not
+    # just this module's prefix, so earlier modules cannot shift the counts.
+    await _clean_rows(db_session, "%@example.com")
+    await _clean_rows(db_session, "%@example.test")
     await _clean_our_rows(db_session)
     yield
     await _clean_our_rows(db_session)

@@ -71,7 +71,9 @@ DATA_CLASSES: dict[str, DataClassSpec] = {
             "legal holds are never touched."
         ),
         purge_mode="delete",
-        floor_hours=max(1, math.ceil(max(1, settings.PDF_RETENTION_TIME) / 3600)),
+        floor_hours=max(
+            1, math.ceil(max(1, settings.PDF_RETENTION_TIME or 0) / 3600)
+        ),
     ),
     "job_finalizations": DataClassSpec(
         key="job_finalizations",
@@ -111,7 +113,9 @@ DATA_CLASSES: dict[str, DataClassSpec] = {
             "evidence and append-only event history remain intact."
         ),
         purge_mode="scrub",
-        floor_hours=max(1, math.ceil(max(1, settings.GDPR_EXPORT_TTL_MINUTES) / 60)),
+        floor_hours=max(
+            1, math.ceil(max(1, settings.GDPR_EXPORT_TTL_MINUTES or 0) / 60)
+        ),
     ),
 }
 

@@ -267,14 +267,14 @@ async def test_purge_analytics_is_bounded_and_keeps_legal_hold(
     await _seed_hold(db_session, held_user)
     old_ids = [
         await _seed_analytics(
-            db_session, action=f"{MARKER}_old_{index}", created_at=_hours_ago(48)
+            db_session, action=f"{MARKER}_old_{index}", created_at=_hours_ago(24 * 400)
         )
         for index in range(3)
     ]
     held_id = await _seed_analytics(
         db_session,
         action=f"{MARKER}_held",
-        created_at=_hours_ago(48),
+        created_at=_hours_ago(24 * 400),
         user_id=held_user,
     )
     recent_id = await _seed_analytics(
