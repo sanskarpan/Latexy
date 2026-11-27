@@ -102,7 +102,7 @@ Compile stage baseline (warm single 1-page, n=5): queue/acquisition **1.35 s**, 
 
 All **44 App Router pages** were loaded in production at 1440x900 and 390x844 with anonymous/free/pro/admin/team roles. Evidence: `audit/frontend/AUDIT.md`, `page-inventory.csv`, 44 `report.json` files, desktop/mobile screenshots and the builder journey.
 
-**15 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2335, #2339, #2342, #2343. The critical ones:
+**18 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2335, #2339, #2342-#2345, #2347. The critical ones:
 - **FE-01 P1:** Optimize page can sit on a blank "Checking feature availability" spinner for 25s+ with no error.
 - **FE-02 P1:** Imported/legacy LaTeX resumes have no coherent edit path (edit read-only, builder 404, variant 409, optimize spinner).
 - **FE-03 P2:** Consent banner overlays sign-in, pricing and admin controls.
@@ -114,12 +114,15 @@ All **44 App Router pages** were loaded in production at 1440x900 and 390x844 wi
 - **FE-13 P2:** Cover-letter generation stays at "Generating…" for 45s with no logs/error.
 - **FE-14 P2:** Guided-builder creation can sit at "Creating your résumé…" for ~30s.
 - **FE-15 P2:** Templates page shows "0 templates" for ~10s; Use Template stays at "CREATING…" >7s; PDF import extraction >8s.
+- **FE-16 P1 (fixed, verification partial):** compiled share links could not render their PDF because the R2 presigned URL had no `Access-Control-Allow-Origin`. A bucket CORS rule was applied on 2026-11-27; plain 200 / Range 206, PDF render and public page-1 review comment verified. Remaining #2344 checks: revoked-token state, anonymous share, regression test.
+- **FE-17 P3:** Billing/dashboard/settings show bare loading text or empty cards for 3-12s; billing refetches plans three times (#2345).
+- **FE-18 P2:** Workspace invite succeeds but the owner's member list/count stays stale until reload; invite button is icon-only (#2347).
 
-The page-load and visual coverage is complete; full interaction coverage remains partial (template use, PDF/LinkedIn import, ATS simulator, tracker CRUD, team invite, billing checkout, admin mutations).
+The page-load and visual coverage is complete. Interaction coverage now includes the full builder, PDF import (end-to-end), ATS simulator (PASS), tracker add, team invite (PASS with FE-18), LinkedIn import (PASS with a synthetic fixture, source-only FE-02), cover-letter attempt, and share/review (PASS after the R2 CORS fix). In-app coverage is 44/44. Still partial: billing checkout (no live charges), admin mutations (safety).
 
 ## Architecture review
 
-`audit/architecture/latency-advisor.md` is the independent architecture plan. It identifies the two serialized finalization pipelines (fresh NullPool DB engines, serialized advisory locks, R2 HEAD checks, two pdftotext subprocesses) as the first code win, explicit LATEX CPU/memory as the first architecture win, and warm pool + admission control as a pair. Target: warm p50 <=12 s, 5-concurrent p50 <=25 s, finalize <=2 s. GitHub #2337 tracks the program; #2309/#2310 are the specific defects.
+`audit/architecture/latency-advisor.md` is the measured plan; `audit/architecture/latency-advisor-opus.md` is the **actual Claude Opus 5.5** review. It agrees with the diagnosis but reorders execution: instrument first (CPU cgroup, cold/warm, per-stage spans), ship explicit `MODAL_LATEX_CPU=1.0`/memory plus font warm-up, do finalize stage A (parallel geometry/pdftotext, persistent loop/pool, no redundant HEADs) before the high-risk single-transaction rewrite, then warm pool + admission, then client-perceived path (cache short-circuit, presigned URL + R2 CORS, preview semantics). It also adds correctness invariants, p95 gates and missed mechanisms (preamble `.fmt` caching, conditional second pass, Neon/Modal region, failure-path latency). Target: warm p50 <=12 s, p95 <=18 s, 5-concurrent p50 <=25 s, finalize <=2 s. GitHub #2337 tracks the program; #2309/#2310 are the specific defects.
 
 ## Limitations
 

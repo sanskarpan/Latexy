@@ -1,0 +1,24 @@
+{
+  "ownerResult": {
+    "inviteVisible": true,
+    "pageText": "Skip to content\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nI\nInteraction9\nAll Workspaces\nInteraction9 Workspace\n1/5\n0 resumes\nTeam\nMembers\n\nInteraction9 Owner\n\ninteract9.owner.20261127172823@example.test\n\nOwner\n\nInvite by email\n\nEditor\nViewer\nShared Resumes\nSubmit mine\n\nNo resumes shared yet.",
+    "afterText": "Skip to content\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nI\nInteraction9\nAll Workspaces\nInteraction9 Workspace\n1/5\n0 resumes\nTeam\nMembers\n\nInteraction9 Owner\n\ninteract9.owner.20261127172823@example.test\n\nOwner\n\nInvite by email\n\nEditor\nViewer\nShared Resumes\nSubmit mine\n\nNo resumes shared yet.",
+    "memberVisible": false,
+    "toastVisible": false
+  },
+  "memberResult": {
+    "listText": "Skip to content\nLatexy\nDashboard\nWorkspace\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nI\nInteraction9\nTeam Workspaces\n\nInteraction9 Workspace\n\nTeam Plan\n\n2/5 members\n0 resumes",
+    "workspaceText": "Skip to content\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nI\nInteraction9\nLoading",
+    "workspaceAccessible": false
+  },
+  "log": {
+    "owner": {
+      "console": [],
+      "http": []
+    },
+    "member": {
+      "console": [],
+      "http": []
+    }
+  }
+}

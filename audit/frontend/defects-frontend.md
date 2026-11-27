@@ -204,3 +204,51 @@ Severity follows the audit scale. Every finding is from live production `https:/
 **Proposed fix:** show a skeleton/“Loading templates…” instead of 0; prefetch templates/categories during auth; show a progress step for template use and import; add a timeout.
 
 **Acceptance:** templates skeleton or count appears immediately; no "0 templates" flash; template use/import shows step progress and reaches the destination or an error within 15s.
+
+## FE-16 - P1 - Public share links cannot render the compiled PDF (R2 CORS)
+
+**Surface:** `/r/{shareToken}` (PDF tab and review surface), `GET /share/{token}`.
+
+**Observed:** with a freshly compiled and accepted artifact (compile completed 54.7s, accepted 57.8s), `POST /resumes/{id}/share` returned 200 and `GET /share/{token}` returned 200 with a valid R2 `pdf_url`. Opening the share page in a clean browser loaded the title and review panel, but the PDF never rendered. The console showed `Access to fetch at 'https://2ca2c...r2.cloudflarestorage.com/...pdf' ... blocked by CORS policy` and `net::ERR_FAILED`; the review surface displayed **"The review document could not be loaded."** A direct `curl -H 'Origin: https://latexy.xyz'` on the same URL returned 200 with `Content-Type: application/pdf` but **no `Access-Control-Allow-Origin`** header.
+
+**Evidence:** `journeys/share-review-journey.json`, `journeys/share-review-page.png`, `journeys/share-review-45s.png`, `journeys/pdf-import-completion.json`.
+
+**Impact:** every non-anonymous share link fails to show the resume PDF, defeating the sharing and review feature. Accessible text still renders, but the visual document and pinned comments do not.
+
+**Proposed fix:** serve shared artifacts through a same-origin backend route (`/share/{token}/pdf`) with HTTP Range support, or configure the R2 bucket CORS policy to allow the production web origins with `GET, HEAD, OPTIONS`, `Range, Content-Type, Authorization` request headers and exposed `Content-Length, Content-Range, Accept-Ranges, ETag`.
+
+**Acceptance:** a compiled accepted resume's share link renders the PDF in Chrome/Firefox/Safari with no CORS console error; the review surface loads and accepts a pinned comment; Range requests work; revoked/no-artifact states stay distinct; anonymous shares are unaffected. Full issue: [#2344](https://github.com/sanskarpan/Latexy/issues/2344).
+
+**Status 2026-11-27:** R2 bucket CORS applied; PDF render, Range 206 and a public page-1 review comment verified. #2344 remains open for revoked-token, anonymous-share and deployed regression checks.
+
+## FE-17 - P3 - Async shells show bare loading text/blank cards; billing refetches plans 3x
+
+**Surface:** `/billing`, `/dashboard`, `/settings`; related `/templates` (FE-15), `/workspace/merge`, `/workspace/builder/new`.
+
+**Observed:**
+- Billing: after 3s it shows bare **"Loading plans..."** and **"Loading subscription state..."**; the subscription block is still bare at 10s and fully loads at ~12s. It issues five subscription requests: `/subscription/current` (3.4s, 5.1s) and `/subscription/plans` (3.0s, 3.9s, 3.3s).
+- Dashboard: the five KPI cards render as empty rounded boxes at 3.5s before values appear; no labels/skeleton in the blank state.
+- Settings: "Loading dictionary..." at 3s; preferences resolve ~7s.
+- No skeleton or retry; no console errors.
+
+**Evidence:** `browser-review-2026-11-27.md`, `browser-review/billing-loading.png`, `dashboard-loading.png`, `settings-loading.png`.
+
+**Impact:** the revenue page looks broken for 10+ seconds and hides the current plan/prices; the dashboard reads as missing data.
+
+**Proposed fix:** dedupe plan/current requests; cache the plan catalog; layout-stable skeletons; 8s retryable error; warm the catalog in the dashboard layout.
+
+**Acceptance:** at most one plans + one current request per mount; skeleton within 300ms and populated within 3s warm / 6s cold; dashboard cards never empty; settings skeleton or retry. Full issue: [#2345](https://github.com/sanskarpan/Latexy/issues/2345).
+
+## FE-18 - P2 - Workspace invite succeeds but owner list/count stay stale until reload
+
+**Surface:** `/workspaces/{workspaceId}` → "Invite by email".
+
+**Observed:** owner at 1/5 members enters a valid member email and presses Enter. The invite succeeds: the member signs in, sees "Interaction9 Workspace", and the member's list reports **2/5 members**. The owner's page still shows **1/5** and no member row after 4s; no success toast is visible by then. A manual reload shows 2/5 and the new Editor row. The submit control is an icon-only Plus button with no accessible name; the email input has only a placeholder.
+
+**Evidence:** `journeys/team-invite.md`, `team-invite-journey.json`, `team-workspace-owner.png`, `team-workspace-owner-loaded.png`, `team-workspace-member-loaded.png`.
+
+**Impact:** the owner cannot tell whether the invite worked and may resend (409) or assume the teammate was not added; screen-reader users cannot identify the invite button.
+
+**Proposed fix:** append the invite response to state (or refetch the workspace), show an inline success state, add `aria-label`/label, and handle 409 as "Already a member" with a refresh.
+
+**Acceptance:** new member and count appear within 1s without reload; success/duplicate/error states are visible; the button has an accessible name and the input a label; the invited member can open the workspace. Full issue: [#2347](https://github.com/sanskarpan/Latexy/issues/2347).
