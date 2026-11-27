@@ -33,6 +33,10 @@ export const ANALYTICS_CONSENT_EVENT = 'latexy:analytics-consent'
 
 export type AnalyticsConsent = 'granted' | 'denied' | null
 export type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>
+export type AnalyticsEventLike = {
+  event?: string
+  properties?: Record<string, unknown>
+}
 
 // Keep direct `process.env.NEXT_PUBLIC_*` member expressions so Next inlines
 // them at build time, while remaining safe in browser-only bundles (for
@@ -46,6 +50,17 @@ const POSTHOG_PROJECT_ID = (typeof process === 'undefined' ? '' : process.env.NE
 // when a caller accidentally passes them. A small allowlist keeps genuinely
 // useful low-cardinality fields (for example `feature_key`) addressable.
 const SENSITIVE_KEY = /(email|phone|name|address|resume|latex|content|prompt|text|token|secret|password|auth|cookie|ssn|birth|salary|job.?description|cover.?letter)/i
+
+// Document-editing, public share, portfolio, and guest-editor surfaces are
+// excluded from *all* browser telemetry, not only session replay. Exception
+// autocapture and frustration-signal events would otherwise inspect the same
+// pages that hold résumé text, share tokens, or workspace identifiers.
+const BLOCKED_ANALYTICS_SURFACE = /^\/(?:workspace|workspaces|try|r|u|share|portfolio)(?:\/|$)/i
+const EXCEPTION_TYPE_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$.]{0,63}$/
+const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
+const TOKEN_PATTERN = /(?:phc_|phx_|sk-|Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi
+const URL_PATTERN = /https?:\/\/[^\s"'<>]+/gi
+const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi
 const SAFE_KEY_ALLOWLIST = new Set([
   'feature_key',
   'plan_key',
@@ -140,6 +155,235 @@ export function sanitizeAnalyticsPath(pathname: string): string {
     .slice(0, 240)
 }
 
+/**
+ * A release tag is a bounded, low-cardinality identifier (git SHA, semver tag,
+ * or build id). Anything containing whitespace, a slash, or a free-form value
+ * is rejected rather than forwarded to PostHog.
+ */
+export function sanitizeAnalyticsRelease(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (/^(?:phc_|phx_|sk-|bearer)/i.test(trimmed)) return null
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(trimmed) ? trimmed : null
+}
+
+const POSTHOG_RELEASE = sanitizeAnalyticsRelease(
+  (typeof process === 'undefined' ? '' : process.env.NEXT_PUBLIC_APP_RELEASE)?.trim() || '',
+)
+
+/** The sanitized release tag attached to browser events, when configured. */
+export function analyticsRelease(): string | null {
+  return POSTHOG_RELEASE
+}
+
+function analyticsPathname(value: string): string | null {
+  if (!value) return null
+  try {
+    return new URL(value, 'https://latexy.invalid').pathname || '/'
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Document, share, portfolio, guest-editor, and workspace paths never reach
+ * PostHog. This applies to exception autocapture and dead/rage-click events as
+ * well as replay: a stack trace or click on a résumé page is still content.
+ */
+export function isBlockedAnalyticsPath(value: string): boolean {
+  const pathname = analyticsPathname(value)
+  return pathname ? BLOCKED_ANALYTICS_SURFACE.test(pathname) : false
+}
+
+/** Bound and redact free-form exception text before it reaches PostHog. */
+export function sanitizeExceptionText(value: unknown, maxLength = 240): string {
+  if (typeof value !== 'string') return ''
+  return value
+    .replace(URL_PATTERN, (match) => sanitizeUrlLike(match, 160))
+    .replace(EMAIL_PATTERN, '[email]')
+    .replace(TOKEN_PATTERN, '[token]')
+    .replace(UUID_PATTERN, '[id]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function sanitizeExceptionType(value: unknown): string {
+  if (typeof value !== 'string') return 'Error'
+  const trimmed = value.trim()
+  return EXCEPTION_TYPE_PATTERN.test(trimmed) ? trimmed : 'Error'
+}
+
+function sanitizeUrlLike(value: string, maxLength: number): string {
+  try {
+    const url = new URL(value, 'https://latexy.invalid')
+    const keepOrigin =
+      url.origin !== 'https://latexy.invalid' &&
+      (url.protocol === 'http:' || url.protocol === 'https:')
+    const path = `${keepOrigin ? url.origin : ''}${url.pathname}`
+    return path.slice(0, maxLength)
+  } catch {
+    return value.split('?')[0].split('#')[0].slice(0, maxLength)
+  }
+}
+
+function sanitizeStackFrame(frame: unknown): Record<string, unknown> | null {
+  if (!frame || typeof frame !== 'object') return null
+  const source = frame as Record<string, unknown>
+  const output: Record<string, unknown> = {}
+  if (typeof source.filename === 'string') {
+    const filename = sanitizeUrlLike(source.filename, 240)
+    if (filename) output.filename = filename
+  }
+  if (typeof source.function === 'string') {
+    output.function = sanitizeExceptionText(source.function, 120)
+  }
+  if (typeof source.module === 'string') {
+    output.module = sanitizeExceptionText(source.module, 120)
+  }
+  if (typeof source.lineno === 'number' && Number.isFinite(source.lineno)) {
+    output.lineno = source.lineno
+  }
+  if (typeof source.colno === 'number' && Number.isFinite(source.colno)) {
+    output.colno = source.colno
+  }
+  if (typeof source.in_app === 'boolean') output.in_app = source.in_app
+  return Object.keys(output).length > 0 ? output : null
+}
+
+function sanitizeExceptionList(value: unknown): Record<string, unknown>[] | null {
+  if (!Array.isArray(value)) return null
+  const entries = value
+    .slice(0, 5)
+    .map((entry): Record<string, unknown> | null => {
+      if (!entry || typeof entry !== 'object') return null
+      const source = entry as Record<string, unknown>
+      const output: Record<string, unknown> = {
+        type: sanitizeExceptionType(source.type),
+        value: sanitizeExceptionText(source.value),
+      }
+      if (source.mechanism && typeof source.mechanism === 'object') {
+        const mechanism = source.mechanism as Record<string, unknown>
+        output.mechanism = {
+          ...(typeof mechanism.handled === 'boolean' ? { handled: mechanism.handled } : {}),
+          ...(typeof mechanism.type === 'string'
+            ? { type: sanitizeExceptionText(mechanism.type, 80) }
+            : {}),
+        }
+      }
+      if (source.stacktrace && typeof source.stacktrace === 'object') {
+        const stack = source.stacktrace as Record<string, unknown>
+        output.stacktrace = {
+          ...(stack.type === 'raw' ? { type: 'raw' } : {}),
+          ...(Array.isArray(stack.frames)
+            ? {
+                frames: stack.frames
+                  .slice(0, 50)
+                  .map(sanitizeStackFrame)
+                  .filter((frame): frame is Record<string, unknown> => frame !== null),
+              }
+            : {}),
+        }
+      }
+      return output
+    })
+    .filter((entry): entry is Record<string, unknown> => entry !== null)
+  return entries.length > 0 ? entries : null
+}
+
+function sanitizeExceptionProperties(properties: Record<string, unknown>): void {
+  const exceptionList = sanitizeExceptionList(properties.$exception_list)
+  if (exceptionList) {
+    properties.$exception_list = exceptionList
+    properties.error_type = sanitizeExceptionType(exceptionList[0]?.type)
+  }
+  if (Array.isArray(properties.$exception_types)) {
+    properties.$exception_types = properties.$exception_types
+      .slice(0, 10)
+      .map((value) => sanitizeExceptionType(value))
+  }
+  if (Array.isArray(properties.$exception_values)) {
+    properties.$exception_values = properties.$exception_values
+      .slice(0, 10)
+      .map((value) => sanitizeExceptionText(value))
+  }
+  if (typeof properties.$exception_message === 'string') {
+    properties.$exception_message = sanitizeExceptionText(properties.$exception_message)
+  }
+  if (typeof properties.error_type !== 'string') {
+    properties.error_type = 'Error'
+  }
+}
+
+/**
+ * The single `before_send` boundary for *all* SDK events, including
+ * autocaptured clicks, exceptions, and dead clicks. It removes document
+ * surfaces entirely, templates URL paths, attaches the optional release tag,
+ * and redacts exception payloads.
+ */
+export function sanitizeAnalyticsEvent<T extends AnalyticsEventLike>(event: T): T | null {
+  const properties = event.properties
+  if (!properties) return event
+
+  const currentUrl = typeof properties.$current_url === 'string'
+    ? properties.$current_url
+    : null
+  const pathname = typeof properties.$pathname === 'string'
+    ? properties.$pathname
+    : null
+  const isContentEvent =
+    event.event === '$exception' ||
+    event.event === '$rageclick' ||
+    event.event === '$dead_click' ||
+    Array.isArray(properties.$exception_list)
+  if (
+    isContentEvent &&
+    ((currentUrl && isBlockedAnalyticsPath(currentUrl)) ||
+      (pathname && isBlockedAnalyticsPath(pathname)))
+  ) {
+    return null
+  }
+
+  if (currentUrl) properties.$current_url = sanitizeUrl(currentUrl)
+  if (typeof properties.$referrer === 'string') {
+    properties.$referrer = sanitizeUrl(properties.$referrer)
+  }
+  if (pathname) properties.$pathname = sanitizeAnalyticsPath(pathname)
+  if (typeof properties.$session_entry_url === 'string') {
+    properties.$session_entry_url = sanitizeUrl(properties.$session_entry_url)
+  }
+
+  const route = analyticsPathname(currentUrl ?? pathname ?? '')
+  if (route && typeof properties.route !== 'string') {
+    properties.route = sanitizeAnalyticsPath(route)
+  }
+
+  if (POSTHOG_RELEASE) {
+    properties.release = POSTHOG_RELEASE
+    if (!properties.$release_id) properties.$release_id = POSTHOG_RELEASE
+  }
+
+  for (const key of Object.keys(properties)) {
+    if (key.startsWith('$input') || key === '$selected_content' || key === '$exception_steps') {
+      delete properties[key]
+    }
+  }
+
+  // Rage/dead-click autocapture can attach the clicked element's text and DOM
+  // chain. The admin triage groups by route/release/event class only, so keep
+  // element text out of the event stream entirely.
+  if (event.event === '$rageclick' || event.event === '$dead_click') {
+    for (const key of ['$el_text', '$elements_chain', '$elements']) {
+      delete properties[key]
+    }
+  }
+
+  if (event.event === '$exception' || Array.isArray(properties.$exception_list)) {
+    sanitizeExceptionProperties(properties)
+  }
+  return event
+}
+
 export function sanitizeAnalyticsProperties(properties?: Record<string, unknown>): AnalyticsProperties {
   if (!properties) return {}
   const safe: AnalyticsProperties = {}
@@ -182,8 +426,14 @@ export function sanitizeAnalyticsProperties(properties?: Record<string, unknown>
 
 function sanitizeUrl(value: string): string {
   try {
-    const url = new URL(value, typeof window === 'undefined' ? undefined : window.location.origin)
-    return `${url.origin}${sanitizeAnalyticsPath(url.pathname)}`
+    const url = new URL(
+      value,
+      typeof window === 'undefined' ? 'https://latexy.invalid' : window.location.origin,
+    )
+    const keepOrigin =
+      url.origin !== 'https://latexy.invalid' &&
+      (url.protocol === 'http:' || url.protocol === 'https:')
+    return `${keepOrigin ? url.origin : ''}${sanitizeAnalyticsPath(url.pathname)}`
   } catch {
     return ''
   }
@@ -202,6 +452,13 @@ async function loadClient(): Promise<PostHogClient | null> {
   initPromise = (async () => {
     try {
       const { default: posthog } = await import('posthog-js')
+      if (POSTHOG_RELEASE) {
+        // PostHog's exception pipeline reads this when it builds `$release_id`.
+        // Setting it before init keeps release-tagged exceptions consistent
+        // with the `release` super property registered below.
+        const runtimeGlobal = globalThis as typeof globalThis & { _posthogReleaseId?: string }
+        runtimeGlobal._posthogReleaseId = POSTHOG_RELEASE
+      }
       posthog.init(POSTHOG_KEY, {
         api_host: POSTHOG_HOST,
         ui_host: POSTHOG_UI_HOST,
@@ -212,21 +469,17 @@ async function loadClient(): Promise<PostHogClient | null> {
         capture_pageview: false,
         capture_pageleave: false,
         person_profiles: 'identified_only',
-        // Applies to every SDK-created event, including autocapture and
-        // exceptions, not just the wrapper's explicit captures.
-        before_send: (event) => {
-          const properties = event.properties ?? {}
-          if (typeof properties.$current_url === 'string') {
-            properties.$current_url = sanitizeUrl(properties.$current_url)
-          }
-          if (typeof properties.$referrer === 'string') {
-            properties.$referrer = sanitizeUrl(properties.$referrer)
-          }
-          for (const key of Object.keys(properties)) {
-            if (key.startsWith('$input') || key === '$selected_content') delete properties[key]
-          }
-          return event
-        },
+        // Exception autocapture is consent-gated like every other event: this
+        // init path only runs after a grant. `before_send` drops errors raised
+        // on document surfaces and redacts exception payloads.
+        capture_exceptions: true,
+        // Frustration signals used by the admin Quality view. Rage clicks are
+        // part of autocapture; dead clicks need the explicit extension.
+        capture_dead_clicks: true,
+        rageclick: true,
+        // Applies to every SDK-created event, including autocapture, dead
+        // clicks, and exceptions, not just the wrapper's explicit captures.
+        before_send: (event) => sanitizeAnalyticsEvent(event),
         persistence: 'localStorage+cookie',
         // Never record until the explicit consent path below starts it.
         disable_session_recording: true,
@@ -247,9 +500,12 @@ async function loadClient(): Promise<PostHogClient | null> {
         loaded: (ph) => {
           // Defense in depth: only start if consent is still granted at load.
           if (readAnalyticsConsent() === 'granted') {
+            if (POSTHOG_RELEASE) ph.register({ release: POSTHOG_RELEASE })
             ph.startSessionRecording()
+            ph.startExceptionAutocapture()
           } else {
             ph.stopSessionRecording()
+            ph.stopExceptionAutocapture()
             ph.opt_out_capturing()
           }
         },
@@ -274,18 +530,35 @@ export async function initializeAnalytics(): Promise<boolean> {
   if (!loaded || readAnalyticsConsent() !== 'granted') return false
   loaded.opt_in_capturing()
   loaded.startSessionRecording()
+  loaded.startExceptionAutocapture()
+  if (POSTHOG_RELEASE) loaded.register({ release: POSTHOG_RELEASE })
   return true
 }
 
 /** Stop capture and replay immediately. Used when consent is withdrawn. */
 export function disableAnalytics(): void {
   if (!client) return
+  // Each call is isolated: a failure stopping one extension must not skip the
+  // opt-out/reset that makes withdrawal take effect.
   try {
     client.stopSessionRecording()
-    client.opt_out_capturing()
-    client.reset()
   } catch {
     // The SDK is best-effort; never break the page when it is unavailable.
+  }
+  try {
+    client.stopExceptionAutocapture()
+  } catch {
+    // Continue to the opt-out below even if the extension is not loaded.
+  }
+  try {
+    client.opt_out_capturing()
+  } catch {
+    // The SDK is best-effort.
+  }
+  try {
+    client.reset()
+  } catch {
+    // The SDK is best-effort.
   }
 }
 
@@ -391,6 +664,22 @@ export function analyticsDashboardLinks(): {
  */
 export function analyticsReplayLinkConfig(days: number): ReplayLinkConfig | null {
   if (!POSTHOG_PROJECT_ID) return null
+  return {
+    projectId: POSTHOG_PROJECT_ID,
+    uiHost: POSTHOG_UI_HOST,
+    days,
+  }
+}
+
+/**
+ * Project/date-range configuration for the admin Quality triage view. The
+ * project id is public and no per-user value is included; the quality view
+ * never reads or embeds PostHog data, only opens filtered aggregate views.
+ */
+export function analyticsQualityLinkConfig(days: number): ReplayLinkConfig | null {
+  // Quality counts need both the write token and the project id: without the
+  // token this deployment cannot have sent any exception/frustration events.
+  if (!isAnalyticsConfigured() || !POSTHOG_PROJECT_ID) return null
   return {
     projectId: POSTHOG_PROJECT_ID,
     uiHost: POSTHOG_UI_HOST,

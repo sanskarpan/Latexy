@@ -21,6 +21,15 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.encryption_service import encryption_service
+from ..services.integration_analytics_service import (
+    INTEGRATION_CONNECT_STARTED,
+    INTEGRATION_CONNECTED,
+    INTEGRATION_DISCONNECTED,
+    INTEGRATION_SYNC_FAILED,
+    INTEGRATION_SYNC_SUCCEEDED,
+    classify_integration_exception,
+    record_integration_event,
+)
 from ..utils.bounded_io import BoundedReadError, read_httpx_response_bounded
 from ..utils.uuid_guard import ensure_uuid
 
@@ -107,6 +116,7 @@ def _trusted_mendeley_next_url(value: str) -> str:
 )
 async def mendeley_connect(
     user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create an OAuth state for the authenticated user and return its URL."""
     if not settings.MENDELEY_CLIENT_ID or not settings.MENDELEY_CLIENT_SECRET or not settings.MENDELEY_REDIRECT_URI:
@@ -117,6 +127,12 @@ async def mendeley_connect(
 
     state = secrets.token_urlsafe(32)
     await cache_manager.set(f"mendeley:state:{state}", {"user_id": user_id}, ttl=600)
+    await record_integration_event(
+        db,
+        provider="mendeley",
+        action=INTEGRATION_CONNECT_STARTED,
+        user_id=user_id,
+    )
 
     params = urllib.parse.urlencode(
         {
@@ -253,6 +269,14 @@ async def mendeley_complete(
     if display_name:
         meta["mendeley_name"] = display_name
     user.user_metadata = meta
+    await record_integration_event(
+        db,
+        provider="mendeley",
+        action=INTEGRATION_CONNECTED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        commit=False,
+    )
     await db.commit()
 
     return {"success": True, "message": "Mendeley account connected"}
@@ -287,10 +311,21 @@ async def mendeley_disconnect(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     meta = dict(user.user_metadata or {})
+    was_connected = bool(meta.get("mendeley_token"))
     meta.pop("mendeley_token", None)
     meta.pop("mendeley_refresh_token", None)
     meta.pop("mendeley_name", None)
     user.user_metadata = meta
+    if was_connected:
+        await record_integration_event(
+            db,
+            provider="mendeley",
+            action=INTEGRATION_DISCONNECTED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            disconnect_reason="user_requested",
+            commit=False,
+        )
     await db.commit()
     return {"success": True, "message": "Mendeley disconnected"}
 
@@ -423,16 +458,43 @@ async def mendeley_import(
                         truncated = True
                         break
                     link_header = resp.headers.get("Link", "")
-            except HTTPException:
+            except HTTPException as exc:
+                await record_integration_event(
+                    db,
+                    provider="mendeley",
+                    action=INTEGRATION_SYNC_FAILED,
+                    user_id=user_id,
+                    plan=user.subscription_plan,
+                    operation="import",
+                    error_class=classify_integration_exception(exc),
+                )
                 raise
             except httpx.HTTPStatusError as exc:
                 logger.error("Mendeley API error (HTTP %s)", exc.response.status_code)
+                await record_integration_event(
+                    db,
+                    provider="mendeley",
+                    action=INTEGRATION_SYNC_FAILED,
+                    user_id=user_id,
+                    plan=user.subscription_plan,
+                    operation="import",
+                    error_class=classify_integration_exception(exc),
+                )
                 raise HTTPException(
                     status_code=502,
                     detail=f"Mendeley API returned error {exc.response.status_code}",
                 )
             except httpx.RequestError as exc:
                 logger.error("Mendeley connection error (%s)", type(exc).__name__)
+                await record_integration_event(
+                    db,
+                    provider="mendeley",
+                    action=INTEGRATION_SYNC_FAILED,
+                    user_id=user_id,
+                    plan=user.subscription_plan,
+                    operation="import",
+                    error_class=classify_integration_exception(exc),
+                )
                 raise HTTPException(status_code=502, detail="Mendeley is unavailable")
 
             if page_bibtex:
@@ -471,6 +533,15 @@ async def mendeley_import(
     }
     rm["bibtex_source"] = source
     resume.resume_settings = rm
+    await record_integration_event(
+        db,
+        provider="mendeley",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="import",
+        commit=False,
+    )
     await db.commit()
 
     message = f"Imported {entry_count} BibTeX entries from Mendeley"

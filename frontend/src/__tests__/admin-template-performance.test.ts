@@ -10,14 +10,25 @@ describe('admin template performance surface', () => {
   const templatesPage = read('../app/templates/page.tsx')
 
   it('is wired as an admin-only Quality tab with CSV export', () => {
+    expect(page).toContain("import AdminTemplateHealth from '@/components/admin/AdminTemplateHealth'")
     expect(page).toContain("import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'")
     expect(page).toContain("{ id: 'quality', label: 'Quality' }")
-    expect(page).toContain("tab === 'quality' && <AdminTemplatePerformance />")
+    expect(page).toContain('<AdminTemplateHealth />')
+    expect(page).toContain('<AdminTemplatePerformance />')
     expect(page).not.toContain("SUPPORT_TABS: Array<{ id: TabId; label: string }> = [\n  { id: 'quality'")
     expect(component).toContain('Template catalog performance')
     expect(component).toContain('Export CSV')
     expect(component).toContain('downloadAdminTemplatePerformanceCsv')
     expect(component).toContain('getAdminTemplatePerformance')
+  })
+
+  it('surfaces latency, failure rate and regressions', () => {
+    expect(component).toContain('failure_rate')
+    expect(component).toContain('p50_compile_seconds')
+    expect(component).toContain('p95_compile_seconds')
+    expect(component).toContain('Regression')
+    expect(apiClient).toContain('p50_compile_seconds')
+    expect(apiClient).toContain('regression_reason')
   })
 
   it('keeps the report aggregate-only and explicitly documents suppression', () => {

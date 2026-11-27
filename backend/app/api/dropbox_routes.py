@@ -22,6 +22,15 @@ from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.dropbox_sync_service import dropbox_sync_service
 from ..services.encryption_service import encryption_service
+from ..services.integration_analytics_service import (
+    INTEGRATION_CONNECT_STARTED,
+    INTEGRATION_CONNECTED,
+    INTEGRATION_DISCONNECTED,
+    INTEGRATION_SYNC_FAILED,
+    INTEGRATION_SYNC_SUCCEEDED,
+    classify_integration_exception,
+    record_integration_event,
+)
 from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
@@ -139,6 +148,7 @@ async def _run_with_dropbox_token(user: User, db: AsyncSession, op):
 )
 async def dropbox_connect(
     user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create an OAuth state for the authenticated user and return its URL."""
     if not settings.DROPBOX_APP_KEY or not settings.DROPBOX_APP_SECRET:
@@ -150,6 +160,12 @@ async def dropbox_connect(
     # CSRF nonce — stored in Redis for 10 minutes
     nonce = secrets.token_urlsafe(32)
     await cache_manager.set(f"dbx:oauth:{nonce}", {"user_id": user_id}, ttl=600)
+    await record_integration_event(
+        db,
+        provider="dropbox",
+        action=INTEGRATION_CONNECT_STARTED,
+        user_id=user_id,
+    )
 
     params = urllib.parse.urlencode({
         "client_id": settings.DROPBOX_APP_KEY,
@@ -293,6 +309,14 @@ async def dropbox_complete(
     else:
         meta.pop("dropbox_display_name", None)
     user.user_metadata = meta
+    await record_integration_event(
+        db,
+        provider="dropbox",
+        action=INTEGRATION_CONNECTED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        commit=False,
+    )
     await db.commit()
 
     logger.info(f"Dropbox connected for user {user_id} (account: {account_id})")
@@ -330,7 +354,9 @@ async def dropbox_disconnect(
     """Clear Dropbox tokens and disable sync on all resumes."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
+    was_connected = False
     if user:
+        was_connected = bool(user.dropbox_access_token)
         user.dropbox_access_token = None
         user.dropbox_refresh_token = None
         user.dropbox_account_id = None
@@ -342,6 +368,16 @@ async def dropbox_disconnect(
         .where(Resume.user_id == user_id)
         .values(dropbox_sync_enabled=False)
     )
+    if was_connected:
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_DISCONNECTED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            disconnect_reason="user_requested",
+            commit=False,
+        )
     await db.commit()
     return {"success": True, "message": "Dropbox disconnected"}
 
@@ -382,17 +418,55 @@ async def enable_dropbox_sync(
         )
     except httpx.HTTPStatusError as exc:
         logger.error("Dropbox initial push failed (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="enable",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Dropbox upload failed ({exc.response.status_code}). Check your Dropbox permissions.",
         )
     except httpx.RequestError as exc:
         logger.error("Dropbox connection error on enable (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="enable",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="Dropbox is unavailable, please try again")
+    except HTTPException as exc:
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="enable",
+            error_class=classify_integration_exception(exc),
+        )
+        raise
 
     resume.dropbox_sync_enabled = True
     resume.dropbox_folder_path = folder_path
     resume.dropbox_last_sync_at = datetime.now(timezone.utc)
+    await record_integration_event(
+        db,
+        provider="dropbox",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="enable",
+        commit=False,
+    )
     await db.commit()
     await db.refresh(resume)
 
@@ -450,15 +524,53 @@ async def push_to_dropbox(
         )
     except httpx.HTTPStatusError as exc:
         logger.error("Dropbox push failed (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Dropbox upload failed ({exc.response.status_code})",
         )
     except httpx.RequestError as exc:
         logger.error("Dropbox connection error during push (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="Dropbox is unavailable, please try again")
+    except HTTPException as exc:
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
+        raise
 
     resume.dropbox_last_sync_at = datetime.now(timezone.utc)
+    await record_integration_event(
+        db,
+        provider="dropbox",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="push",
+        commit=False,
+    )
     await db.commit()
 
     return DropboxSyncResponse(
@@ -499,16 +611,62 @@ async def pull_from_dropbox(
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 409:
             # Dropbox returns 409 when path is not found (path_not_found error)
+            await record_integration_event(
+                db,
+                provider="dropbox",
+                action=INTEGRATION_SYNC_FAILED,
+                user_id=user_id,
+                plan=user.subscription_plan,
+                operation="pull",
+                error_class="not_found",
+            )
             raise HTTPException(status_code=404, detail="File not found on Dropbox")
         logger.error("Dropbox pull failed (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Dropbox download failed ({exc.response.status_code})",
         )
     except httpx.RequestError as exc:
         logger.error("Dropbox connection error during pull (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="Dropbox is unavailable, please try again")
+    except HTTPException as exc:
+        await record_integration_event(
+            db,
+            provider="dropbox",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class=classify_integration_exception(exc),
+        )
+        raise
 
+    await record_integration_event(
+        db,
+        provider="dropbox",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="pull",
+    )
     return DropboxPullResponse(success=True, latex_content=content)
 
 

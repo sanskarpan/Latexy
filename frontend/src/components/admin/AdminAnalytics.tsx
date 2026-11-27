@@ -9,6 +9,7 @@ import AdminCompileLatency from '@/components/admin/AdminCompileLatency'
 import AdminCompileErrors from '@/components/admin/AdminCompileErrors'
 import AdminOperations from '@/components/admin/AdminOperations'
 import AdminConsentAnalytics from '@/components/admin/AdminConsentAnalytics'
+import AdminPathAnalysis from '@/components/admin/AdminPathAnalysis'
 import { analyticsDashboardLinks, analyticsReplayTriageLinks } from '@/lib/analytics/posthog'
 
 const RANGES = [
@@ -246,8 +247,18 @@ function RecentEvents({ events }: { events: AdminAnalyticsOverviewResponse['rece
   )
 }
 
-export default function AdminAnalytics() {
-  const [days, setDays] = useState<number>(30)
+export default function AdminAnalytics({
+  initialDays = 30,
+  savedViewName = null,
+  savedViewFilters = {},
+  onDaysChange,
+}: {
+  initialDays?: number
+  savedViewName?: string | null
+  savedViewFilters?: Record<string, unknown>
+  onDaysChange?: (days: number) => void
+} = {}) {
+  const [days, setDays] = useState<number>(initialDays)
   const [data, setData] = useState<AdminAnalyticsOverviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -331,6 +342,27 @@ export default function AdminAnalytics() {
             First-party usage, billing and operational health. Session replays and deeper exploration open in PostHog;
             replay is consent-based, fully text-masked, and blocked on résumé surfaces.
           </p>
+          {data.metrics_freshness && (
+            <p className="mt-2 text-[11px] text-fg-3">
+              {data.metrics_freshness.source === 'rollup' ? (
+                <span className="text-ok">
+                  Daily rollup · refreshed{' '}
+                  {data.metrics_freshness.last_refreshed_at
+                    ? new Date(data.metrics_freshness.last_refreshed_at).toLocaleTimeString()
+                    : 'recently'}
+                </span>
+              ) : (
+                <span className="text-warn">
+                  Live base-table metrics ·{' '}
+                  {data.metrics_freshness.reason === 'insufficient_coverage'
+                    ? 'rollup does not cover this period'
+                    : data.metrics_freshness.reason === 'no_rollup'
+                      ? 'rollup not populated yet'
+                      : 'daily rollup is stale'}
+                </span>
+              )}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-[var(--radius-md)] border border-line bg-surface p-0.5" role="group" aria-label="Analytics period">
@@ -339,7 +371,10 @@ export default function AdminAnalytics() {
                 key={range.days}
                 type="button"
                 aria-pressed={days === range.days}
-                onClick={() => setDays(range.days)}
+                onClick={() => {
+                  setDays(range.days)
+                  onDaysChange?.(range.days)
+                }}
                 className={`rounded px-3 py-1.5 text-xs font-medium transition ${
                   days === range.days ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'
                 }`}
@@ -359,6 +394,19 @@ export default function AdminAnalytics() {
         </div>
       </div>
 
+      {savedViewName && (
+        <div role="status" aria-label="Applied saved view" className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft px-4 py-3 text-xs text-accent-strong">
+          <span className="font-semibold">Saved view: {savedViewName}</span>
+          {Object.keys(savedViewFilters).length > 0 && (
+            <span className="ml-2 text-fg-2">
+              {Object.entries(savedViewFilters)
+                .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(',') : String(value)}`)
+                .join(' · ')}
+            </span>
+          )}
+        </div>
+      )}
+
       {error && (
         <div role="alert" className="rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-4 py-3 text-xs text-warn">
           Showing the last successful data. Refresh failed: {error}
@@ -368,6 +416,8 @@ export default function AdminAnalytics() {
       <AdminOperations />
 
       <AdminConsentAnalytics days={days} />
+
+      <AdminPathAnalysis days={days} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="Total users" value={formatNumber(system.total_users)} detail={`${formatNumber(system.new_users)} new in period`} trend={trendMap.get('total_users')} />
@@ -438,6 +488,9 @@ export default function AdminAnalytics() {
             <div className="flex flex-wrap gap-2">
               <a href="/admin?tab=replays" className="rounded-[var(--radius-md)] bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
                 Replay library
+              </a>
+              <a href="/admin?tab=quality" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
+                Quality triage
               </a>
               <a href={posthogLinks.replays} target="_blank" rel="noreferrer" className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-2">
                 Open session replays

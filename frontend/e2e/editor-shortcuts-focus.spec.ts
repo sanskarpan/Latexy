@@ -38,6 +38,11 @@ async function openSavedEditor(page: Page) {
     return route.abort()
   })
   await mockEngineAncillaryApi(page, OWNER, { c04: true, c05: false, c06: false })
+  await mockEngineRoute(
+    page,
+    url => url.pathname === '/analytics/track/page-view',
+    route => fulfillEngineResponse(route, { status: 204 }),
+  )
   await mockEngineRoute(page, '**/analytics/signup/milestones', route => fulfillEngineResponse(route, {
     json: { provider: 'email', email_verified: true, recorded: [] },
   }))

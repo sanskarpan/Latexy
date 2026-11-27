@@ -1,6 +1,6 @@
 """Database models for Latexy application."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -1325,6 +1326,109 @@ class AdminAuditLog(Base):
     )
 
 
+class AdminApproval(Base):
+    """Two-person approval for one sensitive admin action.
+
+    The canonical payload is hashed at request time and cannot be changed. A
+    different admin must approve it before a mutation may consume it, and a
+    consumed approval can never be replayed. Direct identifiers in the payload
+    are bounded to target UUIDs, roles, feature keys and booleans; documents,
+    prompts, emails, tokens and provider payloads are never stored here.
+    """
+
+    __tablename__ = "admin_approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "request_type IN ('refund', 'account_deletion', 'impersonation', "
+            "'role_escalation', 'bulk_entitlement_change')",
+            name="ck_admin_approvals_request_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'executing', "
+            "'executed', 'failed', 'expired', 'cancelled')",
+            name="ck_admin_approvals_status",
+        ),
+        CheckConstraint(
+            "payload_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_approvals_payload_hash",
+        ),
+        CheckConstraint(
+            "expires_at > requested_at",
+            name="ck_admin_approvals_expiry",
+        ),
+        CheckConstraint(
+            "approved_by IS NULL OR approved_by <> requested_by",
+            name="ck_admin_approvals_separation_of_duties",
+        ),
+        CheckConstraint(
+            "status NOT IN ('approved', 'executing', 'executed') OR approved_by IS NOT NULL",
+            name="ck_admin_approvals_approved_actor",
+        ),
+        CheckConstraint(
+            "status <> 'executed' OR executed_at IS NOT NULL",
+            name="ck_admin_approvals_executed_at",
+        ),
+        CheckConstraint(
+            "status <> 'rejected' OR decided_at IS NOT NULL",
+            name="ck_admin_approvals_rejected_at",
+        ),
+        Index("idx_admin_approvals_status_requested", "status", "requested_at"),
+        Index("idx_admin_approvals_request_type_requested", "request_type", "requested_at"),
+        Index("idx_admin_approvals_requester_requested", "requested_by", "requested_at"),
+        Index("idx_admin_approvals_expires", "expires_at"),
+        Index("idx_admin_approvals_resource", "resource_type", "resource_id"),
+        Index(
+            "uq_admin_approvals_open_payload",
+            "request_type",
+            "payload_hash",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'approved', 'executing')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    request_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    resource_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    resource_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    requested_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    execution_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    executed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    result: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    audit_request_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    audit_decision_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    audit_execution_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class GdprRequest(Base):
     """One data-subject export or erasure request.
 
@@ -1690,6 +1794,143 @@ class AdminIncident(Base):
     )
 
 
+class AdminSavedView(Base):
+    """Reusable admin tab state: filters, columns, sort and range.
+
+    Rows are owner-scoped operator preferences, never customer records. Only
+    allowlisted filter keys/values are persisted by the service layer; names,
+    filters and payloads are rejected when they look like PII or document
+    content. Deletes are soft (``deleted_at``) so a stale browser cannot
+    silently lose a shared view. ``version`` is the optimistic-concurrency
+    token used by update/delete.
+    """
+
+    __tablename__ = "admin_saved_views"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(name)) BETWEEN 1 AND 80 AND length(name_key) BETWEEN 1 AND 80",
+            name="ck_admin_saved_views_name",
+        ),
+        CheckConstraint(
+            "scope IN ('analytics', 'operations', 'quality', 'billing', "
+            "'subscriptions', 'email', 'growth', 'customers')",
+            name="ck_admin_saved_views_scope",
+        ),
+        CheckConstraint(
+            "range_days IS NULL OR (range_days >= 1 AND range_days <= 365)",
+            name="ck_admin_saved_views_range",
+        ),
+        CheckConstraint("version >= 1", name="ck_admin_saved_views_version"),
+        CheckConstraint(
+            "jsonb_typeof(filters) = 'object'",
+            name="ck_admin_saved_views_filters_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(columns) = 'array'",
+            name="ck_admin_saved_views_columns_array",
+        ),
+        CheckConstraint(
+            "sort IS NULL OR jsonb_typeof(sort) = 'object'",
+            name="ck_admin_saved_views_sort_object",
+        ),
+        Index(
+            "uq_admin_saved_views_owner_scope_name",
+            "owner_user_id",
+            "scope",
+            "name_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_admin_saved_views_owner_default",
+            "owner_user_id",
+            "scope",
+            unique=True,
+            postgresql_where=text("is_default AND deleted_at IS NULL"),
+        ),
+        Index("idx_admin_saved_views_scope_updated", "scope", "updated_at"),
+        Index("idx_admin_saved_views_owner_updated", "owner_user_id", "updated_at"),
+        Index("idx_admin_saved_views_shared_updated", "shared", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    owner_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    filters: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    columns: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    sort: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    range_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminSegment(Base):
+    """Reusable cohort definition over allowlisted aggregate dimensions.
+
+    Only the typed filter DSL (match + conditions) is stored. The service
+    compiler maps each field/operator to a fixed SQLAlchemy expression, so a
+    stored definition can never contain SQL, identifiers, document content or
+    per-user data. Visibility is private by default; sharing requires the
+    owner's explicit flag. Deletes are soft and versioned like saved views.
+    """
+
+    __tablename__ = "admin_segments"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(name)) BETWEEN 1 AND 80 AND length(name_key) BETWEEN 1 AND 80",
+            name="ck_admin_segments_name",
+        ),
+        CheckConstraint(
+            "description IS NULL OR length(description) <= 280",
+            name="ck_admin_segments_description",
+        ),
+        CheckConstraint("version >= 1", name="ck_admin_segments_version"),
+        CheckConstraint(
+            "jsonb_typeof(definition) = 'object'",
+            name="ck_admin_segments_definition_object",
+        ),
+        Index(
+            "uq_admin_segments_owner_name",
+            "owner_user_id",
+            "name_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("idx_admin_segments_owner_updated", "owner_user_id", "updated_at"),
+        Index("idx_admin_segments_shared_updated", "shared", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    owner_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    definition: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class LLMCallAttempt(Base):
     """Append-only, privacy-safe telemetry for one LLM provider attempt.
 
@@ -1788,6 +2029,54 @@ class CeleryQueueSnapshot(Base):
     enqueued_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     completed_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AdminDailyMetric(Base):
+    """One pre-aggregated UTC day of global admin metrics (issue #2181).
+
+    Every value is a global count or minor-unit amount. The row intentionally
+    has no user id, email, document content, prompt, token, IP address, user
+    agent or provider payload column. ``metric_date`` is the unique date key;
+    the refresh worker recomputes a bounded trailing window with an upsert so
+    overlapping/failed runs cannot duplicate or erase a prior snapshot.
+    """
+
+    __tablename__ = "admin_daily_metrics"
+    __table_args__ = (
+        CheckConstraint(
+            "new_users >= 0 AND active_users >= 0 AND usage_events >= 0 "
+            "AND compilations >= 0 AND completed_compilations >= 0 "
+            "AND failed_compilations >= 0 AND optimizations >= 0 "
+            "AND payments_count >= 0 AND gross_revenue_minor >= 0 "
+            "AND refunds_count >= 0 AND refund_amount_minor >= 0",
+            name="ck_admin_daily_metrics_nonnegative",
+        ),
+        Index("idx_admin_daily_metrics_refreshed_at", "refreshed_at"),
+    )
+
+    metric_date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    new_users: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    active_users: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    usage_events: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    compilations: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    completed_compilations: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    failed_compilations: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    optimizations: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    payments_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    gross_revenue_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    refunds_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    refund_amount_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    refreshed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -2286,6 +2575,98 @@ class ResumeTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TemplateHealthCheck(Base):
+    """Append-only verification evidence for one catalog template.
+
+    Template popularity and compile outcomes stay in their existing source
+    tables.  This table only owns the latest rendered-asset/compile/visual
+    verification snapshot so admin can distinguish pass, fail and unknown.
+    Rows never contain template source, document text, compiler logs, storage
+    credentials or per-user activity.
+    """
+
+    __tablename__ = "template_health_checks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pass', 'fail', 'unknown')",
+            name="ck_template_health_checks_status",
+        ),
+        CheckConstraint(
+            "visual_test IN ('pass', 'fail', 'unknown')",
+            name="ck_template_health_checks_visual_test",
+        ),
+        CheckConstraint(
+            "error_class IS NULL OR error_class IN "
+            "('missing_asset', 'compile_error', 'syntax', 'missing_package', "
+            "'timeout', 'engine', 'storage', 'pdf_limit', 'visual_regression', 'unknown')",
+            name="ck_template_health_checks_error_class",
+        ),
+        CheckConstraint(
+            "source IN ('admin_retry', 'compile_batch', 'ci', 'backfill')",
+            name="ck_template_health_checks_source",
+        ),
+        CheckConstraint(
+            "commit_sha IS NULL OR commit_sha ~ '^[0-9a-f]{40}$'",
+            name="ck_template_health_checks_commit_sha",
+        ),
+        CheckConstraint(
+            "ci_run_id IS NULL OR ci_run_id ~ '^[0-9]{1,32}$'",
+            name="ck_template_health_checks_ci_run_id",
+        ),
+        CheckConstraint(
+            "compile_samples IS NULL OR compile_samples >= 0",
+            name="ck_template_health_checks_compile_samples",
+        ),
+        CheckConstraint(
+            "compile_failures IS NULL OR compile_failures >= 0",
+            name="ck_template_health_checks_compile_failures",
+        ),
+        CheckConstraint(
+            "compile_samples IS NULL OR compile_failures IS NULL "
+            "OR compile_failures <= compile_samples",
+            name="ck_template_health_checks_compile_failures_bounded",
+        ),
+        UniqueConstraint(
+            "template_id",
+            "idempotency_key",
+            name="uq_template_health_checks_template_idempotency",
+        ),
+        Index(
+            "ix_template_health_checks_template_checked",
+            "template_id",
+            text("checked_at DESC"),
+        ),
+        Index("ix_template_health_checks_checked", "checked_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    template_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("resume_templates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="unknown")
+    error_class: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    visual_test: Mapped[str] = mapped_column(String(16), nullable=False, server_default="unknown")
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    ci_run_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="admin_retry")
+    assets_present: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    compile_samples: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    compile_failures: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status_detail: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class ResumeCollaborator(Base):
     """Per-resume collaborator access control (Feature 40)."""
 
@@ -2781,6 +3162,43 @@ class Tenant(Base):
     )
 
 
+class TenantDomainEvent(Base):
+    """Append-only, tenant-scoped custom-domain verification history.
+
+    Only an allowlisted outcome, the tenant-owned hostname, an optional error
+    class and the check timestamp are persisted. DNS answers, TXT values,
+    certificate material and user identifiers never enter this table.
+    """
+
+    __tablename__ = "tenant_domain_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('verified', 'failed', 'error', 'removed')",
+            name="ck_tenant_domain_events_event_type",
+        ),
+        CheckConstraint(
+            "error_class IS NULL OR error_class IN ('txt_missing', 'dns_unavailable')",
+            name="ck_tenant_domain_events_error_class",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    domain: Mapped[str] = mapped_column(Text, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_class: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class TenantMember(Base):
     """Membership record linking a user to a tenant."""
 
@@ -2817,6 +3235,146 @@ class RenderArtifactManifest(Base):
     payload: Mapped[Dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class RetentionPolicy(Base):
+    """Current configured retention window and schedule for one data class."""
+
+    __tablename__ = "retention_policies"
+    __table_args__ = (
+        CheckConstraint(
+            "data_class IN ('pdfs', 'job_finalizations', 'analytics', 'audit', 'exports')",
+            name="ck_retention_policies_data_class",
+        ),
+        CheckConstraint(
+            "configured_hours BETWEEN 1 AND 87600",
+            name="ck_retention_policies_configured_hours",
+        ),
+        CheckConstraint(
+            "schedule_hours BETWEEN 1 AND 8760",
+            name="ck_retention_policies_schedule_hours",
+        ),
+        CheckConstraint("version >= 1", name="ck_retention_policies_version"),
+    )
+
+    data_class: Mapped[str] = mapped_column(String(32), primary_key=True)
+    configured_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    schedule_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=24, server_default="24"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    updated_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class RetentionPolicyRevision(Base):
+    """Append-only snapshot of one retention policy version."""
+
+    __tablename__ = "retention_policy_revisions"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="ck_retention_policy_revisions_version"),
+    )
+
+    data_class: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("retention_policies.data_class", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot: Mapped[Dict] = mapped_column(JSONB, nullable=False)
+    changed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class RetentionRun(Base):
+    """One bounded preview or purge attempt for a data class."""
+
+    __tablename__ = "retention_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "data_class IN ('pdfs', 'job_finalizations', 'analytics', 'audit', 'exports')",
+            name="ck_retention_runs_data_class",
+        ),
+        CheckConstraint("mode IN ('dry_run', 'purge')", name="ck_retention_runs_mode"),
+        CheckConstraint(
+            "status IN ('running', 'completed', 'refused', 'failed')",
+            name="ck_retention_runs_status",
+        ),
+        CheckConstraint("batch_limit BETWEEN 1 AND 1000", name="ck_retention_runs_batch_limit"),
+        CheckConstraint(
+            "scanned >= 0 AND eligible >= 0 AND affected >= 0",
+            name="ck_retention_runs_counts",
+        ),
+        Index("idx_retention_runs_class_started", "data_class", "started_at"),
+        Index(
+            "uq_retention_runs_active_class",
+            "data_class",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+        Index(
+            "uq_retention_runs_idempotency",
+            "data_class",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    data_class: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("retention_policies.data_class", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="running", server_default="running"
+    )
+    retention_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    effective_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    cutoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scanned: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    eligible: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    protected_active_jobs: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    protected_legal_hold: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    protected_immutable: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    recent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    affected: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    batch_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=200, server_default="200")
+    has_more: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    started_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    detail: Mapped[Dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 Index("idx_users_email", User.email)

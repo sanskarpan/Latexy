@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.services import admin_support_action_service as support_actions
 from app.services.dodo_provider import DodoAPIError
+from app.services.email_health_service import recipient_digest
 from app.services.email_service import EmailSendResult
 
 
@@ -88,17 +89,19 @@ async def _paid_payment(
     user_id: str,
     status: str = "paid",
     provider_payment_id: str | None = None,
+    subscription_id: str | None = None,
 ) -> str:
     payment_id = str(uuid.uuid4())
     await db.execute(
         text(
-            "INSERT INTO payments (id, user_id, provider, provider_payment_id, "
+            "INSERT INTO payments (id, user_id, subscription_id, provider, provider_payment_id, "
             "amount, currency, status, created_at) "
-            "VALUES (:id, :uid, 'dodo', :provider, 99900, 'INR', :status, :created)"
+            "VALUES (:id, :uid, :subscription, 'dodo', :provider, 99900, 'INR', :status, :created)"
         ),
         {
             "id": payment_id,
             "uid": user_id,
+            "subscription": subscription_id,
             "provider": provider_payment_id or f"pay_{uuid.uuid4().hex[:12]}",
             "status": status,
             "created": datetime.now(timezone.utc),
@@ -108,15 +111,41 @@ async def _paid_payment(
     return payment_id
 
 
+async def _subscription(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    provider_subscription_id: str | None = None,
+) -> str:
+    subscription_id = str(uuid.uuid4())
+    await db.execute(
+        text(
+            "INSERT INTO subscriptions (id, user_id, provider, provider_subscription_id, "
+            "plan_id, status) VALUES (:id, :uid, 'dodo', :provider, 'pro', 'active')"
+        ),
+        {
+            "id": subscription_id,
+            "uid": user_id,
+            "provider": provider_subscription_id or f"sub_{uuid.uuid4().hex[:12]}",
+        },
+    )
+    await db.commit()
+    return subscription_id
+
+
 def _capture_email(
     monkeypatch: pytest.MonkeyPatch,
     *,
     result: EmailSendResult | None = None,
+    results: list[EmailSendResult] | None = None,
 ) -> list[dict[str, Any]]:
     captured: list[dict[str, Any]] = []
+    queued = list(results or [])
 
     async def fake_send(**kwargs):
         captured.append(kwargs)
+        if queued:
+            return queued.pop(0)
         return result or EmailSendResult(accepted=True, status_code=200)
 
     monkeypatch.setattr(support_actions.email_service, "send_email_with_receipt", fake_send)
@@ -126,16 +155,29 @@ def _capture_email(
 class FakeProvider:
     available = True
 
-    def __init__(self, payload: Any = None, error: Exception | None = None):
+    def __init__(
+        self,
+        payload: Any = None,
+        error: Exception | None = None,
+        invoice: bytes | Exception = b"%PDF-1.7 provider invoice fixture",
+    ):
         self.payload = payload if payload is not None else {"items": []}
         self.error = error
+        self.invoice = invoice
         self.calls: list[str] = []
+        self.invoice_calls: list[str] = []
 
     async def get_payment_line_items(self, payment_id: str) -> Any:
         self.calls.append(payment_id)
         if self.error is not None:
             raise self.error
         return self.payload
+
+    async def get_payment_invoice(self, payment_id: str) -> bytes:
+        self.invoice_calls.append(payment_id)
+        if isinstance(self.invoice, Exception):
+            raise self.invoice
+        return self.invoice
 
 
 async def _audit_items(client: AsyncClient, headers: dict[str, str], target_id: str) -> list[dict[str, Any]]:
@@ -187,6 +229,12 @@ class TestAdminSupportAccess:
                 headers=headers,
             )
             assert lookup.status_code == 403
+            search = await client.get(
+                "/admin/receipts/search",
+                params={"payment_id": payment_id},
+                headers=headers,
+            )
+            assert search.status_code == 403
             # A forbidden admin surface must never disclose whether an
             # arbitrary target exists, even when the id is fabricated.
             unknown = await client.post(
@@ -472,8 +520,11 @@ class TestPaymentReceipt:
                         "quantity": 1,
                         "amount": 99900,
                         "currency": "INR",
+                        "card_number": "4242424242424242",
                     }
-                ]
+                ],
+                "customer": {"email": "customer@example.com", "cvc": "123"},
+                "raw_payload": "provider-secret",
             }
         )
         monkeypatch.setattr(support_actions.payment_service, "provider", provider)
@@ -490,8 +541,15 @@ class TestPaymentReceipt:
         assert len(receipt["line_items"]) == 1
         assert receipt["line_items"][0]["description"] == "Pro monthly"
         assert receipt["amount_minor"] == 99900
+        assert receipt["invoice_available"] is True
+        assert receipt["invoice_state"] == "available"
+        assert receipt["invoice_size_bytes"] == len(provider.invoice)
         assert email not in lookup.text
         assert "customer" not in lookup.text.lower()
+        assert "4242424242424242" not in lookup.text
+        assert "raw_payload" not in lookup.text
+        assert "provider-secret" not in lookup.text
+        assert "%PDF" not in lookup.text
 
         sent = await client.post(
             f"/admin/users/{target_id}/support/resend-receipt",
@@ -499,6 +557,7 @@ class TestPaymentReceipt:
                 "payment_id": payment_id,
                 "reason": "Ticket 7890 — customer needs a receipt",
                 "confirm": True,
+                "idempotency_key": f"receipt-{uuid.uuid4().hex}",
             },
             headers=admin_headers,
         )
@@ -507,18 +566,31 @@ class TestPaymentReceipt:
         assert body["action"] == "payment_receipt"
         assert body["line_items_count"] == 1
         assert body["line_items_source"] == "provider"
+        assert body["invoice_state"] == "available"
+        assert body["invoice_attached"] is True
+        assert body["duplicate"] is False
         assert len(captured) == 1
         assert captured[0]["to"] == email
         assert "Pro monthly" in captured[0]["html_body"]
         assert "INR 999.00" in captured[0]["html_body"]
+        assert "invoice PDF is attached" in captured[0]["html_body"]
+        assert len(captured[0]["attachments"]) == 1
+        assert captured[0]["attachments"][0].content == provider.invoice
         assert "token" not in sent.text.lower()
+        assert "%PDF" not in sent.text
 
         audit = await _audit_items(client, admin_headers, target_id)
         completed = [row for row in audit if row["action"] == "user.payment_receipt.send.completed"]
         assert len(completed) == 1
         assert completed[0]["metadata"]["payment_id"] == payment_id
         assert completed[0]["metadata"]["line_items_count"] == 1
+        assert completed[0]["metadata"]["invoice_state"] == "available"
+        assert completed[0]["metadata"]["invoice_attached"] is True
+        assert completed[0]["metadata"]["recipient_id"] == target_id
+        assert completed[0]["metadata"]["recipient_digest"] == recipient_digest(email)
+        assert completed[0]["metadata"]["idempotency_key"].startswith("receipt-")
         assert email not in str(audit)
+        assert "%PDF" not in str(audit)
 
     async def test_provider_failure_blocks_send_and_is_audited(
         self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
@@ -613,3 +685,348 @@ class TestPaymentReceipt:
             headers=admin_headers,
         )
         assert unsettled.status_code == 409
+
+    async def test_missing_provider_invoice_is_visible_and_sends_ledger_receipt(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+        payment_id = await _paid_payment(db_session, user_id=target_id)
+        provider = FakeProvider(
+            payload={"items": []},
+            invoice=DodoAPIError(404, "not_found"),
+        )
+        monkeypatch.setattr(support_actions.payment_service, "provider", provider)
+        captured = _capture_email(monkeypatch)
+        key = f"receipt-{uuid.uuid4().hex}"
+
+        lookup = await client.get(
+            f"/admin/users/{target_id}/payments/{payment_id}/receipt",
+            headers=admin_headers,
+        )
+        assert lookup.status_code == 200
+        preview = lookup.json()
+        assert preview["invoice_available"] is False
+        assert preview["invoice_state"] == "not_exposed"
+        assert preview["invoice_size_bytes"] is None
+        assert preview["line_items_state"] == "not_exposed"
+
+        sent = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 9001 — provider invoice missing",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert sent.status_code == 200
+        body = sent.json()
+        assert body["invoice_state"] == "not_exposed"
+        assert body["invoice_attached"] is False
+        assert body["duplicate"] is False
+        assert len(captured) == 1
+        assert captured[0]["attachments"] == ()
+        assert "invoice PDF is attached" not in captured[0]["html_body"]
+        assert "../../../" not in str(captured[0]["attachments"])
+        assert "%PDF" not in sent.text
+
+        audit = await _audit_items(client, admin_headers, target_id)
+        completed = [row for row in audit if row["action"] == "user.payment_receipt.send.completed"]
+        assert len(completed) == 1
+        assert completed[0]["metadata"]["invoice_state"] == "not_exposed"
+        assert completed[0]["metadata"]["invoice_attached"] is False
+        assert completed[0]["metadata"]["idempotency_key"] == key
+
+    async def test_completed_idempotency_key_replays_without_a_second_email(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+        payment_id = await _paid_payment(db_session, user_id=target_id)
+        provider = FakeProvider()
+        monkeypatch.setattr(support_actions.payment_service, "provider", provider)
+        captured = _capture_email(monkeypatch)
+        key = f"receipt-{uuid.uuid4().hex}"
+
+        first = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 1111 — resend receipt",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert first.status_code == 200
+        assert first.json()["duplicate"] is False
+        assert len(captured) == 1
+
+        second = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 1111 — browser retry",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert second.status_code == 200
+        replay = second.json()
+        assert replay["duplicate"] is True
+        assert replay["status"] == "already_sent"
+        assert replay["idempotency_key"] == key
+        assert replay["payment_id"] == payment_id
+        assert len(captured) == 1
+
+        audit = await _audit_items(client, admin_headers, target_id)
+        started = [row for row in audit if row["action"] == "user.payment_receipt.send.started"]
+        completed = [row for row in audit if row["action"] == "user.payment_receipt.send.completed"]
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert completed[0]["metadata"]["idempotency_key"] == key
+        assert completed[0]["reason"] == "Ticket 1111 — resend receipt"
+
+    async def test_idempotency_key_cannot_be_reused_for_another_payment(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+        first_payment = await _paid_payment(db_session, user_id=target_id)
+        second_payment = await _paid_payment(db_session, user_id=target_id)
+        provider = FakeProvider()
+        monkeypatch.setattr(support_actions.payment_service, "provider", provider)
+        captured = _capture_email(monkeypatch)
+        key = f"receipt-{uuid.uuid4().hex}"
+
+        first = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": first_payment,
+                "reason": "Ticket 2222 — first payment",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert first.status_code == 200
+
+        reused = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": second_payment,
+                "reason": "Ticket 2222 — different payment",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert reused.status_code == 409
+        assert "another receipt" in reused.json()["detail"].lower()
+        assert len(captured) == 1
+
+    async def test_receipt_cooldown_is_visible_per_actor_and_target(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        _, first_admin = await _headers(db_session)
+        _, second_admin = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+        payment_id = await _paid_payment(db_session, user_id=target_id)
+        provider = FakeProvider()
+        monkeypatch.setattr(support_actions.payment_service, "provider", provider)
+        captured = _capture_email(monkeypatch)
+
+        first = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 3333 — resend receipt",
+                "confirm": True,
+                "idempotency_key": f"receipt-{uuid.uuid4().hex}",
+            },
+            headers=first_admin,
+        )
+        assert first.status_code == 200
+
+        blocked = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 3333 — impatient retry",
+                "confirm": True,
+                "idempotency_key": f"receipt-{uuid.uuid4().hex}",
+            },
+            headers=first_admin,
+        )
+        assert blocked.status_code == 429
+        assert int(blocked.headers["Retry-After"]) >= 1
+        assert "wait" in blocked.json()["detail"].lower()
+        assert len(captured) == 1
+
+        other_actor = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 3333 — second operator",
+                "confirm": True,
+                "idempotency_key": f"receipt-{uuid.uuid4().hex}",
+            },
+            headers=second_admin,
+        )
+        assert other_actor.status_code == 200
+        assert len(captured) == 2
+
+    async def test_failed_send_can_retry_with_the_same_idempotency_key(
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+        payment_id = await _paid_payment(db_session, user_id=target_id)
+        provider = FakeProvider()
+        monkeypatch.setattr(support_actions.payment_service, "provider", provider)
+        captured = _capture_email(
+            monkeypatch,
+            results=[
+                EmailSendResult(accepted=False, transient=True, status_code=503),
+                EmailSendResult(accepted=True, status_code=200),
+            ],
+        )
+        key = f"receipt-{uuid.uuid4().hex}"
+
+        failed = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 4444 — first attempt",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert failed.status_code == 503
+        assert "did not accept" in failed.json()["detail"].lower()
+
+        retried = await client.post(
+            f"/admin/users/{target_id}/support/resend-receipt",
+            json={
+                "payment_id": payment_id,
+                "reason": "Ticket 4444 — retry after provider recovery",
+                "confirm": True,
+                "idempotency_key": key,
+            },
+            headers=admin_headers,
+        )
+        assert retried.status_code == 200
+        assert retried.json()["duplicate"] is False
+        assert len(captured) == 2
+
+        audit = await _audit_items(client, admin_headers, target_id)
+        failed_rows = [row for row in audit if row["action"] == "user.payment_receipt.send.failed"]
+        completed = [row for row in audit if row["action"] == "user.payment_receipt.send.completed"]
+        assert len(failed_rows) == 1
+        assert len(completed) == 1
+        assert failed_rows[0]["metadata"]["idempotency_key"] == key
+
+    async def test_search_receipts_by_payment_user_and_email_hash_is_redacted(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, email = await _create_user(db_session)
+        provider_payment_id = f"pay_{uuid.uuid4().hex[:12]}"
+        payment_id = await _paid_payment(
+            db_session,
+            user_id=target_id,
+            provider_payment_id=provider_payment_id,
+            status="paid",
+        )
+        pending_id = await _paid_payment(
+            db_session, user_id=target_id, status="pending"
+        )
+        digest = recipient_digest(email)
+        assert digest is not None
+
+        for params in (
+            {"payment_id": payment_id},
+            {"payment_id": provider_payment_id},
+            {"user_id": target_id},
+            {"email_hash": digest},
+        ):
+            response = await client.get(
+                "/admin/receipts/search", params=params, headers=admin_headers
+            )
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["match_type"] in {
+                "payment_id",
+                "user_id",
+                "email_hash",
+            }
+            ids = {item["payment_id"] for item in result["items"]}
+            assert payment_id in ids
+            if "email_hash" in params or "user_id" in params:
+                assert pending_id in ids
+            item = next(row for row in result["items"] if row["payment_id"] == payment_id)
+            assert item["settled"] is True
+            assert item["receipt_eligible"] is True
+            assert item["provider_payment_id"] == provider_payment_id
+            assert email not in response.text
+            assert "card_number" not in response.text
+            assert "4242424242424242" not in response.text
+            assert "raw_payload" not in response.text
+
+    async def test_search_receipts_by_subscription_identifier(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+        provider_subscription_id = f"sub_{uuid.uuid4().hex[:12]}"
+        subscription_id = await _subscription(
+            db_session,
+            user_id=target_id,
+            provider_subscription_id=provider_subscription_id,
+        )
+        payment_id = await _paid_payment(
+            db_session, user_id=target_id, subscription_id=subscription_id
+        )
+
+        for selector in (subscription_id, provider_subscription_id):
+            response = await client.get(
+                "/admin/receipts/search",
+                params={"subscription_id": selector},
+                headers=admin_headers,
+            )
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["match_type"] == "subscription_id"
+            assert [item["payment_id"] for item in result["items"]] == [payment_id]
+            assert result["items"][0]["subscription_id"] == subscription_id
+
+    async def test_receipt_search_rejects_ambiguous_or_malformed_selectors(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        _, admin_headers = await _headers(db_session)
+        target_id, _ = await _create_user(db_session)
+
+        no_selector = await client.get("/admin/receipts/search", headers=admin_headers)
+        assert no_selector.status_code == 422
+        both = await client.get(
+            "/admin/receipts/search",
+            params={"payment_id": str(uuid.uuid4()), "user_id": target_id},
+            headers=admin_headers,
+        )
+        assert both.status_code == 422
+        bad_user = await client.get(
+            "/admin/receipts/search",
+            params={"user_id": "not-a-uuid"},
+            headers=admin_headers,
+        )
+        assert bad_user.status_code == 422
+        bad_hash = await client.get(
+            "/admin/receipts/search",
+            params={"email_hash": "z" * 64},
+            headers=admin_headers,
+        )
+        assert bad_hash.status_code == 422

@@ -29,6 +29,7 @@ from ..middleware.auth_middleware import (
 )
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
+from ..services.admin_daily_metrics_service import daily_series as admin_daily_series
 from ..services.analytics_service import analytics_service
 from ..services.client_environment import country_from_request, with_server_country
 from ..services.landing_conversion_service import classify_device_class
@@ -211,6 +212,7 @@ class AdminAnalyticsOverviewResponse(BaseModel):
     recent_events: List[AdminRecentEvent]
     operations: AdminOperationsSummary
     kpi_trends: List[AdminKpiTrend]
+    metrics_freshness: Optional[Dict[str, Any]] = None
     generated_at: str
 
 @router.post("/track", status_code=status.HTTP_201_CREATED)
@@ -506,6 +508,7 @@ async def track_page_view(
     experiment: Optional[str] = Query(None, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"),
     variant: Optional[str] = Query(None, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"),
     device_class: Optional[DeviceClass] = None,
+    route: Optional[str] = Query(None, max_length=240),
     http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
@@ -514,7 +517,9 @@ async def track_page_view(
 
     Landing callers may attach a bounded page key and experiment/variant label
     plus a device class; the server records a coarse device class when the
-    browser omits one. No path, query string, or share token is accepted here.
+    browser omits one. ``route`` is an optional canonical page label for path
+    analysis: query strings, fragments and opaque identifiers are re-sanitized
+    server-side and never stored raw.
     """
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
@@ -531,6 +536,7 @@ async def track_page_view(
             variant=variant,
             device_class=device_class or classify_device_class(user_agent),
             country=country_from_request(http_request),
+            route=route,
             ip_address=ip_address,
             user_agent=user_agent
         )
@@ -626,7 +632,7 @@ async def get_admin_analytics_overview(
     try:
         system = await analytics_service.get_system_analytics(db=db, days=days)
         funnel = await analytics_service.get_conversion_funnel(db=db, days=days)
-        timeseries = await analytics_service.get_admin_timeseries(db=db, days=days)
+        timeseries, metrics_freshness = await admin_daily_series(db=db, days=days)
         top_features = await analytics_service.get_admin_top_features(db=db, days=days)
         recent_events = await analytics_service.get_admin_recent_events(db=db)
         operations = await analytics_service.get_admin_operations(db=db)
@@ -645,6 +651,7 @@ async def get_admin_analytics_overview(
             recent_events=[AdminRecentEvent(**event) for event in recent_events],
             operations=AdminOperationsSummary(**operations),
             kpi_trends=[AdminKpiTrend(**trend) for trend in kpi_trends],
+            metrics_freshness=metrics_freshness,
             generated_at=datetime.now().isoformat(),
         )
         payload = response.model_dump()

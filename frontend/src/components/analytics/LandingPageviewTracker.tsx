@@ -4,9 +4,11 @@ import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { useSession } from '@/lib/auth-client'
 import { getDeviceFingerprint } from '@/lib/api-client'
-import { isTrackablePath, landingPageKey, trackFirstPartyPageview } from '@/lib/analytics/landing'
-
-const DEVICE_LINK_KEY = 'latexy_landing_device_link'
+import {
+    isPathAnalysisPath,
+    landingPageKey,
+    trackFirstPartyPageview,
+} from '@/lib/analytics/landing'
 
 function deviceFingerprint(): string | null {
     try {
@@ -18,12 +20,14 @@ function deviceFingerprint(): string | null {
 }
 
 /**
- * Emits the first-party landing/pageview events used by the admin growth view.
+ * Emits the first-party pageview events used by the admin growth and path views.
  *
- * Landing routes always emit one event per pathname visit. Non-landing routes
- * emit at most one authenticated link event per browser session, which lets the
- * server connect the anonymous landing view to the account on the same device.
- * The event never carries a path, query string, or document identifier.
+ * Landing routes always emit one event per pathname visit. Authenticated app
+ * routes emit one event per navigation so the admin path report can reconstruct
+ * the last few sanitized pages before an upgrade or churn. The event carries
+ * only a canonical route label: public share pages are excluded at the source,
+ * and query strings, tokens, workspace ids and document identifiers are removed
+ * before transmission and again on the server.
  */
 export default function LandingPageviewTracker() {
     const pathname = usePathname()
@@ -31,7 +35,7 @@ export default function LandingPageviewTracker() {
     const lastLandingPath = useRef<string | null>(null)
 
     useEffect(() => {
-        if (!pathname || !isTrackablePath(pathname)) return
+        if (!pathname) return
 
         const pageKey = landingPageKey(pathname)
         if (pageKey) {
@@ -46,15 +50,10 @@ export default function LandingPageviewTracker() {
             return
         }
 
-        // Only an authenticated app view can link a device to an account. Do not
-        // send anonymous application pageviews; the report only needs the link.
+        // Anonymous application views are not needed for path analysis; the
+        // outcome is only meaningful after the account exists.
         if (!session?.user?.id) return
-        try {
-            if (window.sessionStorage.getItem(DEVICE_LINK_KEY) === '1') return
-            window.sessionStorage.setItem(DEVICE_LINK_KEY, '1')
-        } catch {
-            // Storage can be unavailable; the request is harmless if repeated.
-        }
+        if (!isPathAnalysisPath(pathname)) return
         trackFirstPartyPageview({
             page: 'app',
             pathname,

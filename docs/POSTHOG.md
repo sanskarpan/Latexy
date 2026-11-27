@@ -57,8 +57,11 @@ the CI guard in the same pull request.
 | `NEXT_PUBLIC_POSTHOG_HOST` | Ingestion host, `https://us.i.posthog.com`. |
 | `NEXT_PUBLIC_POSTHOG_UI_HOST` | App host for admin links, `https://us.posthog.com`. |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_ID` | `756020`; enables admin deep links. |
+| `NEXT_PUBLIC_APP_RELEASE` | Deployed git SHA or semver tag. Bounded to 64 safe characters and sent as `release` / `$release_id`; leave blank when unattested rather than inventing a version. |
 
-Leave the key blank to disable analytics without changing code.
+Leave the key blank to disable analytics without changing code. If the release
+is not configured, quality links omit the release filter and label it as
+missing instead of pretending every event belongs to an unknown release.
 
 ### Backend (Modal secret `latexy-posthog`)
 
@@ -87,9 +90,14 @@ The secret is attached through `_base_secrets` in `backend/modal_app.py`.
 | `cover_letter_generated` | none | `apiClient.generateCoverLetter` |
 | `share_link_created` | `anonymous`, `review_comments` | `apiClient.createShareLink` |
 | `portfolio_generated` | none | `apiClient.generatePortfolioSite` |
+| `$exception` | sanitized `error_type`, bounded exception value, sanitized stack filenames, `route`, `$release_id` | PostHog exception autocapture (`capture_exceptions: true`) |
+| `$rageclick` | sanitized `$current_url`, `route`, `$release_id` | PostHog autocapture |
+| `$dead_click` | sanitized `$current_url`, `route`, `$release_id` | PostHog dead-click extension (`capture_dead_clicks: true`) |
 
 Paths are templated before capture: `/r/:token`, `/u/:username`,
-`/workspace/:resumeId`, `/workspaces/:workspaceId`.
+`/workspace/:resumeId`, `/workspaces/:workspaceId`. Every SDK event also gets a
+`route` property derived from the sanitized pathname and, when configured, the
+`release` super property and `$release_id`.
 
 ### Backend
 
@@ -133,7 +141,9 @@ linked to card data. No endpoint sends a customer email or name to PostHog.
 The admin **Analytics** tab renders this payload and links to PostHog replays,
 dashboards, people, replay privacy settings, and a set of **pre-filtered replay
 triage** links (see below). The admin **Replays** tab hosts the fuller replay
-library/browser with saved filters and a custom filter builder.
+library/browser with saved filters and a custom filter builder. The admin
+**Quality** tab hosts route-level JavaScript-error, rage-click, and dead-click
+triage.
 
 ## Dashboards to create in PostHog
 
@@ -153,6 +163,10 @@ Create these once in the project; the admin deep links assume the project.
    `/u/:username`, `/share/:token`, `/portfolio/:username`, and workspace/editor
    paths (already blocked at capture).
 7. **Admin actions**: `backend_admin_*` events grouped by admin ID.
+8. **Quality triage**: `$exception` (breakdowns: `error_type`, `route`,
+   `$release_id`), `$rageclick`, and `$dead_click` (breakdowns: `route`,
+   `$release_id`) as tables over 7 and 30 days. Add a minimum-count filter in
+   PostHog if a saved view needs to exclude groups below five events.
 
 ## Replay review workflow
 
@@ -232,6 +246,72 @@ boundary:
 - **No tokens or PII in URLs.** Filter values are enum strings and templated
   paths only.
 
+## Error, rage-click, and dead-click triage
+
+The browser wrapper enables three additional signals under the same consent and
+masking boundary:
+
+- **Exception autocapture** (`capture_exceptions: true`) sends `$exception`
+  events for uncaught errors and unhandled rejections.
+- **Dead clicks** (`capture_dead_clicks: true`) send `$dead_click` events when
+  a click produces no visible response.
+- **Rage clicks** remain part of PostHog autocapture and send `$rageclick`.
+
+`before_send` (`sanitizeAnalyticsEvent` in
+`frontend/src/lib/analytics/posthog.ts`) is the single boundary for every SDK
+event. It now:
+
+1. Drops `$exception`, `$rageclick`, and `$dead_click` events whose
+   `$current_url` or `$pathname` is `/workspace*`, `/workspaces*`, `/try`,
+   `/r/*`, `/u/*`, `/share/*`, or `/portfolio/*`. Errors and frustration
+   signals on document surfaces are therefore not captured at all. Other
+   events keep the existing templated-path sanitization, and replay remains
+   blocked there by the `ph-no-capture` markers.
+2. Templates URL paths and attaches `route`.
+3. Attaches `release` and `$release_id` from `NEXT_PUBLIC_APP_RELEASE` when it
+   is a bounded identifier. Invalid free-form values are dropped.
+4. Redacts exception values and stack frame filenames: URL query strings,
+   emails, vendor tokens, and UUIDs are removed, values are bounded, and the
+   exception type is reduced to a safe class name (`error_type`).
+5. Removes `$input*`, `$selected_content`, and `$exception_steps` before the
+   event leaves the browser, and strips `$el_text` / `$elements_chain` /
+   `$elements` from rage-click and dead-click events so clicked element text is
+   not part of the quality data.
+
+Consent withdrawal calls `stopExceptionAutocapture()`, stops replay, opts out,
+and resets identity. Re-granting starts both replay and exception autocapture
+again.
+
+### Admin Quality tab
+
+The admin **Quality** tab (`?tab=quality`) renders `AdminQualityTriage`. It
+offers 7- and 30-day ranges plus sanitized route and release filters, then:
+
+- lists the three saved-insight descriptors
+  (`frontend/src/lib/analytics/quality-triage.ts`);
+- builds a PostHog trends link for each descriptor with breakdowns by `route`,
+  optional `$release_id`, and `error_type` for JavaScript errors;
+- builds a filtered replay list for the same event, route, and release;
+- links JavaScript errors to PostHog error tracking;
+- renders a route matrix so an operator can open the same aggregate views per
+  sanitized product route.
+
+PostHog ranks the opened table by event count; the admin page deliberately does
+not mirror counts, so route/release ordering is always the source-of-truth
+PostHog aggregate rather than a stale or zero-filled local copy.
+
+The view never embeds replay data, person rows, session histories, or event
+payloads. It has no unmask switch, no per-user filter, and no mutation or
+enforcement action. Links are filtered to the selected release and route; when
+`NEXT_PUBLIC_POSTHOG_PROJECT_ID` is absent, the UI says **Missing telemetry**
+instead of displaying zeroes. PostHog breakdown groups with fewer than five
+events must be suppressed during review; the admin copy states that policy
+explicitly.
+
+The module and UI are unit tested in
+`frontend/src/__tests__/quality-triage.test.ts` and
+`frontend/src/__tests__/admin-quality-triage.test.ts`.
+
 ## Retention and deletion
 
 - Session replay: 30 days (PostHog project setting).
@@ -246,7 +326,7 @@ boundary:
 bash scripts/ci/no-session-recording.sh
 
 # Frontend unit tests
-cd frontend && pnpm exec vitest run src/__tests__/analytics-posthog.test.ts src/__tests__/replay-links.test.ts src/__tests__/replay-browser.test.ts
+cd frontend && pnpm exec vitest run src/__tests__/analytics-posthog.test.ts src/__tests__/replay-links.test.ts src/__tests__/replay-browser.test.ts src/__tests__/quality-triage.test.ts src/__tests__/admin-quality-triage.test.ts
 
 # Backend data-boundary tests
 cd backend && SKIP_INFRA_CHECK=1 .venv/Scripts/python.exe -m pytest test/test_posthog_analytics.py -q

@@ -13,6 +13,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..middleware.auth_middleware import require_admin_actor, require_admin_or_support
 from ..services import admin_user_service
+from ..services.admin_approval_service import ApprovalError
 from ..services.admin_audit_service import (
     CHANGE_HISTORY_TARGET_TYPES,
     DEFAULT_AUDIT_PAGE_SIZE,
@@ -123,6 +124,11 @@ class UserApiKeyRevokeRequest(BaseModel):
 
 
 def _http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ApprovalError):
+        detail: dict[str, Any] = {"code": exc.code, "message": str(exc)}
+        if exc.details:
+            detail.update(exc.details)
+        return HTTPException(status_code=exc.status_code, detail=detail)
     if isinstance(exc, KeyError):
         message = str(exc.args[0]) if exc.args else "Not found"
         return HTTPException(status_code=404, detail=message)

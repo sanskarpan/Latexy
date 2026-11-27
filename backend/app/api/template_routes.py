@@ -15,12 +15,11 @@ Endpoints:
   DELETE /templates/{id}           — admin; delete template
 """
 
-import hmac
 import re
 import uuid as _uuid
 from typing import List, Optional
 
-from fastapi import Depends, Header, HTTPException, Query, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -30,11 +29,16 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeTemplate
-from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.auth_middleware import (
+    get_current_user_optional,
+    get_current_user_required,
+    require_admin_actor,
+)
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.capability_router import enforce_capabilities
 from ..middleware.entitlements import require_feature
 from ..services import storage_service
+from ..services.admin_audit_service import AdminActor, record_admin_audit
 from ..services.entitlement_service import entitlement_service
 from ..services.europecv import configure_europecv_latex, is_europecv_source
 from ..services.template_analytics_service import template_analytics_service
@@ -165,13 +169,15 @@ def _reject_non_taggable_resume_template(category: str, latex_content: str) -> N
         )
 
 
-async def require_template_admin(
-    admin_secret: Optional[str] = Header(default=None, alias="X-Admin-Secret"),
-):
-    if not settings.ADMIN_SECRET_KEY:
-        raise HTTPException(status_code=503, detail="Admin template management is not configured")
-    if not hmac.compare_digest(admin_secret or "", settings.ADMIN_SECRET_KEY):
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
+def _template_audit_snapshot(template: ResumeTemplate) -> dict[str, object]:
+    """Curated mutable fields only; template source is never audited."""
+    return {
+        "name": template.name,
+        "category": template.category,
+        "is_active": bool(template.is_active),
+        "sort_order": template.sort_order,
+        "document_type": template.document_type,
+    }
 
 
 def _to_response(t: ResumeTemplate, request: Request) -> TemplateResponse:
@@ -456,7 +462,7 @@ async def use_template(
 async def create_template(
     body: TemplateAdminUpsertRequest,
     request: Request,
-    _: None = Depends(require_template_admin),
+    actor: AdminActor = Depends(require_admin_actor),
     db: AsyncSession = Depends(get_db),
 ):
     category = _require_valid_category(body.category)
@@ -473,6 +479,16 @@ async def create_template(
         document_type="presentation" if category == "presentation" else "resume",
     )
     db.add(template)
+    await db.flush()
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="template.create",
+        target_type="resume_template",
+        target_id=str(template.id),
+        after=_template_audit_snapshot(template),
+        request=request,
+    )
     await db.commit()
     await db.refresh(template)
     return _to_detail(template, request)
@@ -483,7 +499,7 @@ async def update_template(
     template_id: str,
     body: TemplateAdminUpsertRequest,
     request: Request,
-    _: None = Depends(require_template_admin),
+    actor: AdminActor = Depends(require_admin_actor),
     db: AsyncSession = Depends(get_db),
 ):
     _validate_uuid(template_id)
@@ -493,6 +509,7 @@ async def update_template(
 
     category = _require_valid_category(body.category)
     _reject_non_taggable_resume_template(category, body.latex_content)
+    before = _template_audit_snapshot(template)
 
     template.name = body.name.strip()
     template.description = body.description.strip() if body.description else None
@@ -503,6 +520,17 @@ async def update_template(
     template.is_active = body.is_active
     template.sort_order = body.sort_order
     template.document_type = "presentation" if template.category == "presentation" else "resume"
+    await db.flush()
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="template.update",
+        target_type="resume_template",
+        target_id=template_id,
+        before=before,
+        after=_template_audit_snapshot(template),
+        request=request,
+    )
     await db.commit()
     await db.refresh(template)
     return _to_detail(template, request)
@@ -512,14 +540,26 @@ async def update_template(
 async def activate_template(
     template_id: str,
     request: Request,
-    _: None = Depends(require_template_admin),
+    actor: AdminActor = Depends(require_admin_actor),
     db: AsyncSession = Depends(get_db),
 ):
     _validate_uuid(template_id)
     template = await db.get(ResumeTemplate, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    before = _template_audit_snapshot(template)
     template.is_active = True
+    await db.flush()
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="template.activate",
+        target_type="resume_template",
+        target_id=template_id,
+        before=before,
+        after=_template_audit_snapshot(template),
+        request=request,
+    )
     await db.commit()
     await db.refresh(template)
     return _to_detail(template, request)
@@ -529,14 +569,26 @@ async def activate_template(
 async def deactivate_template(
     template_id: str,
     request: Request,
-    _: None = Depends(require_template_admin),
+    actor: AdminActor = Depends(require_admin_actor),
     db: AsyncSession = Depends(get_db),
 ):
     _validate_uuid(template_id)
     template = await db.get(ResumeTemplate, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    before = _template_audit_snapshot(template)
     template.is_active = False
+    await db.flush()
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="template.deactivate",
+        target_type="resume_template",
+        target_id=template_id,
+        before=before,
+        after=_template_audit_snapshot(template),
+        request=request,
+    )
     await db.commit()
     await db.refresh(template)
     return _to_detail(template, request)
@@ -545,13 +597,24 @@ async def deactivate_template(
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(
     template_id: str,
-    _: None = Depends(require_template_admin),
+    request: Request,
+    actor: AdminActor = Depends(require_admin_actor),
     db: AsyncSession = Depends(get_db),
 ):
     _validate_uuid(template_id)
     template = await db.get(ResumeTemplate, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    before = _template_audit_snapshot(template)
     await db.delete(template)
+    await record_admin_audit(
+        db,
+        actor=actor,
+        action="template.delete",
+        target_type="resume_template",
+        target_id=template_id,
+        before=before,
+        request=request,
+    )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

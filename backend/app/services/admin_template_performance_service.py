@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import Text, cast, func, select
+from sqlalchemy import Text, and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import PLAN_FAMILY_ALIASES
@@ -40,6 +41,10 @@ UsageAnalytics = models.UsageAnalytics
 
 MIN_TEMPLATE_USERS = 5
 MAX_RANGE_DAYS = 365
+LATENCY_SPARSE_SAMPLES = 20
+REGRESSION_WINDOW_DAYS = 7
+MIN_REGRESSION_SAMPLES = 5
+FAILURE_RATE_REGRESSION_POINTS = 10.0
 CSV_COLUMNS = (
     "rank",
     "template_id",
@@ -55,6 +60,11 @@ CSV_COLUMNS = (
     "compile_failed",
     "compile_attempts",
     "success_rate",
+    "failure_rate",
+    "p50_compile_seconds",
+    "p95_compile_seconds",
+    "latency_samples",
+    "regression",
     "last_used_at",
 )
 
@@ -176,6 +186,17 @@ def _safe_csv_cell(value: Any) -> Any:
     return value
 
 
+def _seconds(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    number = float(value)
+    return round(number, 3) if math.isfinite(number) else None
+
+
+def _failure_rate(failed: int, finished: int) -> float:
+    return round(failed / finished * 100, 2) if finished else 0.0
+
+
 class AdminTemplatePerformanceService:
     async def template_performance(
         self,
@@ -283,6 +304,88 @@ class AdminTemplatePerformanceService:
             last_at = row.last_at
             if last_at is not None and (stat["last_at"] is None or last_at > stat["last_at"]):
                 stat["last_at"] = last_at
+
+        # p50/p95 use successful, finite compilation_time samples only. Raw
+        # document content and compiler diagnostics are never selected.
+        timed_completed = and_(
+            func.lower(Compilation.status) == "completed",
+            Compilation.compilation_time.is_not(None),
+            Compilation.compilation_time >= 0,
+        )
+        latency_rows = (
+            await db.execute(
+                select(
+                    Compilation.template_id.label("template_id"),
+                    func.count().filter(timed_completed).label("samples"),
+                    func.percentile_cont(0.5)
+                    .within_group(Compilation.compilation_time)
+                    .filter(timed_completed)
+                    .label("p50"),
+                    func.percentile_cont(0.95)
+                    .within_group(Compilation.compilation_time)
+                    .filter(timed_completed)
+                    .label("p95"),
+                )
+                .where(*compile_conditions)
+                .group_by(Compilation.template_id)
+            )
+        ).all()
+        latency_stats: dict[str, dict[str, Any]] = {}
+        for row in latency_rows:
+            canonical_id = normalize_template_id(row.template_id)
+            if canonical_id is None:
+                continue
+            latency_stats[canonical_id] = {
+                "samples": int(row.samples or 0),
+                "p50_seconds": _seconds(row.p50),
+                "p95_seconds": _seconds(row.p95),
+            }
+
+        # Regression compares the newest seven days with the preceding seven
+        # days. Both windows need at least five finished compiles so a single
+        # user error cannot flag a template.
+        regression_stats: dict[str, dict[str, Any]] = {}
+        if selected_range_days >= REGRESSION_WINDOW_DAYS * 2:
+            recent_start = end_at - timedelta(days=REGRESSION_WINDOW_DAYS)
+            prior_start = recent_start - timedelta(days=REGRESSION_WINDOW_DAYS)
+            finished_status = func.lower(Compilation.status).in_(("completed", "failed"))
+            recent_window = and_(
+                Compilation.created_at >= recent_start,
+                Compilation.created_at < end_at,
+                finished_status,
+            )
+            prior_window = and_(
+                Compilation.created_at >= prior_start,
+                Compilation.created_at < recent_start,
+                finished_status,
+            )
+            regression_rows = (
+                await db.execute(
+                    select(
+                        Compilation.template_id.label("template_id"),
+                        func.count().filter(recent_window).label("recent_finished"),
+                        func.count()
+                        .filter(and_(recent_window, func.lower(Compilation.status) == "failed"))
+                        .label("recent_failed"),
+                        func.count().filter(prior_window).label("prior_finished"),
+                        func.count()
+                        .filter(and_(prior_window, func.lower(Compilation.status) == "failed"))
+                        .label("prior_failed"),
+                    )
+                    .where(*compile_conditions)
+                    .group_by(Compilation.template_id)
+                )
+            ).all()
+            for row in regression_rows:
+                canonical_id = normalize_template_id(row.template_id)
+                if canonical_id is None:
+                    continue
+                regression_stats[canonical_id] = {
+                    "recent_finished": int(row.recent_finished or 0),
+                    "recent_failed": int(row.recent_failed or 0),
+                    "prior_finished": int(row.prior_finished or 0),
+                    "prior_failed": int(row.prior_failed or 0),
+                }
 
         # Union both sources before counting distinct users so a user who viewed
         # and compiled the same template is not counted twice.
@@ -403,6 +506,20 @@ class AdminTemplatePerformanceService:
             exports = int(events.get("exports", 0))
             finished = compile_success + compile_failed
             last_at = events.get("last_at") or compiles.get("last_at")
+            latency = latency_stats.get(template_id, {})
+            latency_samples = int(latency.get("samples", 0))
+            regression = regression_stats.get(template_id, {})
+            recent_finished = int(regression.get("recent_finished", 0))
+            recent_failed = int(regression.get("recent_failed", 0))
+            prior_finished = int(regression.get("prior_finished", 0))
+            prior_failed = int(regression.get("prior_failed", 0))
+            recent_failure_rate = _failure_rate(recent_failed, recent_finished)
+            prior_failure_rate = _failure_rate(prior_failed, prior_finished)
+            flagged = bool(
+                recent_finished >= MIN_REGRESSION_SAMPLES
+                and prior_finished >= MIN_REGRESSION_SAMPLES
+                and recent_failure_rate >= prior_failure_rate + FAILURE_RATE_REGRESSION_POINTS
+            )
             ranking.append(
                 {
                     "rank": 0,
@@ -421,6 +538,15 @@ class AdminTemplatePerformanceService:
                     "compile_failed": compile_failed,
                     "compile_attempts": int(compiles.get("attempts", 0)),
                     "success_rate": (round(compile_success / finished * 100, 2) if finished else 0.0),
+                    "failure_rate": _failure_rate(compile_failed, finished),
+                    "p50_compile_seconds": latency.get("p50_seconds"),
+                    "p95_compile_seconds": latency.get("p95_seconds"),
+                    "latency_samples": latency_samples,
+                    "latency_sparse": latency_samples < LATENCY_SPARSE_SAMPLES,
+                    "regression": flagged,
+                    "regression_reason": "failure_rate_increase" if flagged else None,
+                    "recent_failure_rate": recent_failure_rate if recent_finished else None,
+                    "previous_failure_rate": prior_failure_rate if prior_finished else None,
                     "last_used_at": _iso(last_at),
                 }
             )
@@ -485,6 +611,9 @@ class AdminTemplatePerformanceService:
                 "compile_success": ranked_success,
                 "compile_failed": ranked_failed,
                 "compile_attempts": _sum("compile_attempts"),
+                "failure_rate": _failure_rate(ranked_failed, ranked_success + ranked_failed),
+                "latency_samples": _sum("latency_samples"),
+                "regressions": sum(1 for row in ranking if row["regression"]),
             },
             "reconciliation": {
                 "source": "compilations",

@@ -27,6 +27,15 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.capability_router import CapabilityRouter as APIRouter
 from ..middleware.entitlements import require_feature
 from ..services.encryption_service import encryption_service
+from ..services.integration_analytics_service import (
+    INTEGRATION_CONNECT_STARTED,
+    INTEGRATION_CONNECTED,
+    INTEGRATION_DISCONNECTED,
+    INTEGRATION_SYNC_FAILED,
+    INTEGRATION_SYNC_SUCCEEDED,
+    classify_integration_exception,
+    record_integration_event,
+)
 from ..utils.bounded_io import BoundedReadError, read_httpx_response_bounded
 from ..utils.uuid_guard import ensure_uuid
 
@@ -157,6 +166,7 @@ class ZoteroCollectionsResponse(BaseModel):
 )
 async def zotero_connect(
     user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a request token for the authenticated user and return its URL."""
     if not settings.ZOTERO_CLIENT_KEY or not settings.ZOTERO_CLIENT_SECRET or not settings.ZOTERO_REDIRECT_URI:
@@ -206,6 +216,12 @@ async def zotero_connect(
         f"zotero:reqsecret:{request_token}",
         {"user_id": user_id, "request_token_secret": request_token_secret},
         ttl=600,
+    )
+    await record_integration_event(
+        db,
+        provider="zotero",
+        action=INTEGRATION_CONNECT_STARTED,
+        user_id=user_id,
     )
 
     return ZoteroOAuthStartResponse(authorization_url=f"{_ZOTERO_AUTHORIZE_URL}?oauth_token={request_token}")
@@ -335,6 +351,14 @@ async def zotero_complete(
     meta["zotero_user_id"] = zotero_user_id
     meta["zotero_username"] = zotero_username
     user.user_metadata = meta
+    await record_integration_event(
+        db,
+        provider="zotero",
+        action=INTEGRATION_CONNECTED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        commit=False,
+    )
     await db.commit()
 
     return {"success": True, "message": "Zotero account connected"}
@@ -370,10 +394,21 @@ async def zotero_disconnect(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     meta = dict(user.user_metadata or {})
+    was_connected = bool(meta.get("zotero_token"))
     meta.pop("zotero_token", None)
     meta.pop("zotero_user_id", None)
     meta.pop("zotero_username", None)
     user.user_metadata = meta
+    if was_connected:
+        await record_integration_event(
+            db,
+            provider="zotero",
+            action=INTEGRATION_DISCONNECTED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            disconnect_reason="user_requested",
+            commit=False,
+        )
     await db.commit()
     return {"success": True, "message": "Zotero disconnected"}
 
@@ -495,16 +530,43 @@ async def zotero_import(
                         truncated = True
                         break
                     total_header = resp.headers.get("Total-Results", start + limit)
-            except HTTPException:
+            except HTTPException as exc:
+                await record_integration_event(
+                    db,
+                    provider="zotero",
+                    action=INTEGRATION_SYNC_FAILED,
+                    user_id=user_id,
+                    plan=user.subscription_plan,
+                    operation="import",
+                    error_class=classify_integration_exception(exc),
+                )
                 raise
             except httpx.HTTPStatusError as exc:
                 logger.error("Zotero API error during import (HTTP %s)", exc.response.status_code)
+                await record_integration_event(
+                    db,
+                    provider="zotero",
+                    action=INTEGRATION_SYNC_FAILED,
+                    user_id=user_id,
+                    plan=user.subscription_plan,
+                    operation="import",
+                    error_class=classify_integration_exception(exc),
+                )
                 raise HTTPException(
                     status_code=502,
                     detail=f"Zotero API returned error {exc.response.status_code}",
                 )
             except httpx.RequestError as exc:
                 logger.error("Zotero connection error (%s)", type(exc).__name__)
+                await record_integration_event(
+                    db,
+                    provider="zotero",
+                    action=INTEGRATION_SYNC_FAILED,
+                    user_id=user_id,
+                    plan=user.subscription_plan,
+                    operation="import",
+                    error_class=classify_integration_exception(exc),
+                )
                 raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
 
             if page_text:
@@ -542,6 +604,15 @@ async def zotero_import(
     }
     rm["bibtex_source"] = source
     resume.resume_settings = rm
+    await record_integration_event(
+        db,
+        provider="zotero",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="import",
+        commit=False,
+    )
     await db.commit()
 
     message = f"Imported {entry_count} BibTeX entries from Zotero"

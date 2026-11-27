@@ -271,6 +271,7 @@ celery_app = PrimaryAuthorityCelery(
         "app.workers.interview_prep_worker",
         "app.workers.converter_worker",
         "app.workers.github_import_worker",
+        "app.workers.retention_worker",
         "app.workers.tracker_notification_worker",
     ],
 )
@@ -289,6 +290,7 @@ celery_app.conf.update(
         "app.workers.llm_worker.*": {"queue": "llm"},
         "app.workers.email_worker.*": {"queue": "email"},
         "app.workers.cleanup_worker.*": {"queue": "cleanup"},
+        "app.workers.retention_worker.*": {"queue": "cleanup"},
         "app.workers.ats_worker.*": {"queue": "ats"},
         "app.workers.orchestrator.*": {"queue": "combined"},
         "app.workers.auto_save_worker.*": {"queue": "cleanup"},
@@ -331,14 +333,33 @@ celery_app.conf.update(
             "task": "app.workers.cleanup_worker.cleanup_temp_files_task",
             "schedule": 1800.0,  # Run every 30 minutes
         },
+        # Retention schedules are review cadences: due policies get a dry-run
+        # preview only. A purge always requires a confirmed admin action.
+        "retention-due-previews": {
+            "task": "app.workers.retention_worker.run_due_retention_previews_task",
+            "schedule": 900.0,  # Check every 15 minutes
+        },
         "health-check": {
             "task": "app.workers.cleanup_worker.health_check_task",
             "schedule": 300.0,  # Run every 5 minutes
+        },
+        # Admin analytics — refresh the bounded daily rollup (issue #2181).
+        # 10 minutes is inside the required 5-15 minute freshness window.
+        "refresh-daily-metrics": {
+            "task": "app.workers.cleanup_worker.refresh_daily_metrics_task",
+            "schedule": 600.0,
+            "options": {"queue": "cleanup"},
         },
         # Feature 19 — weekly digest every Monday at 09:00 UTC
         "weekly-digest-monday-9am": {
             "task": "app.workers.email_worker.send_weekly_digest_to_all",
             "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
+        },
+        # Admin digests are due-checked hourly so daily/weekly/monthly
+        # configurations share one scheduler slot.
+        "admin-digest-dispatch": {
+            "task": "app.workers.email_worker.send_admin_digests",
+            "schedule": 3600.0,
         },
         "comment-mention-delivery-recovery": {
             "task": "app.workers.email_worker.send_pending_comment_mention_emails",
@@ -1084,6 +1105,7 @@ try:
         latex_worker,
         llm_worker,
         orchestrator,
+        retention_worker,
     )
 
     logger.info("Celery workers imported successfully")

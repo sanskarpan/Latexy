@@ -1077,14 +1077,20 @@ class TestDomainOwnershipVerification:
 
         with (
             patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)),
-            patch('app.api.tenant_routes.httpx.AsyncClient', return_value=context),
+            patch('app.api.tenant_routes.guarded_async_client', return_value=context),
             patch('app.api.tenant_routes.invalidate_tenant_cache', new=AsyncMock()) as invalidate,
         ):
             result = await verify_domain(tenant_id=tenant.id, db=db, user_id=owner_id)
 
         assert result['verified'] is True
         assert tenant.domain_verified_at is not None
+        event = db.add.call_args.args[0]
+        assert event.event_type == 'verified'
+        assert event.domain == 'cv.example.edu'
+        assert event.error_class is None
+        assert event.tenant_id == tenant.id
         db.commit.assert_awaited_once()
+        db.refresh.assert_awaited_once_with(tenant)
         invalidate.assert_awaited_once_with(
             slug=tenant.slug, current_domain=tenant.custom_domain
         )
@@ -1104,13 +1110,19 @@ class TestDomainOwnershipVerification:
 
         with (
             patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)),
-            patch('app.api.tenant_routes.httpx.AsyncClient', return_value=context),
+            patch('app.api.tenant_routes.guarded_async_client', return_value=context),
+            patch('app.api.tenant_routes.invalidate_tenant_cache', new=AsyncMock()) as invalidate,
         ):
             result = await verify_domain(tenant_id=tenant.id, db=db, user_id=tenant.owner_id)
 
         assert result['verified'] is False
         assert tenant.domain_verified_at is None
-        db.commit.assert_not_awaited()
+        event = db.add.call_args.args[0]
+        assert event.event_type == 'failed'
+        assert event.error_class == 'txt_missing'
+        db.commit.assert_awaited_once()
+        db.refresh.assert_awaited_once_with(tenant)
+        invalidate.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_removed_dns_proof_revokes_previously_verified_domain(self):
@@ -1128,14 +1140,18 @@ class TestDomainOwnershipVerification:
 
         with (
             patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)),
-            patch('app.api.tenant_routes.httpx.AsyncClient', return_value=context),
+            patch('app.api.tenant_routes.guarded_async_client', return_value=context),
             patch('app.api.tenant_routes.invalidate_tenant_cache', new=AsyncMock()) as invalidate,
         ):
             result = await verify_domain(tenant_id=tenant.id, db=db, user_id=tenant.owner_id)
 
         assert result['verified'] is False
         assert tenant.domain_verified_at is None
+        event = db.add.call_args.args[0]
+        assert event.event_type == 'failed'
+        assert event.error_class == 'txt_missing'
         db.commit.assert_awaited_once()
+        db.refresh.assert_awaited_once_with(tenant)
         invalidate.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -1149,14 +1165,17 @@ class TestDomainOwnershipVerification:
 
         with (
             patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)),
-            patch('app.api.tenant_routes.httpx.AsyncClient', return_value=context),
+            patch('app.api.tenant_routes.guarded_async_client', return_value=context),
             pytest.raises(HTTPException) as exc,
         ):
             await verify_domain(tenant_id=tenant.id, db=db, user_id=tenant.owner_id)
 
         assert exc.value.status_code == 503
         assert tenant.domain_verified_at is not None
-        db.commit.assert_not_awaited()
+        event = db.add.call_args.args[0]
+        assert event.event_type == 'error'
+        assert event.error_class == 'dns_unavailable'
+        db.commit.assert_awaited_once()
 
 
 class TestVerifiedTenantCors:

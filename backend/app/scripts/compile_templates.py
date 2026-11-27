@@ -72,6 +72,30 @@ def _prepare_template(latex_content: str) -> tuple[str, str]:
     return latex_content, settings.DEFAULT_NEW_RESUME_COMPILER
 
 
+async def _persist_health_results(async_session, results: list[dict]) -> None:
+    """Best-effort append-only verification evidence for the batch.
+
+    Asset generation must not fail merely because the analytics/health write
+    failed; the CLI already raises for compile failures.
+    """
+    if not results:
+        return
+    try:
+        from app.services.admin_template_health_service import (
+            admin_template_health_service,
+        )
+
+        async with async_session() as session:
+            await admin_template_health_service.record_compile_batch_results(
+                session,
+                results,
+                commit_sha=os.environ.get("DEPLOY_SHA"),
+                ci_run_id=os.environ.get("GITHUB_RUN_ID"),
+            )
+    except Exception as exc:  # pragma: no cover - defensive evidence path
+        print(f"WARN: template health evidence not persisted ({type(exc).__name__})")
+
+
 async def main():
     engine = create_async_engine(_db_url(), echo=False)
     async_session = async_sessionmaker(engine, expire_on_commit=False)
@@ -88,6 +112,7 @@ async def main():
     compiled = 0
     skipped = 0
     failed = 0
+    health_results: list[dict] = []
 
     try:
         for t in templates:
@@ -98,6 +123,13 @@ async def main():
                 if storage_service.file_exists(png_key) and storage_service.file_exists(pdf_key):
                     print(f"  SKIP  {t.name} (already compiled)")
                     skipped += 1
+                    health_results.append(
+                        {
+                            "template_id": str(t.id),
+                            "status": "pass",
+                            "status_detail": "assets_already_present",
+                        }
+                    )
                     continue
 
                 print(f"  COMPILE  {t.name} ... ", end="", flush=True)
@@ -149,12 +181,28 @@ async def main():
 
                     if not ok:
                         failed += 1
+                        health_results.append(
+                            {
+                                "template_id": str(t.id),
+                                "status": "fail",
+                                "error_class": "engine",
+                                "status_detail": "compiler_or_confinement_failed",
+                            }
+                        )
                         continue
 
                     pdf_path = Path(tmpdir) / "template.pdf"
                     if not pdf_path.exists():
                         print("FAIL (no PDF produced)")
                         failed += 1
+                        health_results.append(
+                            {
+                                "template_id": str(t.id),
+                                "status": "fail",
+                                "error_class": "missing_asset",
+                                "status_detail": "pdf_not_produced",
+                            }
+                        )
                         continue
 
                     # Upload PDF
@@ -178,15 +226,40 @@ async def main():
                     except Exception as e:
                         print(f"FAIL (PDF ok, PNG failed: {e})")
                         failed += 1
+                        health_results.append(
+                            {
+                                "template_id": str(t.id),
+                                "status": "fail",
+                                "error_class": "storage",
+                                "status_detail": "png_conversion_failed",
+                            }
+                        )
                         continue
 
                     print("OK")
                     compiled += 1
+                    health_results.append(
+                        {
+                            "template_id": str(t.id),
+                            "status": "pass",
+                            "status_detail": "assets_compiled",
+                        }
+                    )
             except Exception as e:
                 print(f"ERROR ({e})")
                 failed += 1
+                health_results.append(
+                    {
+                        "template_id": str(t.id),
+                        "status": "unknown",
+                        "error_class": "unknown",
+                        "status_detail": "asset_generation_error",
+                    }
+                )
     finally:
         await engine.dispose()
+
+    await _persist_health_results(async_session, health_results)
 
     print(f"\nDone: {compiled} compiled, {skipped} skipped, {failed} failed")
     _raise_if_failed(failed)

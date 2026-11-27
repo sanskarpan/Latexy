@@ -2042,6 +2042,59 @@ def health_check_task(
         raise self.retry(exc=e, countdown=60)
 
 
+@celery_app.task(
+    bind=True,
+    name="app.workers.cleanup_worker.refresh_daily_metrics_task",
+)
+def refresh_daily_metrics_task(self, days: Optional[int] = None) -> Dict[str, Any]:
+    """Refresh the bounded daily admin metrics rollup (issue #2181).
+
+    Runs every 10 minutes via Celery Beat. The service owns idempotency (daily
+    upsert), overlap protection (transaction advisory lock), the duration cap
+    and sanitized failure logging. This wrapper only supplies a worker-owned
+    session and keeps a database/statement failure from crashing beat.
+    """
+    from ..database.connection import close_db, get_async_db_session
+    from ..services.admin_daily_metrics_service import (
+        DEFAULT_REFRESH_DAYS,
+        refresh_daily_metrics,
+    )
+
+    refresh_days = DEFAULT_REFRESH_DAYS if days is None else days
+
+    async def _run() -> Dict[str, Any]:
+        try:
+            async with get_async_db_session() as db:
+                return await refresh_daily_metrics(db, days=refresh_days)
+        finally:
+            await close_db()
+
+    try:
+        result = asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001 — beat must keep running
+        logger.error(
+            "Daily metrics refresh task failed",
+            extra={"error_type": type(exc).__name__, "days": refresh_days},
+        )
+        return {
+            "status": "failed",
+            "reason": "task_failed",
+            "error_type": type(exc).__name__,
+            "days": refresh_days,
+        }
+
+    if result.get("status") == "failed":
+        logger.warning(
+            "Daily metrics refresh did not commit; prior snapshot retained",
+            extra={
+                "reason": result.get("reason"),
+                "error_type": result.get("error_type"),
+                "days": refresh_days,
+            },
+        )
+    return result
+
+
 # Utility functions to submit cleanup jobs
 def submit_temp_files_cleanup(
     max_age_hours: int = 24,

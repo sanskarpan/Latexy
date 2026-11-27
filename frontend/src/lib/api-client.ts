@@ -1022,6 +1022,105 @@ export interface AdminArtifactCleanupResponse {
 
 export type AdminQueueStatus = 'healthy' | 'backlogged' | 'stale'
 
+export type AdminRetentionDataClass =
+  | 'pdfs'
+  | 'job_finalizations'
+  | 'analytics'
+  | 'audit'
+  | 'exports'
+
+export interface AdminRetentionCounts {
+  total: number
+  older_than_policy: number
+  eligible: number
+  protected_active_jobs: number
+  protected_legal_hold: number
+  protected_immutable: number
+  already_scrubbed: number
+  recent: number
+  inside_24h: number
+  outside_24h: number
+}
+
+export interface AdminRetentionRun {
+  id: string
+  data_class: AdminRetentionDataClass
+  mode: 'dry_run' | 'purge'
+  status: 'running' | 'completed' | 'refused' | 'failed'
+  dry_run: boolean
+  retention_hours: number
+  effective_hours: number
+  cutoff_at: string
+  started_at: string
+  finished_at: string | null
+  counts: {
+    scanned: number
+    eligible: number
+    protected_active_jobs: number
+    protected_legal_hold: number
+    protected_immutable: number
+    recent: number
+  }
+  affected: number
+  would_affect: number
+  limit: number
+  has_more: boolean
+  detail: Record<string, unknown>
+  replayed: boolean
+}
+
+export interface AdminRetentionClass {
+  data_class: AdminRetentionDataClass
+  label: string
+  description: string
+  configured_hours: number
+  effective_hours: number
+  floor_hours: number
+  schedule_hours: number
+  enabled: boolean
+  version: number
+  purge_mode: 'delete' | 'scrub' | 'immutable'
+  purge_supported: boolean
+  policy_updated_at: string
+  exceptions: string[]
+  counts: AdminRetentionCounts
+  boundary: {
+    cutoff_at: string
+    boundary_age_hours: number
+    inside_24h: number
+    outside_24h: number
+  }
+  next_run_at: string | null
+  schedule_due: boolean
+  last_run: AdminRetentionRun | null
+}
+
+export interface AdminRetentionOverview {
+  generated_at: string
+  aggregate_only: boolean
+  per_user_breakdown: boolean
+  minimum_cohort_size: number
+  boundary_window_hours: number
+  classes: AdminRetentionClass[]
+}
+
+export interface AdminRetentionPolicyUpdate {
+  retention_hours: number
+  schedule_hours: number
+  enabled: boolean
+  expected_version: number
+  reason: string
+  confirm: true
+}
+
+export interface AdminRetentionRunRequest {
+  reason: string
+  limit?: number
+  idempotency_key?: string
+}
+
+
+
 export interface AdminQueueThroughputPoint {
   sampled_at: string
   depth: number
@@ -1242,6 +1341,244 @@ export interface AdminKpiTrend {
   sparkline: AdminKpiTrendPoint[]
 }
 
+export type AdminSavedViewScope =
+  | 'analytics'
+  | 'operations'
+  | 'quality'
+  | 'billing'
+  | 'subscriptions'
+  | 'email'
+  | 'growth'
+  | 'customers'
+
+export type AdminSavedViewVisibility = 'all' | 'owned' | 'shared'
+
+export interface AdminSavedViewSort {
+  field: string
+  direction: 'asc' | 'desc'
+}
+
+export interface AdminSavedView {
+  id: string
+  name: string
+  scope: AdminSavedViewScope
+  filters: Record<string, unknown>
+  columns: string[]
+  sort: AdminSavedViewSort | null
+  range_days: number | null
+  shared: boolean
+  is_default: boolean
+  is_owner: boolean
+  version: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminSavedViewList {
+  items: AdminSavedView[]
+  total: number
+  limit: number
+  offset: number
+  scopes: AdminSavedViewScope[]
+}
+
+export interface AdminSavedViewInput {
+  name: string
+  scope: AdminSavedViewScope
+  filters?: Record<string, unknown>
+  columns?: string[]
+  sort?: AdminSavedViewSort | null
+  range_days?: number | null
+  shared?: boolean
+  is_default?: boolean
+}
+
+export interface AdminSavedViewUpdateInput {
+  expected_version: number
+  name?: string
+  scope?: AdminSavedViewScope
+  filters?: Record<string, unknown>
+  columns?: string[]
+  sort?: AdminSavedViewSort | null
+  range_days?: number | null
+  shared?: boolean
+  is_default?: boolean
+}
+
+export interface AdminSavedViewScopeCatalogEntry {
+  scope: AdminSavedViewScope
+  filters: string[]
+  columns: string[]
+  sort_fields: string[]
+}
+
+export interface AdminSavedViewCatalog {
+  schema_version: number
+  scopes: AdminSavedViewScopeCatalogEntry[]
+}
+
+export interface AdminSegmentField {
+  field: string
+  label: string
+  type: string
+  operators: string[]
+  values?: string[]
+}
+
+export interface AdminSegmentFieldsResponse {
+  schema_version: number
+  minimum_cohort: number
+  max_conditions: number
+  max_values: number
+  fields: AdminSegmentField[]
+  group_by: string[]
+}
+
+export interface AdminSegmentCondition {
+  field: string
+  operator: string
+  value: unknown
+}
+
+export interface AdminSegmentDefinition {
+  match: 'all' | 'any'
+  conditions: AdminSegmentCondition[]
+}
+
+export interface AdminSegment {
+  id: string
+  name: string
+  description: string | null
+  definition: AdminSegmentDefinition
+  condition_count: number
+  match: 'all' | 'any'
+  shared: boolean
+  is_owner: boolean
+  version: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminSegmentList {
+  items: AdminSegment[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminSegmentInput {
+  name: string
+  description?: string | null
+  definition: AdminSegmentDefinition
+  shared?: boolean
+}
+
+export interface AdminSegmentUpdateInput {
+  expected_version: number
+  name?: string
+  description?: string | null
+  definition?: AdminSegmentDefinition
+  shared?: boolean
+}
+
+export interface AdminSegmentPreviewGroup {
+  value: string
+  count: number
+}
+
+export interface AdminSegmentPreview {
+  segment_id?: string
+  segment_version?: number
+  count: number | null
+  suppressed: boolean
+  minimum_cohort: number
+  match: 'all' | 'any'
+  condition_count: number
+  group_by: string | null
+  groups: AdminSegmentPreviewGroup[]
+  suppressed_groups: number
+  data_source: string
+}
+
+export interface AdminDailyMetricsFreshness {
+  fresh: boolean
+  source: 'rollup' | 'base_tables'
+  last_refreshed_at: string | null
+  age_seconds: number | null
+  stale_after_seconds: number
+  refresh_interval_seconds: number
+  coverage_start: string | null
+  coverage_end: string | null
+  rollup_rows: number
+  reason: 'fresh' | 'stale' | 'no_rollup' | 'insufficient_coverage'
+  fallback_reason: string | null
+}
+
+export interface AdminDailyMetricsPoint {
+  date: string
+  new_users: number
+  active_users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  optimizations: number
+  events: number
+  gross_revenue_inr: number
+  refunds_inr: number
+  revenue_inr: number
+  payments_count: number
+  refunds_count: number
+  sparse: boolean
+}
+
+export interface AdminDailyMetricsTotals {
+  new_users: number
+  compilations: number
+  completed_compilations: number
+  failed_compilations: number
+  optimizations: number
+  events: number
+  active_user_days: number
+  peak_active_users: number
+  payments_count: number
+  refunds_count: number
+  gross_revenue_inr: number
+  refunds_inr: number
+  revenue_inr: number
+  sparse_days: number
+}
+
+export interface AdminDailyMetricsResponse {
+  days: number
+  window: { start: string; end: string; timezone: string }
+  source: 'rollup' | 'base_tables'
+  freshness: AdminDailyMetricsFreshness
+  rollup: {
+    table: string
+    refresh_interval_seconds: number
+    stale_after_seconds: number
+    default_refresh_days: number
+    max_refresh_ms: number
+  }
+  minimum_cohort_users: number
+  suppression: {
+    minimum_users: number
+    cohort_rows_returned: number
+    rule: string
+    sparse_days: number
+  }
+  series: AdminDailyMetricsPoint[]
+  totals: AdminDailyMetricsTotals
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    content_fields_read: string[]
+    content_fields_excluded: string[]
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminAnalyticsOverviewResponse {
   period_days: number
   system: {
@@ -1268,6 +1605,7 @@ export interface AdminAnalyticsOverviewResponse {
   recent_events: AdminRecentEvent[]
   operations: AdminOperationsSummary
   kpi_trends: AdminKpiTrend[]
+  metrics_freshness?: AdminDailyMetricsFreshness
   generated_at: string
 }
 
@@ -1668,6 +2006,15 @@ export interface AdminTemplatePerformanceRow {
   compile_failed: number
   compile_attempts: number
   success_rate: number
+  failure_rate: number
+  p50_compile_seconds: number | null
+  p95_compile_seconds: number | null
+  latency_samples: number
+  latency_sparse: boolean
+  regression: boolean
+  regression_reason: string | null
+  recent_failure_rate: number | null
+  previous_failure_rate: number | null
   last_used_at: string | null
 }
 
@@ -1712,6 +2059,9 @@ export interface AdminTemplatePerformanceResponse {
     compile_success: number
     compile_failed: number
     compile_attempts: number
+    failure_rate: number
+    latency_samples: number
+    regressions: number
   }
   reconciliation: {
     source: 'compilations'
@@ -1728,6 +2078,86 @@ export interface AdminTemplatePerformanceResponse {
     reconciled: boolean
   }
   generated_at: string
+}
+
+export type AdminTemplateHealthStatus = 'pass' | 'fail' | 'unknown'
+
+export interface AdminTemplateHealthEvidence {
+  ci_url: string
+  log_url: string | null
+  commit_url: string | null
+  runbook_url: string
+}
+
+export interface AdminTemplateHealthRow {
+  template_id: string
+  template_name: string
+  category: string
+  active: boolean
+  template_url: string
+  status: AdminTemplateHealthStatus
+  recorded_status: AdminTemplateHealthStatus | null
+  stale: boolean
+  status_reason: string
+  status_detail: string | null
+  error_class: string | null
+  visual_test: AdminTemplateHealthStatus
+  commit_sha: string | null
+  ci_run_id: string | null
+  source: string | null
+  evidence_present: boolean
+  last_verified_at: string | null
+  evidence: AdminTemplateHealthEvidence
+  recent_compile_success: number
+  recent_compile_failed: number
+  recent_compile_samples: number
+  recent_failure_rate: number
+  last_compile_at: string | null
+}
+
+export interface AdminTemplateHealthResponse {
+  timezone: 'UTC'
+  stale_after_hours: number
+  recent_compile_days: number
+  minimum_compile_samples: number
+  filters: {
+    status: AdminTemplateHealthStatus | null
+    template: string | null
+    include_inactive: boolean
+  }
+  summary: {
+    templates: number
+    pass: number
+    fail: number
+    unknown: number
+    stale: number
+    without_evidence: number
+  }
+  templates: AdminTemplateHealthRow[]
+  evidence_contract: {
+    ci_workflow_url: string
+    runbook_url: string
+    repository: string
+  }
+  generated_at: string
+}
+
+export interface AdminTemplateHealthRetryResponse {
+  id: string
+  template_id: string
+  status: AdminTemplateHealthStatus
+  error_class: string | null
+  visual_test: AdminTemplateHealthStatus
+  commit_sha: string | null
+  ci_run_id: string | null
+  source: string
+  assets_present: boolean | null
+  compile_samples: number | null
+  compile_failures: number | null
+  status_detail: string | null
+  checked_at: string | null
+  evidence: AdminTemplateHealthEvidence
+  duplicate: boolean
 }
 
 export interface AdminContentLibraryRow {
@@ -2025,6 +2455,149 @@ export interface AdminReferralSummaryResponse {
     automatic_payout: boolean
     automatic_punishment: boolean
     manual_review_required: boolean
+  }
+  notes: string[]
+  generated_at: string
+}
+
+export type AdminPathAnalysisNodeKind = 'route' | 'outcome' | 'missing'
+
+export interface AdminPathAnalysisNode {
+  id: string
+  label: string
+  kind: AdminPathAnalysisNodeKind
+  count: number
+  users: number
+  incoming: number
+  outgoing: number
+  route?: string
+  outcome?: 'upgrade' | 'churn'
+  missing?: boolean
+  filter?: { route?: string; outcome?: 'upgrade' | 'churn'; missing?: boolean }
+}
+
+export interface AdminPathAnalysisEdge {
+  source: string
+  target: string
+  source_label: string
+  target_label: string
+  label: string
+  count: number
+  users: number
+}
+
+export interface AdminPathAnalysisPath {
+  path: string[]
+  node_ids: string[]
+  label: string
+  count: number
+  users: number
+  missing: boolean
+}
+
+export interface AdminPathAnalysisSection {
+  key: 'upgrade' | 'churn'
+  label: string
+  status: 'visible' | 'empty' | 'suppressed'
+  total_outcomes: number | null
+  missing_path_outcomes: number | null
+  route_path_outcomes: number | null
+  route_coverage_pct: number | null
+  missing_path_suppressed: boolean
+  nodes: AdminPathAnalysisNode[]
+  edges: AdminPathAnalysisEdge[]
+  top_paths: AdminPathAnalysisPath[]
+  suppressed_edges: number
+  thresholded_edges: number
+  suppressed_paths: number
+  visible_paths: number
+  top_paths_truncated: boolean
+  raw: {
+    outcomes: number
+    paths: number
+    transitions: number
+    route_paths: number | null
+    missing_path_outcomes: number | null
+  } | null
+  reconciliation: {
+    reconciled: boolean
+    checks: Array<{ key: string; ok: boolean; detail: string }>
+  }
+  notes: string[]
+}
+
+export interface AdminPathAnalysisResponse {
+  days: number
+  start_date: string
+  end_date: string
+  period: { start: string; end: string; timezone: string }
+  filters: {
+    days: number
+    start_date: string
+    end_date: string
+    plan: string[] | null
+    cohort: 'all' | 'new' | 'established'
+    min_edge_count: number
+    timezone: 'UTC'
+  }
+  minimum_cohort_size: number
+  suppressed: boolean
+  suppression: {
+    minimum_users: number
+    applied: boolean
+    rule: string
+    upgrade_suppressed: boolean
+    churn_suppressed: boolean
+    suppressed_edges: number
+    thresholded_edges: number
+    suppressed_paths: number
+  }
+  summary: {
+    outcomes: number | null
+    upgrade_outcomes: number | null
+    churn_outcomes: number | null
+    paths_with_route_data: number | null
+    paths_without_route_data: number | null
+    route_coverage_pct: number | null
+    visible_edges: number
+  }
+  upgrade: AdminPathAnalysisSection
+  churn: AdminPathAnalysisSection
+  reconciliation: {
+    reconciled: boolean
+    checks: Array<{ key: string; ok: boolean; detail: string }>
+  }
+  data_source: {
+    kind: 'first_party_event_sequences'
+    pageview_action: string
+    route_field: string
+    outcome_source: string
+    posthog_paths_queried: boolean
+    path_lookback_days: number
+    max_route_steps: number
+    upgrade_rule: string
+    churn_rule: string
+  }
+  data_quality: {
+    outcome_rows_truncated: boolean
+    pageviews_truncated: boolean
+    max_outcome_rows: number
+    max_pageview_rows: number
+    missing_path_label: string
+    missing_path_imputed: boolean
+  }
+  privacy: {
+    aggregate_only: boolean
+    per_user_rows: boolean
+    minimum_users: number
+    route_sanitization: string
+    excluded_fields: string[]
+  }
+  automation: {
+    automatic_refund: boolean
+    automatic_grant: boolean
+    automatic_enforcement: boolean
+    read_only: boolean
   }
   notes: string[]
   generated_at: string
@@ -2825,6 +3398,137 @@ export interface AdminSharePortfolioPortfolioResponse
   portfolio_username: string
   portfolio: AdminSharePortfolioPortfolioPayload
 }
+
+export type AdminIntegrationProviderKey =
+  | 'github'
+  | 'dropbox'
+  | 'google_drive'
+  | 'zotero'
+  | 'mendeley'
+
+export type AdminIntegrationTelemetryState =
+  | 'ok'
+  | 'missing_telemetry'
+  | 'no_current_connections'
+  | 'no_activity'
+  | 'suppressed'
+
+export interface AdminIntegrationSummary {
+  connected_accounts: number | null
+  providers_with_connections: number | null
+  connect_started: number | null
+  connected: number | null
+  disconnected: number | null
+  oauth_success_rate_pct: number | null
+  sync_succeeded: number | null
+  sync_failed: number | null
+  sync_success_rate_pct: number | null
+  sync_failure_rate_pct: number | null
+  distinct_users: number | null
+  suppressed: boolean
+  suppressed_cells: string[]
+  last_activity_at: string | null
+  telemetry_state: AdminIntegrationTelemetryState | 'suppressed'
+}
+
+export interface AdminIntegrationDisconnectReason {
+  reason: string
+  label: string
+  count: number
+}
+
+export interface AdminIntegrationErrorClass {
+  error_class: string
+  label: string
+  count: number
+}
+
+export interface AdminIntegrationOperationRow {
+  operation: string
+  label: string
+  count: number
+}
+
+export interface AdminIntegrationPlanRow {
+  plan: string
+  plan_label: string
+  connected_accounts: number
+  connect_started: number
+  connected: number
+  disconnected: number
+  oauth_success_rate_pct: number | null
+  sync_succeeded: number
+  sync_failed: number
+  sync_success_rate_pct: number | null
+  sync_failure_rate_pct: number | null
+  sync_enabled_resources: number
+  distinct_users: number
+  last_activity_at: string | null
+  telemetry_state: AdminIntegrationTelemetryState
+  telemetry_state_label: string
+}
+
+export interface AdminIntegrationReconciliation {
+  current_connected_accounts: number | null
+  period_net_connection_events: number | null
+  telemetry_users: number | null
+  sync_enabled_resources: number | null
+  connection_source: string
+  sync_status_source: string | null
+  telemetry_state: AdminIntegrationTelemetryState
+  telemetry_state_label: string
+}
+
+export interface AdminIntegrationProvider {
+  provider: AdminIntegrationProviderKey
+  label: string
+  suppressed: boolean
+  suppressed_cells: string[]
+  connected_accounts: number | null
+  connect_started: number | null
+  connected: number | null
+  disconnected: number | null
+  oauth_success_rate_pct: number | null
+  sync_succeeded: number | null
+  sync_failed: number | null
+  sync_success_rate_pct: number | null
+  sync_failure_rate_pct: number | null
+  distinct_users: number | null
+  last_activity_at: string | null
+  telemetry_state: AdminIntegrationTelemetryState
+  telemetry_state_label: string
+  disconnect_reasons: AdminIntegrationDisconnectReason[]
+  sync_error_classes: AdminIntegrationErrorClass[]
+  sync_failed_by_operation: AdminIntegrationOperationRow[]
+  by_plan: AdminIntegrationPlanRow[]
+  plan_breakdown_suppressed: boolean
+  suppressed_plan_rows: number
+  reconciliation: AdminIntegrationReconciliation
+}
+
+export interface AdminIntegrationsResponse {
+  period: { start: string; end: string; days: number; timezone: string }
+  filters: {
+    plan: string | null
+    provider: AdminIntegrationProviderKey | null
+  }
+  minimum_cohort_size: number
+  summary: AdminIntegrationSummary
+  providers: AdminIntegrationProvider[]
+  reconciliation: {
+    connection_rows_truncated: boolean
+    event_rows_truncated: boolean
+    unattributed_events: number
+    invalid_rows: number
+    visible_providers: number
+    suppressed_providers: number
+    connected_accounts_source: string
+    telemetry_source: string
+  }
+  notes: string[]
+  generated_at: string
+}
+
 export interface AdminSubscriptionSummary {
   active_at_start: number
   active_at_end: number
@@ -3091,6 +3795,67 @@ export interface AdminRefundList {
   offset: number
 }
 
+export type AdminApprovalStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'executing'
+  | 'executed'
+  | 'failed'
+  | 'expired'
+  | 'cancelled'
+
+export type AdminApprovalRequestType =
+  | 'refund'
+  | 'account_deletion'
+  | 'impersonation'
+  | 'role_escalation'
+  | 'bulk_entitlement_change'
+
+export interface AdminApproval {
+  id: string
+  request_type: AdminApprovalRequestType
+  resource_type: string | null
+  resource_id: string | null
+  payload_hash: string
+  payload: Record<string, unknown>
+  reason: string
+  status: AdminApprovalStatus
+  requested_by: string
+  approved_by: string | null
+  executed_by: string | null
+  decision_note: string | null
+  execution_note: string | null
+  result: Record<string, unknown> | null
+  requested_at: string | null
+  expires_at: string
+  decided_at: string | null
+  executed_at: string | null
+  is_expired: boolean
+  can_approve: boolean
+  can_execute: boolean
+  audit_request_id: string | null
+  audit_decision_id: string | null
+  audit_execution_id: string | null
+}
+
+export interface AdminApprovalList {
+  items: AdminApproval[]
+  total: number
+  limit: number
+  offset: number
+  counts: Record<AdminApprovalStatus, number>
+  pending_by_type: Record<string, number>
+}
+
+export interface AdminBulkEntitlementChange {
+  scope: 'plan' | 'role' | 'kill_switch'
+  plan_family?: string
+  role?: string
+  feature_key: string
+  enabled: boolean
+}
+
 export interface AdminUserTimelineItem {
   id: string
   kind: 'subscription_history' | 'subscription' | 'payment' | 'refund' | 'webhook' | 'plan_change' | 'entitlement_change'
@@ -3351,8 +4116,15 @@ export interface AdminReceiptLineItem {
   currency: string | null
 }
 
+export type AdminReceiptInvoiceState =
+  | 'available'
+  | 'not_exposed'
+  | 'not_linked'
+  | 'unconfigured'
+
 export interface AdminPaymentReceipt {
   payment_id: string
+  user_id: string
   provider_payment_id: string | null
   amount_minor: number
   currency: string | null
@@ -3362,18 +4134,57 @@ export interface AdminPaymentReceipt {
   line_items_available: boolean
   line_items_state: AdminReceiptLineItemsState
   line_items_source: 'provider' | 'local'
+  invoice_available: boolean
+  invoice_state: AdminReceiptInvoiceState
+  invoice_size_bytes: number | null
+}
+
+export interface AdminReceiptSearchItem {
+  payment_id: string
+  user_id: string
+  provider: string
+  provider_payment_id: string | null
+  subscription_id: string | null
+  amount_minor: number
+  currency: string | null
+  status: string
+  payment_method: string | null
+  created_at: string | null
+  settled: boolean
+  receipt_eligible: boolean
+  provider_linked: boolean
+}
+
+export interface AdminReceiptSearchResult {
+  match_type: 'payment_id' | 'subscription_id' | 'user_id' | 'email_hash'
+  items: AdminReceiptSearchItem[]
+  total: number
+  limit: number
+  truncated: boolean
+}
+
+export interface AdminReceiptSearchParams {
+  payment_id?: string
+  subscription_id?: string
+  user_id?: string
+  email_hash?: string
+  limit?: number
 }
 
 export interface AdminSupportActionResult {
   action: 'verification_email' | 'password_reset' | 'payment_receipt'
-  status: 'sent'
+  status: 'sent' | 'already_sent'
   delivery: 'accepted'
   target_user_id: string
   retry_after_seconds: number
+  duplicate?: boolean
+  idempotency_key?: string
   payment_id?: string
   line_items_count?: number
   line_items_source?: 'provider' | 'local'
   line_items_state?: AdminReceiptLineItemsState
+  invoice_state?: AdminReceiptInvoiceState
+  invoice_attached?: boolean
 }
 
 export interface AdminAuditEntry {
@@ -3428,6 +4239,167 @@ export interface AdminChangeHistoryList {
   read_only: true
   target_types: string[]
   filters: AdminChangeHistoryFilters
+}
+
+// ---------------------------------------------------------------- //
+//  Admin CSV/PDF exports and scheduled digest                      //
+// ---------------------------------------------------------------- //
+
+export type AdminExportReport = 'overview' | 'billing' | 'users' | 'audit'
+export type AdminExportFormat = 'csv' | 'pdf'
+export type AdminDigestFrequency = 'daily' | 'weekly' | 'monthly'
+export type AdminDigestFormat = 'summary' | 'csv'
+
+export interface AdminExportReportSpec {
+  report: AdminExportReport
+  label: string
+  description: string
+  filters: string[]
+  formats: AdminExportFormat[]
+  aliases?: string[]
+}
+
+export interface AdminExportHistoryItem {
+  id: string
+  export_id: string | null
+  event: 'generated' | 'downloaded'
+  created_at: string
+  metadata: Record<string, unknown>
+}
+
+export interface AdminExportLimits {
+  max_rows: number
+  max_pdf_rows: number
+  signed_url_ttl_minutes: number
+  max_range_days: number
+  minimum_users: number
+  synchronous_row_threshold: number
+}
+
+export interface AdminDigestLastRun {
+  status: 'sent' | 'failed' | string
+  report?: string
+  format?: string
+  row_count?: number
+  recipient_count?: number
+  delivered_count?: number
+  failed_count?: number
+  error_class?: string
+  finished_at?: string
+}
+
+export interface AdminExportDigestConfig {
+  enabled: boolean
+  frequency: AdminDigestFrequency
+  recipient_user_ids: string[]
+  recipient_count: number
+  report: Exclude<AdminExportReport, 'audit'>
+  format: AdminDigestFormat
+  days: number
+  start_date: string | null
+  end_date: string | null
+  filters: Record<string, string>
+  configured_at: string | null
+  updated: boolean
+  schema_version: string
+  last_run: AdminDigestLastRun | null
+}
+
+export interface AdminExportRecipient {
+  user_id: string
+  role: 'admin'
+  is_self: boolean
+}
+
+export interface AdminExportsResponse {
+  reports: AdminExportReportSpec[]
+  limits: AdminExportLimits
+  schema_version: string
+  history: AdminExportHistoryItem[]
+  digest: AdminExportDigestConfig
+  privacy: {
+    aggregate_only: boolean
+    content_fields_excluded: string[]
+  }
+  generated_at: string
+}
+
+export interface AdminExportCreateRequest {
+  report: AdminExportReport
+  format: AdminExportFormat
+  days?: number
+  start_date?: string
+  end_date?: string
+  plan?: string
+  compiler?: string
+  status?: string
+  role?: string
+  action?: string
+  target_type?: string
+}
+
+export interface AdminExportCreateResponse {
+  export_id: string
+  report: AdminExportReport
+  format: AdminExportFormat
+  delivery: 'signed_url'
+  large_job: boolean
+  download_url: string
+  download_token: string
+  expires_at: string
+  schema_version: string
+  row_cap: number
+  row_count: number
+  generated_at: string
+  range: { days: number; start_date: string; end_date: string }
+  filters: Record<string, string>
+  metadata: {
+    schema_version: string
+    generated_at: string
+    report: AdminExportReport
+    format: AdminExportFormat
+    range: { start_date: string; end_date: string; days: number }
+    filters: Record<string, string>
+    row_cap: number
+    row_count: number
+    minimum_users: number
+    suppressed: boolean
+    truncated: boolean
+    notes: string[]
+  }
+}
+
+export interface AdminExportDigestResponse extends AdminExportDigestConfig {
+  available_recipients: AdminExportRecipient[]
+}
+
+export interface AdminExportDigestUpdateRequest {
+  enabled: boolean
+  frequency: AdminDigestFrequency
+  recipient_user_ids: string[]
+  report: Exclude<AdminExportReport, 'audit'>
+  format: AdminDigestFormat
+  days?: number
+  start_date?: string
+  end_date?: string
+  plan?: string
+  compiler?: string
+  status?: string
+  role?: string
+  reason: string
+  confirm: true
+}
+
+export interface AdminExportDigestDryRunResponse {
+  sent: false
+  dry_run: true
+  subject: string
+  text_body: string
+  metadata: Record<string, unknown>
+  recipient_user_ids: string[]
+  recipient_count: number
+  rejected_recipient_count: number
+  schema_version: string
 }
 
 // ---------------------------------------------------------------- //
@@ -3866,6 +4838,83 @@ export interface AdminConsentAnalyticsResponse {
   suppressed_cells: number
   truncated_surfaces: number
   truncated_events: boolean
+  notes: string[]
+  generated_at: string
+}
+
+export interface AdminFlagExposureMetricCell {
+  numerator: number | null
+  denominator: number | null
+  rate_pct: number | null
+  suppressed: boolean
+}
+
+export interface AdminFlagExposureMetric {
+  key: string
+  label: string
+  kind: 'outcome' | 'guardrail'
+  direction: 'up' | 'down'
+  definition: string
+  treatment: AdminFlagExposureMetricCell
+  control: AdminFlagExposureMetricCell
+  difference_pp: number | null
+  comparable: boolean
+}
+
+export interface AdminFlagExposureGroup {
+  variant: 'treatment' | 'control'
+  label: string
+  exposure_events: number | null
+  sample_size: number | null
+  right_censored_subjects: number | null
+  suppressed: boolean
+  suppression_reason: string | null
+}
+
+export interface AdminFlagExposureWindow {
+  days: number
+  start_date: string
+  end_date: string
+  groups: {
+    treatment: AdminFlagExposureGroup
+    control: AdminFlagExposureGroup
+  }
+  metrics: AdminFlagExposureMetric[]
+  guardrails: AdminFlagExposureMetric[]
+  suppressed: boolean
+}
+
+export interface AdminFlagExposureFlag {
+  key: string
+  label: string
+  description: string | null
+  enabled: boolean
+  outcome_horizon_days: number
+  minimum_group_size: number
+  windows: Record<string, AdminFlagExposureWindow>
+}
+
+export interface AdminFlagExposureDefinition {
+  key: string
+  label: string
+  kind: 'outcome' | 'guardrail'
+  direction: 'up' | 'down'
+  definition: string
+}
+
+export interface AdminFlagExposureResponse {
+  flags: AdminFlagExposureFlag[]
+  windows: number[]
+  minimum_group_size: number
+  outcome_horizon_days: number
+  metric_definitions: AdminFlagExposureDefinition[]
+  guardrail_metric_keys: string[]
+  claim: {
+    causality: 'descriptive_only'
+    preregistered_metric: string | null
+    preregistered_metrics: Record<string, string>
+    message: string
+  }
   notes: string[]
   generated_at: string
 }
@@ -6238,6 +7287,15 @@ function parseApiErrorMessage(bodyText: string, statusText: string, fallbackLabe
       const parsed: unknown = JSON.parse(trimmed)
       const detail = (parsed as { detail?: unknown } | null)?.detail
       if (typeof detail === 'string' && detail.trim()) return detail
+      if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+        const message = (detail as { message?: unknown }).message
+        if (typeof message === 'string' && message.trim()) return message
+        const nestedError = (detail as { error?: unknown }).error
+        if (nestedError && typeof nestedError === 'object') {
+          const nestedMessage = (nestedError as { message?: unknown }).message
+          if (typeof nestedMessage === 'string' && nestedMessage.trim()) return nestedMessage
+        }
+      }
       if (Array.isArray(detail) && detail.length > 0) {
         const messages = detail
           .map((d) =>
@@ -6252,6 +7310,11 @@ function parseApiErrorMessage(bodyText: string, statusText: string, fallbackLabe
       }
       const message = (parsed as { message?: unknown } | null)?.message
       if (typeof message === 'string' && message.trim()) return message
+      const topLevelError = (parsed as { error?: unknown } | null)?.error
+      if (topLevelError && typeof topLevelError === 'object') {
+        const errorMessage = (topLevelError as { message?: unknown }).message
+        if (typeof errorMessage === 'string' && errorMessage.trim()) return errorMessage
+      }
       // Recognizable JSON, but no known error field — don't dump the raw object.
     } catch {
       // Not JSON. A short plain-text body (e.g. from a proxy/load balancer) is
@@ -6793,6 +7856,139 @@ class ApiClient {
 
   async getAdminAnalyticsOverview(days: number = 30): Promise<AdminAnalyticsOverviewResponse> {
     return this.request<AdminAnalyticsOverviewResponse>(`/analytics/admin/overview?days=${days}`)
+  }
+
+                  //
+  // ---------------------------------------------------------------- //
+
+  async getAdminSavedViews(params?: {
+    scope?: AdminSavedViewScope
+    visibility?: AdminSavedViewVisibility
+    limit?: number
+    offset?: number
+  }): Promise<AdminSavedViewList> {
+    const qs = new URLSearchParams()
+    if (params?.scope) qs.set('scope', params.scope)
+    if (params?.visibility) qs.set('visibility', params.visibility)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSavedViewList>(`/admin/saved-views${suffix}`)
+  }
+
+  async getAdminSavedViewCatalog(): Promise<AdminSavedViewCatalog> {
+    return this.request<AdminSavedViewCatalog>('/admin/saved-views/catalog')
+  }
+
+  async createAdminSavedView(body: AdminSavedViewInput): Promise<AdminSavedView> {
+    return this.request<AdminSavedView>('/admin/saved-views', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminSavedView(
+    id: string,
+    body: AdminSavedViewUpdateInput,
+  ): Promise<AdminSavedView> {
+    return this.request<AdminSavedView>(
+      `/admin/saved-views/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminSavedView(
+    id: string,
+    version: number,
+    reason: string,
+  ): Promise<{ id: string; deleted: boolean; version: number }> {
+    const qs = new URLSearchParams({
+      version: String(version),
+      confirm: 'true',
+      reason,
+    })
+    return this.request<{ id: string; deleted: boolean; version: number }>(
+      `/admin/saved-views/${encodeURIComponent(id)}?${qs}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  async getAdminSegmentFields(): Promise<AdminSegmentFieldsResponse> {
+    return this.request<AdminSegmentFieldsResponse>('/admin/segments/fields')
+  }
+
+  async getAdminSegments(params?: {
+    visibility?: AdminSavedViewVisibility
+    limit?: number
+    offset?: number
+  }): Promise<AdminSegmentList> {
+    const qs = new URLSearchParams()
+    if (params?.visibility) qs.set('visibility', params.visibility)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSegmentList>(`/admin/segments${suffix}`)
+  }
+
+  async createAdminSegment(body: AdminSegmentInput): Promise<AdminSegment> {
+    return this.request<AdminSegment>('/admin/segments', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async updateAdminSegment(
+    id: string,
+    body: AdminSegmentUpdateInput,
+  ): Promise<AdminSegment> {
+    return this.request<AdminSegment>(
+      `/admin/segments/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async deleteAdminSegment(
+    id: string,
+    version: number,
+    reason: string,
+  ): Promise<{ id: string; deleted: boolean; version: number }> {
+    const qs = new URLSearchParams({
+      version: String(version),
+      confirm: 'true',
+      reason,
+    })
+    return this.request<{ id: string; deleted: boolean; version: number }>(
+      `/admin/segments/${encodeURIComponent(id)}?${qs}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  async previewAdminSegment(
+    body: AdminSegmentDefinition,
+    groupBy?: 'plan' | 'role' | 'verified' | null,
+  ): Promise<AdminSegmentPreview> {
+    return this.request<AdminSegmentPreview>('/admin/segments/preview', {
+      method: 'POST',
+      body: JSON.stringify({ definition: body, group_by: groupBy ?? null }),
+    })
+  }
+
+  async previewSavedAdminSegment(
+    id: string,
+    groupBy?: 'plan' | 'role' | 'verified' | null,
+  ): Promise<AdminSegmentPreview> {
+    const qs = new URLSearchParams()
+    if (groupBy) qs.set('group_by', groupBy)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminSegmentPreview>(
+      `/admin/segments/${encodeURIComponent(id)}/preview${suffix}`,
+    )
+  }
+
+  async getAdminDailyMetrics(days: number = 30): Promise<AdminDailyMetricsResponse> {
+    return this.request<AdminDailyMetricsResponse>(
+      `/admin/analytics/daily-metrics?days=${encodeURIComponent(String(days))}`,
+    )
   }
 
   async getAdminActivityFeed(params?: {
@@ -8685,13 +9881,20 @@ class ApiClient {
   }
 
   /**
-   * Update a user's role. Throws on 409 (last_admin guard) — the thrown
-   * Error message contains "409" and the "last_admin" code for callers.
+   * Update a user's role. Throws on 409 (last_admin guard or approval_required)
+   * — the thrown Error message contains the API message for callers.
    */
-  async updateUserRole(id: string, role: UserRole): Promise<AdminUser> {
+  async updateUserRole(
+    id: string,
+    role: UserRole,
+    options?: { reason?: string; approvalId?: string },
+  ): Promise<AdminUser> {
+    const body: { role: UserRole; reason?: string; approval_id?: string } = { role }
+    if (options?.reason) body.reason = options.reason
+    if (options?.approvalId) body.approval_id = options.approvalId
     return this.request<AdminUser>(`/admin/users/${encodeURIComponent(id)}/role`, {
       method: 'PATCH',
-      body: JSON.stringify({ role }),
+      body: JSON.stringify(body),
     })
   }
 
@@ -8779,6 +9982,10 @@ class ApiClient {
     if (params?.end_date) qs.set('end_date', params.end_date)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminConsentAnalyticsResponse>(`/admin/analytics/consent${suffix}`)
+  }
+
+  async getAdminFlagExposure(): Promise<AdminFlagExposureResponse> {
+    return this.request<AdminFlagExposureResponse>('/admin/analytics/flag-exposure')
   }
 
   async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {
@@ -9088,6 +10295,38 @@ class ApiClient {
     return response.blob()
   }
 
+  async getAdminTemplateHealth(params?: {
+    stale_after_hours?: number
+    include_inactive?: boolean
+    status?: AdminTemplateHealthStatus
+    template?: string
+  }): Promise<AdminTemplateHealthResponse> {
+    const qs = new URLSearchParams()
+    if (params?.stale_after_hours != null) qs.set('stale_after_hours', String(params.stale_after_hours))
+    if (params?.include_inactive) qs.set('include_inactive', 'true')
+    if (params?.status) qs.set('status', params.status)
+    if (params?.template) qs.set('template', params.template)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminTemplateHealthResponse>(`/admin/templates/health${suffix}`)
+  }
+
+  async retryAdminTemplateHealth(
+    templateId: string,
+    body: {
+      reason: string
+      confirm: true
+      request_id: string
+      visual_test?: AdminTemplateHealthStatus
+      commit_sha?: string
+      ci_run_id?: string
+    },
+  ): Promise<AdminTemplateHealthRetryResponse> {
+    return this.request<AdminTemplateHealthRetryResponse>(
+      `/admin/templates/${encodeURIComponent(templateId)}/health/retry`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
   async getAdminContentLibraryAdoption(params?: {
     days?: number
     start_date?: string
@@ -9170,6 +10409,54 @@ class ApiClient {
     )
     if (!response.ok) {
       throw new Error(`Referral analytics CSV failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminPathAnalysis(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string[]
+    cohort?: 'all' | 'new' | 'established'
+    min_edge_count?: number
+  }): Promise<AdminPathAnalysisResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    for (const plan of params?.plan ?? []) {
+      if (plan) qs.append('plan', plan)
+    }
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    if (params?.min_edge_count != null) qs.set('min_edge_count', String(params.min_edge_count))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminPathAnalysisResponse>(`/admin/analytics/paths${suffix}`)
+  }
+
+  async downloadAdminPathAnalysisCsv(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string[]
+    cohort?: 'all' | 'new' | 'established'
+    min_edge_count?: number
+  }): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    for (const plan of params?.plan ?? []) {
+      if (plan) qs.append('plan', plan)
+    }
+    if (params?.cohort) qs.set('cohort', params.cohort)
+    if (params?.min_edge_count != null) qs.set('min_edge_count', String(params.min_edge_count))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const response = await this.authedFetch(
+      `${this.baseUrl}/admin/analytics/paths/export.csv${suffix}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Path analysis CSV failed (${response.status})`)
     }
     return response.blob()
   }
@@ -9364,6 +10651,43 @@ class ApiClient {
     })
   }
 
+  async getAdminRetentionOverview(): Promise<AdminRetentionOverview> {
+    return this.request<AdminRetentionOverview>('/admin/operations/retention')
+  }
+
+  async updateAdminRetentionPolicy(
+    dataClass: AdminRetentionDataClass,
+    body: AdminRetentionPolicyUpdate,
+  ): Promise<AdminRetentionClass> {
+    return this.request<AdminRetentionClass>(
+      `/admin/operations/retention/${encodeURIComponent(dataClass)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
+  }
+
+  async runAdminRetentionDryRun(
+    dataClass: AdminRetentionDataClass,
+    body: AdminRetentionRunRequest,
+  ): Promise<AdminRetentionRun> {
+    return this.request<AdminRetentionRun>(
+      `/admin/operations/retention/${encodeURIComponent(dataClass)}/dry-run`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async runAdminRetentionPurge(
+    dataClass: AdminRetentionDataClass,
+    body: AdminRetentionRunRequest,
+  ): Promise<AdminRetentionRun> {
+    return this.request<AdminRetentionRun>(
+      `/admin/operations/retention/${encodeURIComponent(dataClass)}/purge`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...body, confirm: true }),
+      },
+    )
+  }
+
   async getAdminStuckJobs(params?: {
     min_age_minutes?: number
     limit?: number
@@ -9496,6 +10820,26 @@ class ApiClient {
       `/admin/analytics/share-portfolio/portfolios/${encodeURIComponent(username)}${suffix}`,
     )
   }
+
+  async getAdminIntegrations(params?: {
+    days?: number
+    start_date?: string
+    end_date?: string
+    plan?: string
+    provider?: AdminIntegrationProviderKey
+  }): Promise<AdminIntegrationsResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.start_date) qs.set('start_date', params.start_date)
+    if (params?.end_date) qs.set('end_date', params.end_date)
+    if (params?.plan) qs.set('plan', params.plan)
+    if (params?.provider) qs.set('provider', params.provider)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminIntegrationsResponse>(
+      `/admin/analytics/integrations${suffix}`,
+    )
+  }
+
   async getAdminSubscriptionAnalytics(params?: {
     days?: number
     start?: string
@@ -9695,6 +11039,75 @@ class ApiClient {
     )
   }
 
+  async getAdminApprovals(params?: {
+    status?: AdminApprovalStatus | 'all'
+    request_type?: AdminApprovalRequestType
+    limit?: number
+    offset?: number
+  }): Promise<AdminApprovalList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.request_type) qs.set('request_type', params.request_type)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminApprovalList>(`/admin/approvals${suffix}`)
+  }
+
+  async createAdminApproval(body: {
+    request_type: Extract<
+      AdminApprovalRequestType,
+      'role_escalation' | 'bulk_entitlement_change' | 'impersonation'
+    >
+    payload: Record<string, unknown>
+    reason: string
+    expires_in_hours?: number
+  }): Promise<AdminApproval> {
+    return this.request<AdminApproval>('/admin/approvals', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async approveAdminApproval(id: string, note: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/approve`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    )
+  }
+
+  async rejectAdminApproval(id: string, note: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/reject`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    )
+  }
+
+  async cancelAdminApproval(id: string, reason: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async executeAdminApproval(id: string, note?: string): Promise<AdminApproval> {
+    return this.request<AdminApproval>(
+      `/admin/approvals/${encodeURIComponent(id)}/execute`,
+      { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+    )
+  }
+
+  async bulkUpdateAdminEntitlements(body: {
+    approval_id: string
+    changes: AdminBulkEntitlementChange[]
+    note?: string
+  }): Promise<{ approval: AdminApproval; entitlements: AdminEntitlementsState }> {
+    return this.request<{ approval: AdminApproval; entitlements: AdminEntitlementsState }>(
+      '/admin/entitlements/bulk',
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
   async getAdminUser360(
     id: string,
     params?: { timelineLimit?: number; timelineOffset?: number },
@@ -9748,6 +11161,18 @@ class ApiClient {
     )
   }
 
+  async searchAdminReceipts(params: AdminReceiptSearchParams): Promise<AdminReceiptSearchResult> {
+    const qs = new URLSearchParams()
+    if (params.payment_id) qs.set('payment_id', params.payment_id)
+    if (params.subscription_id) qs.set('subscription_id', params.subscription_id)
+    if (params.user_id) qs.set('user_id', params.user_id)
+    if (params.email_hash) qs.set('email_hash', params.email_hash)
+    if (params.limit != null) qs.set('limit', String(params.limit))
+    return this.request<AdminReceiptSearchResult>(
+      `/admin/receipts/search${qs.toString() ? `?${qs.toString()}` : ''}`,
+    )
+  }
+
   async getAdminPaymentReceipt(id: string, paymentId: string): Promise<AdminPaymentReceipt> {
     return this.request<AdminPaymentReceipt>(
       `/admin/users/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/receipt`,
@@ -9758,12 +11183,18 @@ class ApiClient {
     id: string,
     paymentId: string,
     reason: string,
+    idempotencyKey?: string,
   ): Promise<AdminSupportActionResult> {
     return this.request<AdminSupportActionResult>(
       `/admin/users/${encodeURIComponent(id)}/support/resend-receipt`,
       {
         method: 'POST',
-        body: JSON.stringify({ payment_id: paymentId, reason, confirm: true }),
+        body: JSON.stringify({
+          payment_id: paymentId,
+          reason,
+          confirm: true,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+        }),
       },
     )
   }
@@ -9920,9 +11351,80 @@ class ApiClient {
     return this.request<AdminAuditList>(`/admin/audit${suffix}`)
   }
 
+  async getAdminExports(): Promise<AdminExportsResponse> {
+    return this.request<AdminExportsResponse>('/admin/exports')
+  }
+
+  async getAdminExportHistory(limit = 25): Promise<{ items: AdminExportHistoryItem[]; schema_version: string }> {
+    return this.request<{ items: AdminExportHistoryItem[]; schema_version: string }>(
+      `/admin/exports/history?limit=${encodeURIComponent(String(limit))}`,
+    )
+  }
+
+  async createAdminExport(body: AdminExportCreateRequest): Promise<AdminExportCreateResponse> {
+    return this.request<AdminExportCreateResponse>('/admin/exports', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async downloadAdminExportStream(params: AdminExportCreateRequest): Promise<Blob> {
+    const qs = new URLSearchParams()
+    qs.set('report', params.report)
+    qs.set('format', params.format)
+    if (params.days != null) qs.set('days', String(params.days))
+    for (const key of ['start_date', 'end_date', 'plan', 'compiler', 'status', 'role', 'action', 'target_type'] as const) {
+      const value = params[key]
+      if (value) qs.set(key, value)
+    }
+    const response = await this.authedFetch(`${API_BASE}/admin/exports/stream?${qs.toString()}`)
+    if (!response.ok) {
+      throw new Error(`Admin export failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async downloadAdminExportToken(token: string): Promise<Blob> {
+    const response = await this.authedFetch(
+      `${API_BASE}/admin/exports/download?token=${encodeURIComponent(token)}`,
+    )
+    if (!response.ok) {
+      throw new Error(`Admin export download failed (${response.status})`)
+    }
+    return response.blob()
+  }
+
+  async getAdminExportDigest(): Promise<AdminExportDigestResponse> {
+    return this.request<AdminExportDigestResponse>('/admin/exports/digest')
+  }
+
+  async updateAdminExportDigest(body: AdminExportDigestUpdateRequest): Promise<AdminExportDigestConfig> {
+    return this.request<AdminExportDigestConfig>('/admin/exports/digest', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async dryRunAdminExportDigest(body: {
+    enabled?: boolean
+    frequency: AdminDigestFrequency
+    recipient_user_ids: string[]
+    report: Exclude<AdminExportReport, 'audit'>
+    format: AdminDigestFormat
+    days?: number
+    plan?: string
+    compiler?: string
+    status?: string
+    role?: string
+  }): Promise<AdminExportDigestDryRunResponse> {
+    return this.request<AdminExportDigestDryRunResponse>('/admin/exports/digest/dry-run', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   /** Read-only history for feature flags, kill-switches and entitlement cells. */
-  async getAdminChangeHistory(params?: {
-    key?: string
+  async getAdminChangeHistory(params?: {    key?: string
     target_id?: string
     actor_user_id?: string
     action?: string
@@ -11288,6 +12790,10 @@ class ApiClient {
     }, accountContext)
   }
 
+  async getTenantDomainHealth(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantDomainHealthResponse> {
+    return this.request<TenantDomainHealthResponse>(`/tenants/${tenantId}/domain/health`, {}, accountContext)
+  }
+
   // ── Feature 87 — One-Click Job Applications ──────────────────────────────
 
   async detectJobPlatform(jobUrl: string): Promise<DetectPlatformResponse> {
@@ -12457,6 +13963,55 @@ export interface DomainVerifyResponse {
   txt_record_name: string
   txt_record_value: string
   instructions: string
+}
+
+export type TenantDomainHealthStatus =
+  | 'not_configured'
+  | 'unverified'
+  | 'healthy'
+  | 'stale'
+  | 'unhealthy'
+
+export type TenantDomainErrorClass = 'txt_missing' | 'dns_unavailable'
+
+export interface TenantDomainHealthHistoryEntry {
+  id: string
+  domain: string
+  event_type: 'verified' | 'failed' | 'error' | 'removed'
+  error_class: TenantDomainErrorClass | null
+  checked_at: string
+}
+
+export interface TenantDomainHealthWarning {
+  code: string
+  severity: 'warning' | 'critical'
+  message: string
+  error_class?: TenantDomainErrorClass | null
+}
+
+export interface TenantDomainExpiryHealth {
+  domain_expires_at: string | null
+  certificate_expires_at: string | null
+  domain_state: 'unknown' | 'valid' | 'expiring' | 'expired'
+  certificate_state: 'unknown' | 'valid' | 'expiring' | 'expired'
+  domain_days_until_expiry: number | null
+  certificate_days_until_expiry: number | null
+}
+
+export interface TenantDomainHealthResponse {
+  tenant_id: string
+  domain: string | null
+  status: TenantDomainHealthStatus
+  verified: boolean
+  verified_at: string | null
+  last_checked_at: string | null
+  last_success_at: string | null
+  verification_age_days: number | null
+  stale_after_days: number
+  history: TenantDomainHealthHistoryEntry[]
+  warnings: TenantDomainHealthWarning[]
+  expiry: TenantDomainExpiryHealth
+  generated_at: string
 }
 
 export interface CurrentContextResponse {

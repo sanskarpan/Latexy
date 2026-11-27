@@ -35,6 +35,15 @@ from ..services.google_drive_service import (
     GoogleDriveProviderError,
     google_drive_service,
 )
+from ..services.integration_analytics_service import (
+    INTEGRATION_CONNECT_STARTED,
+    INTEGRATION_CONNECTED,
+    INTEGRATION_DISCONNECTED,
+    INTEGRATION_SYNC_FAILED,
+    INTEGRATION_SYNC_SUCCEEDED,
+    classify_integration_exception,
+    record_integration_event,
+)
 from ..utils.uuid_guard import ensure_uuid
 from .document_delivery_routes import _owned_compiled_pdf
 
@@ -201,7 +210,10 @@ def _error_redirect(reason: str) -> RedirectResponse:
     response_model=GoogleDriveOAuthStartResponse,
     dependencies=[Depends(require_feature("integration_google_drive"))],
 )
-async def google_drive_connect(user_id: str = Depends(get_current_user_required)):
+async def google_drive_connect(
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
     """Create an opaque OAuth state bound to the signed-in user."""
     if not all(
         (
@@ -217,6 +229,12 @@ async def google_drive_connect(user_id: str = Depends(get_current_user_required)
 
     state = secrets.token_urlsafe(32)
     await cache_manager.set(f"gdrive:oauth:{state}", {"user_id": user_id}, ttl=_STATE_TTL_SECONDS)
+    await record_integration_event(
+        db,
+        provider="google_drive",
+        action=INTEGRATION_CONNECT_STARTED,
+        user_id=user_id,
+    )
     params = urllib.parse.urlencode(
         {
             "client_id": settings.GOOGLE_DRIVE_CLIENT_ID,
@@ -342,6 +360,14 @@ async def google_drive_complete(
         "scopes": [GOOGLE_DRIVE_SCOPE],
     }
     user.user_metadata = metadata
+    await record_integration_event(
+        db,
+        provider="google_drive",
+        action=INTEGRATION_CONNECTED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        commit=False,
+    )
     await db.commit()
     return {"success": True, "message": "Google Drive connected"}
 
@@ -380,6 +406,8 @@ async def google_drive_disconnect(
         raise HTTPException(status_code=404, detail="User not found")
     grant = _drive_grant(user)
     encrypted_access = grant.get("access_token")
+    was_connected = isinstance(encrypted_access, str) and bool(encrypted_access)
+    grant_invalid = False
     if isinstance(encrypted_access, str) and encrypted_access:
         try:
             access_token = encryption_service.decrypt(encrypted_access)
@@ -389,12 +417,23 @@ async def google_drive_disconnect(
             # disconnect idempotent while surfacing network/provider outages.
             if exc.status_code not in (400, 401, 403):
                 raise HTTPException(status_code=503, detail="Google Drive is unavailable; please try again") from exc
+            grant_invalid = True
         except Exception as exc:
             logger.warning("Google Drive disconnect cleanup failed (%s)", type(exc).__name__)
 
     metadata = dict(user.user_metadata or {}) if isinstance(user.user_metadata, dict) else {}
     metadata.pop(_METADATA_KEY, None)
     user.user_metadata = metadata
+    if was_connected:
+        await record_integration_event(
+            db,
+            provider="google_drive",
+            action=INTEGRATION_DISCONNECTED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            disconnect_reason="grant_invalid" if grant_invalid else "user_requested",
+            commit=False,
+        )
     await db.commit()
     return {"success": True, "message": "Google Drive disconnected"}
 
@@ -422,6 +461,7 @@ async def export_resume_to_google_drive(
     _stored_access_token(user)
     ensure_uuid(resume_id, "Resume not found")
     lock_key, lock_token = await _acquire_export_lock(user_id, resume_id)
+    provider_failure_class: str | None = None
     try:
         resume, _compilation, pdf_bytes = await _owned_compiled_pdf(
             resume_id,
@@ -443,16 +483,50 @@ async def export_resume_to_google_drive(
                 ),
             )
         except GoogleDriveProviderError as exc:
+            provider_failure_class = classify_integration_exception(exc)
             raise _provider_failure(exc) from exc
         except httpx.RequestError as exc:
+            provider_failure_class = "network"
             raise HTTPException(status_code=503, detail="Google Drive is temporarily unavailable; please retry") from exc
     except GoogleDriveProviderError as exc:
+        provider_failure_class = classify_integration_exception(exc)
         raise _provider_failure(exc) from exc
     except httpx.RequestError as exc:
+        provider_failure_class = "network"
         raise HTTPException(status_code=503, detail="Google Drive is temporarily unavailable; please retry") from exc
+    except HTTPException as exc:
+        await record_integration_event(
+            db,
+            provider="google_drive",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="export",
+            error_class=provider_failure_class or classify_integration_exception(exc),
+        )
+        raise
+    except Exception as exc:
+        await record_integration_event(
+            db,
+            provider="google_drive",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="export",
+            error_class=classify_integration_exception(exc),
+        )
+        raise
     finally:
         await _release_export_lock(lock_key, lock_token)
 
+    await record_integration_event(
+        db,
+        provider="google_drive",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="export",
+    )
     return GoogleDriveExportResponse(
         success=True,
         provider="google_drive",

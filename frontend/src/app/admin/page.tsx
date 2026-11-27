@@ -8,11 +8,14 @@ import {
   type AdminUser,
   type UserRole,
   type EntitlementRole,
+  type AdminSavedView,
+  type AdminSavedViewScope,
 } from '@/lib/api-client'
 import { useAccountRole } from '@/hooks/useAccountRole'
 import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
+import AdminQualityTriage from '@/components/admin/AdminQualityTriage'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
@@ -21,19 +24,27 @@ import AdminGrowth from '@/components/admin/AdminGrowth'
 import AdminProduct from '@/components/admin/AdminProduct'
 import AdminCollaboration from '@/components/admin/AdminCollaboration'
 import AdminCareerAdoption from '@/components/admin/AdminCareerAdoption'
+import AdminIntegrations from '@/components/admin/AdminIntegrations'
 import AdminContentLibraryQuality from '@/components/admin/AdminContentLibraryQuality'
+import AdminTemplateHealth from '@/components/admin/AdminTemplateHealth'
 import AdminTemplatePerformance from '@/components/admin/AdminTemplatePerformance'
 import AdminOptimizationAcceptance from '@/components/admin/AdminOptimizationAcceptance'
 import AdminLinterRules from '@/components/admin/AdminLinterRules'
 import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribution'
 import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
+import AdminFlagExposure from '@/components/admin/AdminFlagExposure'
 import AdminAudit from '@/components/admin/AdminAudit'
+import AdminApprovals from '@/components/admin/AdminApprovals'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
+import AdminExports from '@/components/admin/AdminExports'
 import AdminGdpr from '@/components/admin/AdminGdpr'
 import AdminIncidentTimeline from '@/components/admin/AdminIncidentTimeline'
 import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
+import AdminReceiptLookup from '@/components/admin/AdminReceiptLookup'
+import AdminRetentionControls from '@/components/admin/AdminRetentionControls'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
+import AdminSavedViews, { AdminSavedViewsBar } from '@/components/admin/AdminSavedViews'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
 interface FlagDetail {
@@ -44,7 +55,22 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'email' | 'growth' | 'customers' | 'audit' | 'privacy' | 'flags' | 'matrix' | 'plans'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'approvals' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
+
+const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
+  'analytics',
+  'operations',
+  'quality',
+  'billing',
+  'subscriptions',
+  'email',
+  'growth',
+  'customers',
+])
+
+function asSavedViewScope(tab: TabId): AdminSavedViewScope | null {
+  return SAVED_VIEW_SCOPES.has(tab as AdminSavedViewScope) ? (tab as AdminSavedViewScope) : null
+}
 
 const OPERATIONAL_FLAGS = new Set(['trial_limits', 'deep_analysis_trial', 'compile_timeouts', 'task_priority', 'billing', 'upgrade_ctas'])
 
@@ -56,14 +82,18 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'quality', label: 'Quality' },
   { id: 'billing', label: 'Revenue' },
   { id: 'subscriptions', label: 'Subscriptions' },
+  { id: 'receipts', label: 'Receipts' },
   { id: 'email', label: 'Email Health' },
+  { id: 'exports', label: 'Exports' },
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'approvals', label: 'Approvals' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
+  { id: 'views', label: 'Saved Views' },
 ]
 
 const SUPPORT_TABS: Array<{ id: TabId; label: string }> = [
@@ -198,6 +228,7 @@ function FeatureFlagsTab() {
           />
         </div>
       ))}
+      <AdminFlagExposure />
     </div>
   )
 }
@@ -609,6 +640,13 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
+  // Receipt lookups deep-link into the customer's payment timeline. Read the
+  // target after mount so server and client render the same initial state.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('user')
+    if (requested) setSelectedUserId(requested)
+  }, [])
+
   // debounce the search box → resets pagination
   useEffect(() => {
     const t = setTimeout(() => {
@@ -663,18 +701,32 @@ function UsersTab({ canAdmin }: { canAdmin: boolean }) {
 
   const changeRole = async (user: AdminUser, role: UserRole) => {
     if (role === user.role) return
+    const promotingToAdmin = role === 'admin' && user.role !== 'admin'
+    let approvalId: string | undefined
+    if (promotingToAdmin) {
+      const input = window.prompt(
+        'Promoting a user to admin requires a second admin approval. Paste the approval ID from the Approvals tab:',
+      )
+      if (!input?.trim()) return
+      approvalId = input.trim()
+    }
     if (!window.confirm(`Change ${user.email} from ${user.role} to ${role}?`)) return
     setSavingId(user.id)
     try {
-      const updated = await apiClient.updateUserRole(user.id, role)
+      const updated = await apiClient.updateUserRole(user.id, role, {
+        approvalId,
+        reason: promotingToAdmin ? 'Promotion approved by a second admin' : undefined,
+      })
       setUsers((prev) => prev?.map((u) => (u.id === user.id ? updated : u)) ?? null)
       toast.success(`${updated.email} is now ${updated.role}`)
       window.dispatchEvent(new Event('latexy:account-role-updated'))
       window.dispatchEvent(new Event('latexy:entitlements-updated'))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('409') || msg.includes('last_admin')) {
+      if (msg.includes('last_admin') || msg.toLowerCase().includes('last remaining admin')) {
         toast.error('Cannot demote the last remaining admin.')
+      } else if (msg.toLowerCase().includes('approval')) {
+        toast.error(msg)
       } else {
         toast.error('Failed to update role')
       }
@@ -887,14 +939,69 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
   const canAdmin = role === 'admin'
   const tabs = canAdmin ? ADMIN_TABS : SUPPORT_TABS
   const [tab, setTab] = useState<TabId>(canAdmin ? 'matrix' : 'customers')
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30)
+  const [appliedView, setAppliedView] = useState<{
+    id: string
+    name: string
+    filters: Record<string, unknown>
+  } | null>(null)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get('tab')
+    const params = new URLSearchParams(window.location.search)
     if (requested && (canAdmin ? ADMIN_TABS : SUPPORT_TABS).some((item) => item.id === requested)) {
       setTab(requested as TabId)
     }
+    const requestedDays = Number(params.get('days'))
+    if (Number.isInteger(requestedDays) && requestedDays >= 1 && requestedDays <= 365) {
+      setAnalyticsDays(requestedDays)
+    }
+    // The saved view id is enough to rehydrate from the API. This fallback
+    // keeps range/filter URL state meaningful if the view was deleted later.
+    const filterEntries = Array.from(params.entries()).filter(([key]) => key.startsWith('filter_'))
+    if (filterEntries.length > 0) {
+      const filters = Object.fromEntries(
+        filterEntries.map(([key, value]) => [
+          key.slice('filter_'.length),
+          value.includes(',') ? value.split(',').filter(Boolean) : value,
+        ]),
+      )
+      setAppliedView({
+        id: params.get('view') ?? 'url-view',
+        name: params.get('view_name') ?? 'URL view',
+        filters,
+      })
+    }
   }, [canAdmin])
+
+  const applySavedView = useCallback((view: AdminSavedView) => {
+    setAppliedView({ id: view.id, name: view.name, filters: view.filters ?? {} })
+    setTab(view.scope)
+    if (view.range_days) setAnalyticsDays(view.range_days)
+    const params = new URLSearchParams(window.location.search)
+    params.set('tab', view.scope)
+    params.set('view', view.id)
+    params.set('view_name', view.name)
+    if (view.range_days) params.set('days', String(view.range_days))
+    else params.delete('days')
+    for (const key of Array.from(params.keys())) {
+      if (key.startsWith('filter_')) params.delete(key)
+    }
+    for (const [key, value] of Object.entries(view.filters ?? {})) {
+      params.set(`filter_${key}`, Array.isArray(value) ? value.join(',') : String(value))
+    }
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
+  }, [])
+
+  const handleAnalyticsDays = useCallback((days: number) => {
+    setAnalyticsDays(days)
+    const params = new URLSearchParams(window.location.search)
+    params.set('days', String(days))
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
+  }, [])
+
+  const savedViewScope = canAdmin ? asSavedViewScope(tab) : null
 
   useEffect(() => {
     const hash = window.location.hash
@@ -955,6 +1062,15 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         })}
       </div>
 
+      {savedViewScope && (
+        <AdminSavedViewsBar
+          key={savedViewScope}
+          scope={savedViewScope}
+          onApply={applySavedView}
+          onManage={() => setTab('views')}
+        />
+      )}
+
       <div
         role="tabpanel"
         id={`admin-panel-${tab}`}
@@ -964,26 +1080,40 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
       >
         {tab === 'analytics' && (
           <div className="space-y-6">
-            <AdminAnalytics />
+            <AdminAnalytics
+              key={appliedView?.id ?? 'default-analytics'}
+              initialDays={analyticsDays}
+              savedViewName={appliedView?.name ?? null}
+              savedViewFilters={appliedView?.filters ?? {}}
+              onDaysChange={handleAnalyticsDays}
+            />
             <AdminAtsScoreDistribution />
             <AdminDocumentComplexity />
           </div>
         )}
+        {tab === 'operations' && <AdminIncidentTimeline />}
         {tab === 'operations' && (
-          <div className="space-y-6">
-            <AdminIncidentTimeline />
+          <div className="mt-6">
             <AdminArtifactLifecycle />
+            <AdminRetentionControls />
           </div>
         )}
         {tab === 'product' && (
           <div className="space-y-6">
             <AdminCollaboration />
             <AdminCareerAdoption />
+            <AdminIntegrations />
             <AdminProduct />
           </div>
         )}
         {tab === 'replays' && <AdminReplayBrowser />}
-        {tab === 'quality' && <AdminTemplatePerformance />}
+        {tab === 'quality' && (
+          <div className="space-y-6">
+            <AdminQualityTriage />
+            <AdminTemplateHealth />
+            <AdminTemplatePerformance />
+          </div>
+        )}
         {tab === 'quality' && (
           <div className="mt-6">
             <AdminContentLibraryQuality />
@@ -1006,7 +1136,9 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminDunningRecovery />
           </div>
         )}
+        {tab === 'receipts' && <AdminReceiptLookup />}
         {tab === 'email' && <AdminEmailHealth />}
+        {tab === 'exports' && <AdminExports />}
         {tab === 'growth' && <AdminGrowth />}
         {tab === 'customers' && <UsersTab canAdmin={canAdmin} />}
         {tab === 'audit' && (
@@ -1015,10 +1147,12 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminChangeHistory />
           </div>
         )}
+        {tab === 'approvals' && <AdminApprovals />}
         {tab === 'privacy' && <AdminGdpr />}
         {tab === 'flags' && <FeatureFlagsTab />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}
+        {tab === 'views' && <AdminSavedViews onApply={applySavedView} />}
       </div>
 
       {canAdmin && (

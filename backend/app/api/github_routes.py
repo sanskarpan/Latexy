@@ -29,6 +29,15 @@ from ..services.encryption_service import encryption_service
 from ..services.entitlement_service import entitlement_service
 from ..services.external_budget_service import enforce_external_budget
 from ..services.github_sync_service import GitHubSyncConflict, github_sync_service
+from ..services.integration_analytics_service import (
+    INTEGRATION_CONNECT_STARTED,
+    INTEGRATION_CONNECTED,
+    INTEGRATION_DISCONNECTED,
+    INTEGRATION_SYNC_FAILED,
+    INTEGRATION_SYNC_SUCCEEDED,
+    classify_integration_exception,
+    record_integration_event,
+)
 from ..services.job_result_recovery import recover_terminal_job
 from ..services.resume_source_service import apply_source_change
 from ..utils.uuid_guard import ensure_uuid
@@ -140,6 +149,7 @@ async def github_connect(
     purpose: Literal["import", "sync"] = "import",
     return_to: Optional[str] = None,
     user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a purpose-scoped OAuth state for the authenticated user."""
     if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
@@ -159,6 +169,12 @@ async def github_connect(
             "return_to": safe_return_to,
         },
         ttl=600,
+    )
+    await record_integration_event(
+        db,
+        provider="github",
+        action=INTEGRATION_CONNECT_STARTED,
+        user_id=user_id,
     )
 
     params_data = {
@@ -325,6 +341,14 @@ async def github_complete(
     user.github_access_token = encrypted_token
     user.github_username = username
     user.user_metadata = metadata
+    await record_integration_event(
+        db,
+        provider="github",
+        action=INTEGRATION_CONNECTED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        commit=False,
+    )
     await db.commit()
 
     return {"success": True, "message": "GitHub account connected"}
@@ -362,6 +386,7 @@ async def github_disconnect(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    was_connected = bool(user.github_access_token)
     if user.github_access_token:
         try:
             token = encryption_service.decrypt(user.github_access_token)
@@ -392,6 +417,16 @@ async def github_disconnect(
     user.github_username = None
     user.user_metadata = metadata
     await db.execute(update(Resume).where(Resume.user_id == user_id).values(github_sync_enabled=False))
+    if was_connected:
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_DISCONNECTED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            disconnect_reason="user_requested",
+            commit=False,
+        )
     await db.commit()
     return {
         "success": True,
@@ -439,12 +474,30 @@ async def enable_github_sync(
         await github_sync_service.ensure_repo(token, user.github_username, body.repo_name)
     except httpx.HTTPStatusError as exc:
         logger.error("Failed to create GitHub repo (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="enable",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Failed to create GitHub repo: {exc.response.status_code}",
         )
     except httpx.RequestError as exc:
         logger.error("GitHub connection error (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="enable",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
 
     resume.github_sync_enabled = True
@@ -454,6 +507,15 @@ async def enable_github_sync(
         resume.resume_settings = metadata
         flag_modified(resume, "resume_settings")
     resume.github_repo_name = body.repo_name
+    await record_integration_event(
+        db,
+        provider="github",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="enable",
+        commit=False,
+    )
     await db.commit()
     await db.refresh(resume)
 
@@ -543,27 +605,72 @@ async def push_to_github(
         if not isinstance(synced_sha, str) or not synced_sha:
             raise ValueError("GitHub push response did not include the new blob SHA")
     except GitHubSyncConflict as exc:
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(
             status_code=409,
             detail="The GitHub file changed since the last sync. Pull it first, review the result, then push again.",
         ) from exc
     except httpx.HTTPStatusError as exc:
         logger.error("GitHub push failed (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(
             status_code=502,
             detail=f"GitHub push failed: {exc.response.status_code}",
         )
     except httpx.RequestError as exc:
         logger.error("GitHub connection error during push (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
     except ValueError as exc:
         logger.error("GitHub returned an invalid push response (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="push",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="GitHub returned an invalid response") from exc
 
     metadata[_GITHUB_SYNC_SHA_KEY] = synced_sha
     resume.resume_settings = metadata
     flag_modified(resume, "resume_settings")
     resume.github_last_sync_at = datetime.now(timezone.utc)
+    await record_integration_event(
+        db,
+        provider="github",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="push",
+        commit=False,
+    )
     await db.commit()
 
     return GitHubSyncResponse(
@@ -616,6 +723,15 @@ async def pull_from_github(
             path=file_path,
         )
     except httpx.HTTPStatusError as exc:
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class=classify_integration_exception(exc),
+        )
         if exc.response.status_code == 404:
             raise HTTPException(status_code=404, detail="File not found on GitHub")
         logger.error("GitHub pull failed (%s)", type(exc).__name__)
@@ -625,15 +741,51 @@ async def pull_from_github(
         )
     except httpx.RequestError as exc:
         logger.error("GitHub connection error during pull (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
     except ValueError as exc:
         logger.error("GitHub returned invalid file content (%s)", type(exc).__name__)
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class=classify_integration_exception(exc),
+        )
         raise HTTPException(status_code=502, detail="The GitHub file is not valid UTF-8 LaTeX source") from exc
 
     content = remote["content"]
     if len(content) > _MAX_SYNCED_LATEX_LENGTH:
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class="payload_too_large",
+        )
         raise HTTPException(status_code=413, detail="The GitHub LaTeX file exceeds the 1 MB document limit")
     if "\x00" in content:
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class="invalid_response",
+        )
         raise HTTPException(status_code=422, detail="The GitHub LaTeX file contains unsupported null bytes")
     # Network I/O must not hold a database lock. Re-read the owner row under
     # lock afterwards so detachment and metadata updates use current state.
@@ -644,6 +796,15 @@ async def pull_from_github(
     if resume is None:
         raise HTTPException(status_code=404, detail="Resume not found")
     if not resume.github_sync_enabled or resume.github_repo_name != repo_name:
+        await record_integration_event(
+            db,
+            provider="github",
+            action=INTEGRATION_SYNC_FAILED,
+            user_id=user_id,
+            plan=user.subscription_plan,
+            operation="pull",
+            error_class="conflict",
+        )
         raise HTTPException(status_code=409, detail="GitHub sync settings changed while pulling; please retry")
     apply_source_change(resume, content)
     metadata = dict(resume.resume_settings or {})
@@ -652,6 +813,15 @@ async def pull_from_github(
     flag_modified(resume, "resume_settings")
     resume.github_last_sync_at = datetime.now(timezone.utc)
     resume.updated_at = datetime.now(timezone.utc)
+    await record_integration_event(
+        db,
+        provider="github",
+        action=INTEGRATION_SYNC_SUCCEEDED,
+        user_id=user_id,
+        plan=user.subscription_plan,
+        operation="pull",
+        commit=False,
+    )
     await db.commit()
 
     return GitHubPullResponse(success=True, latex_content=content)

@@ -31,6 +31,7 @@ from ..middleware.auth_middleware import (
     require_admin_actor,
     require_admin_or_support,
 )
+from ..services.admin_approval_service import ApprovalError, execute_role_escalation
 from ..services.admin_audit_service import AdminActor, record_admin_audit
 from ..services.admin_user_service import mask_email, mask_name
 from ..services.entitlement_service import entitlement_service
@@ -407,6 +408,11 @@ class UserListResponse(BaseModel):
 
 class RoleUpdateRequest(BaseModel):
     role: str
+    # Admin promotion is a sensitive escalation: it requires a second-admin
+    # approval id bound to the target user and current role. Non-escalation
+    # changes keep the existing immediate workflow.
+    reason: Optional[Reason] = None
+    approval_id: Optional[str] = None
 
 
 def _user_summary(user: User) -> UserSummary:
@@ -683,20 +689,62 @@ async def update_user_role(
             )
 
     previous_role = user.role
-    user.role = new_role
-    await record_admin_audit(
-        db,
-        actor=actor,
-        action="user.role.change",
-        target_type="user",
-        target_id=user_id,
-        reason="Role change from the admin control plane",
-        before={"role": previous_role},
-        after={"role": new_role},
-        request=request,
-    )
-    await db.commit()
-    await db.refresh(user)
+
+    # Maker-checker: promoting a non-admin to admin executes through an approved
+    # request bound to (target, previous role, new role). The approval is locked
+    # and consumed in this transaction, so replay or a stale role fails safely.
+    if new_role == "admin" and previous_role != "admin":
+        if not body.approval_id:
+            raise HTTPException(
+                status_code=409,
+                detail=error_body(
+                    "approval_required",
+                    "Promoting a user to admin requires a second admin's approval.",
+                    None,
+                    {"request_type": "role_escalation", "target_user_id": user_id},
+                ),
+            )
+        try:
+            _approval, user = await execute_role_escalation(
+                db,
+                approval_id=body.approval_id,
+                target_user_id=user_id,
+                previous_role=previous_role,
+                new_role=new_role,
+                actor=actor,
+                note=body.reason,
+                request=request,
+            )
+        except ApprovalError as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=error_body(exc.code, str(exc), None, exc.details),
+            ) from None
+    else:
+        if body.approval_id:
+            raise HTTPException(
+                status_code=422,
+                detail=error_body(
+                    "approval_not_applicable",
+                    "approval_id is only used when promoting a user to admin.",
+                    None,
+                ),
+            )
+        user.role = new_role
+        await record_admin_audit(
+            db,
+            actor=actor,
+            action="user.role.change",
+            target_type="user",
+            target_id=user_id,
+            reason=body.reason or "Role change from the admin control plane",
+            before={"role": previous_role},
+            after={"role": new_role},
+            request=request,
+        )
+        await db.commit()
+        await db.refresh(user)
     logger.info(
         "admin_user_role_updated",
         extra={
