@@ -469,3 +469,69 @@ async def test_late_failed_attempt_cannot_overwrite_processed_inbox_status(
     assert await db_session.scalar(text(
         "SELECT status FROM billing_webhook_events WHERE event_id=:id"
     ), {"id": event_id}) == "processed"
+
+@pytest.mark.asyncio
+async def test_missing_checkout_subscription_can_be_backfilled_then_replayed(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2350/#2351: a paid subscription with no local checkout must be
+    reconcilable by creating the local shell and replaying the provider event.
+    """
+    monkeypatch.setattr(settings, "DODO_TEST_PRODUCT_BYOK_MONTHLY", "p_test_byok")
+    user_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+            "subscription_status, trial_used) VALUES (:id, :email, 'Orphan replay test', "
+            "true, 'free', 'inactive', false)"
+        ),
+        {"id": user_id, "email": f"orphan_{user_id.replace('-', '')}@example.com"},
+    )
+    await db_session.commit()
+
+    provider_subscription_id = f"sub_test_{uuid.uuid4().hex}"
+    data = {
+        "payload_type": "Subscription",
+        "subscription_id": provider_subscription_id,
+        "status": "active",
+        "product_id": "p_test_byok",
+        "next_billing_date": "2026-12-20T16:58:00+00:00",
+    }
+    envelope = {"timestamp": datetime.now(timezone.utc).isoformat()}
+    service = PaymentService()
+
+    missing = await service._handle_subscription_event(
+        db_session, "subscription.active", data, envelope,
+    )
+    assert missing["success"] is False
+    assert "did not match a local checkout intent" in missing["error"]
+
+    local_subscription_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO subscriptions (id, user_id, provider, provider_subscription_id, "
+            "provider_product_id, quoted_amount, quoted_tax_inclusive, discount_percent, "
+            "plan_id, status, current_period_start) VALUES (:id, :user_id, 'dodo', "
+            ":provider_subscription_id, 'p_test_byok', 19900, true, 0, 'byok', "
+            "'checkout_pending', NOW())"
+        ),
+        {
+            "id": local_subscription_id,
+            "user_id": user_id,
+            "provider_subscription_id": provider_subscription_id,
+        },
+    )
+    await db_session.commit()
+
+    replayed = await service._handle_subscription_event(
+        db_session, "subscription.active", data, envelope,
+    )
+    assert replayed == {"success": True}
+    row = (
+        await db_session.execute(
+            text("SELECT status, current_period_end FROM subscriptions WHERE id=:id"),
+            {"id": local_subscription_id},
+        )
+    ).one()
+    assert row.status == "active"
+    assert row.current_period_end is not None
