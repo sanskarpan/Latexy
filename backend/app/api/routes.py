@@ -252,8 +252,8 @@ from .admin_team_seat_routes import router as admin_team_seat_router
 from .admin_template_health_routes import router as admin_template_health_router
 from .admin_template_performance_routes import router as admin_template_performance_router
 from .admin_trial_health_routes import router as admin_trial_health_router
-from .admin_view_as_routes import router as admin_view_as_router
 from .admin_user_notes_routes import router as admin_user_notes_router
+from .admin_view_as_routes import router as admin_view_as_router
 from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
