@@ -116,6 +116,7 @@ Full notes and screenshots: [`browser-review-2026-11-27.md`](browser-review-2026
 | FE-15 | [#2343](https://github.com/sanskarpan/Latexy/issues/2343) |
 | FE-16 | [#2344](https://github.com/sanskarpan/Latexy/issues/2344) |
 | FE-17 | [#2345](https://github.com/sanskarpan/Latexy/issues/2345) |
+| FE-18 | [#2347](https://github.com/sanskarpan/Latexy/issues/2347) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
 
 ## Visual disposition by page
@@ -168,13 +169,15 @@ Full notes and screenshots: [`browser-review-2026-11-27.md`](browser-review-2026
 | `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter` | Clean empty recruiter dashboard. |
 
 
-## Additional interaction results (template use, PDF import, share/review)
+## Additional interaction results (template use, PDF import, share/review, ATS)
 
 - **Templates:** a fresh authenticated free user initially saw **0 TEMPLATES** for ~10s; after the API calls completed it showed 61. Clicking **Use Template** left the card at **"CREATING…"** for >7s. This is FE-15.
 - **PDF import:** `/workspace/new` → Import File accepted the PDF and started "Preserving your PDF and extracting its text…"; after 8s the UI was still in the extraction state, but the import does complete: with a non-empty reviewed field and a layout selected, "Create editable resume" succeeded in 12.8s and reached `/workspace/{id}/edit`; the upload POST took ~6s and adapt ~16s. This is a PASS (FE-15 covers the perceived-wait issue).
 - **Share/review:** a compiled/accepted resume produced a valid share link, but the public page could not render the PDF because the R2 presigned URL has no `Access-Control-Allow-Origin`; console shows a CORS block and the review surface says "The review document could not be loaded." This is FE-16 / #2344.
+- **ATS simulator:** PASS with an accepted artifact: select a check profile (Greenhouse), Run checks enabled, `POST /ats/simulate` 200 in 3.4s, **76/100**, 2 issues, 4 recommendations. The optimize page still took 40.1s to appear (FE-01). See `journeys/ats-simulator.md`.
+- **Team invite:** PASS with a P2 state defect: owner invites a member by email; the member can sign in and sees the workspace with **2/5 members**, but the owner's page still shows **1/5** until reload. The submit button is icon-only with no accessible name. This is FE-18 / #2347. See `journeys/team-invite.md`.
 - **Builder:** create/fill/preview/PDF works; creation can take ~30s and preview ~20–60s (FE-14/FE-01).
 - **Cover letter:** generation stayed at "Generating…" for 45s with no logs (FE-13).
 - **Tracker:** a fresh account saved an application (`POST /tracker/applications` 201) and the board updated.
 
-Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `pdf-import-completion.json`, `pdf-import-created-final.png`, `share-review-journey.json`, `share-review-45s.png`, `tracker-pro-result.json`.
+Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `pdf-import-completion.json`, `pdf-import-created-final.png`, `share-review-journey.json`, `share-review-45s.png`, `ats-simulator-journey.json`, `ats-simulator-result.png`, `team-invite-journey.json`, `team-workspace-owner.png`, `team-workspace-member-loaded.png`, `tracker-pro-result.json`.

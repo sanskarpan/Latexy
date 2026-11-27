@@ -236,3 +236,17 @@ Severity follows the audit scale. Every finding is from live production `https:/
 **Proposed fix:** dedupe plan/current requests; cache the plan catalog; layout-stable skeletons; 8s retryable error; warm the catalog in the dashboard layout.
 
 **Acceptance:** at most one plans + one current request per mount; skeleton within 300ms and populated within 3s warm / 6s cold; dashboard cards never empty; settings skeleton or retry. Full issue: [#2345](https://github.com/sanskarpan/Latexy/issues/2345).
+
+## FE-18 - P2 - Workspace invite succeeds but owner list/count stay stale until reload
+
+**Surface:** `/workspaces/{workspaceId}` → "Invite by email".
+
+**Observed:** owner at 1/5 members enters a valid member email and presses Enter. The invite succeeds: the member signs in, sees "Interaction9 Workspace", and the member's list reports **2/5 members**. The owner's page still shows **1/5** and no member row after 4s; no success toast is visible by then. A manual reload shows 2/5 and the new Editor row. The submit control is an icon-only Plus button with no accessible name; the email input has only a placeholder.
+
+**Evidence:** `journeys/team-invite.md`, `team-invite-journey.json`, `team-workspace-owner.png`, `team-workspace-owner-loaded.png`, `team-workspace-member-loaded.png`.
+
+**Impact:** the owner cannot tell whether the invite worked and may resend (409) or assume the teammate was not added; screen-reader users cannot identify the invite button.
+
+**Proposed fix:** append the invite response to state (or refetch the workspace), show an inline success state, add `aria-label`/label, and handle 409 as "Already a member" with a refresh.
+
+**Acceptance:** new member and count appear within 1s without reload; success/duplicate/error states are visible; the button has an accessible name and the input a label; the invited member can open the workspace. Full issue: [#2347](https://github.com/sanskarpan/Latexy/issues/2347).
