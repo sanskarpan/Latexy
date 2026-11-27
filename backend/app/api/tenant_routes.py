@@ -44,6 +44,7 @@ from ..middleware.tenant_middleware import (
     resolve_tenant_origin_hostname,
 )
 from ..services.email_service import email_service
+from ..services.tenant_cohort_progress_service import build_cohort_progress
 from ..services.tenant_domain_health_service import (
     EVENT_ERROR,
     EVENT_FAILED,
@@ -314,12 +315,62 @@ class CohortCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
 
 
+class CohortProgressSuppression(BaseModel):
+    suppressed: bool
+    reason: Optional[str]
+    minimum_cohort_size: int
+    minimum_submissions: int
+    cohort_size: int
+    submissions: int
+    note: str
+
+
+class CohortSubmissionFunnel(BaseModel):
+    submitted: int
+    # Legacy workspace_resumes milestones written only by the candidate.
+    candidate_opened: int
+    candidate_downloaded: int
+    reviewed: int
+
+
+class CohortProgressSummary(BaseModel):
+    cohort_id: str
+    generated_at: datetime
+    suppressed: bool
+    suppression: CohortProgressSuppression
+    submissions: int
+    reviewed: Optional[int]
+    unreviewed: Optional[int]
+    reviewer_count: Optional[int]
+    reviewer_actions: Optional[int]
+    reviewer_coverage: Optional[float]
+    median_time_to_review_hours: Optional[float]
+    stale_submissions: Optional[int]
+    stale_after_days: int
+    funnel: Optional[CohortSubmissionFunnel]
+
+
 class CohortResponse(BaseModel):
     id: str
     name: str
     member_count: int
     resume_count: int
     created_at: datetime
+    progress: Optional[CohortProgressSummary] = None
+
+
+class CohortEngagementTrendPoint(BaseModel):
+    date: str
+    submissions: int
+    reviewed: int
+    reviewer_actions: int
+
+
+class CohortEngagementResponse(BaseModel):
+    cohort_id: str
+    generated_at: datetime
+    summary: CohortProgressSummary
+    trends: Optional[dict[str, List[CohortEngagementTrendPoint]]] = None
 
 
 class CohortSubmissionResponse(BaseModel):
@@ -540,12 +591,14 @@ async def create_cohort(
         )
     await db.commit()
     await db.refresh(cohort)
+    progress = await build_cohort_progress(db, tenant.id, [cohort.id])
     return CohortResponse(
         id=cohort.id,
         name=cohort.name,
         member_count=len(admin_ids),
         resume_count=0,
         created_at=cohort.created_at,
+        progress=progress[cohort.id]["summary"],
     )
 
 
@@ -576,6 +629,7 @@ async def list_cohorts(
     )
     member_counts = dict(member_rows.all())
     resume_counts = dict(resume_rows.all())
+    progress_by_cohort = await build_cohort_progress(db, tenant_id, ids)
     return [
         CohortResponse(
             id=cohort.id,
@@ -583,9 +637,48 @@ async def list_cohorts(
             member_count=int(member_counts.get(cohort.id, 0)),
             resume_count=int(resume_counts.get(cohort.id, 0)),
             created_at=cohort.created_at,
+            progress=progress_by_cohort.get(cohort.id, {}).get("summary"),
         )
         for cohort in cohorts
     ]
+
+
+@router.get(
+    "/{tenant_id}/cohorts/{cohort_id}/engagement",
+    response_model=CohortEngagementResponse,
+)
+async def get_cohort_engagement(
+    tenant_id: str,
+    cohort_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> CohortEngagementResponse:
+    """Show aggregate reviewer engagement and daily trends for one cohort.
+
+    Only the tenant owner or an admin member may read this.  The payload
+    contains counts, a rate and a median duration; it never contains reviewer
+    identities, comment text, note text, student emails or resume titles.
+    """
+    ensure_uuid(cohort_id, "Cohort not found")
+    await _require_tenant_owner_or_admin(tenant_id, user_id, db)
+    cohort_result = await db.execute(
+        select(Workspace).where(
+            Workspace.id == cohort_id, Workspace.tenant_id == tenant_id
+        )
+    )
+    if not cohort_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Cohort not found")
+    progress = await build_cohort_progress(
+        db, tenant_id, [cohort_id], include_trends=True
+    )
+    entry = progress[cohort_id]
+    summary = entry["summary"]
+    return CohortEngagementResponse(
+        cohort_id=cohort_id,
+        generated_at=summary["generated_at"],
+        summary=summary,
+        trends=entry["trends"],
+    )
 
 
 @router.get(

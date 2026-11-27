@@ -421,7 +421,7 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "tenant_routes": frozenset({
         "current_context", "resolve_tenant_host",
         "list_my_tenants", "list_cohorts",
-        "list_cohort_submissions", "list_members",
+        "list_cohort_submissions", "get_cohort_engagement", "list_members",
         "remove_member", "leave_tenant", "tenant_stats",
         "get_domain_health",
     }),

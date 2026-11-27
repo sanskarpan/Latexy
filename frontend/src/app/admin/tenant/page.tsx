@@ -20,6 +20,7 @@ import {
   type DomainVerifyResponse,
   type MemberResponse,
   type TenantCohort,
+  type TenantCohortEngagement,
   type TenantDomainHealthHistoryEntry,
   type TenantDomainHealthResponse,
   type TenantDomainHealthStatus,
@@ -29,6 +30,7 @@ import {
 } from '@/lib/api-client'
 import { applyTenantTheme } from '@/lib/tenant-theme'
 import TenantOverviewAnalytics from '@/components/admin/TenantOverviewAnalytics'
+import TenantCohortEngagementDetail, { TenantCohortProgressSummary } from '@/components/admin/TenantCohortProgress'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import SessionLoadError from '@/components/SessionLoadError'
 import TenantBillingPanel from '@/components/admin/TenantBillingPanel'
@@ -154,6 +156,9 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
   const [stats, setStats] = useState<TenantStats | null>(null)
   const [cohorts, setCohorts] = useState<TenantCohort[]>([])
   const [cohortSubmissions, setCohortSubmissions] = useState<Record<string, CohortSubmission[]>>({})
+  const [cohortEngagement, setCohortEngagement] = useState<Record<string, TenantCohortEngagement>>({})
+  const [cohortEngagementLoading, setCohortEngagementLoading] = useState<Record<string, boolean>>({})
+  const [cohortEngagementErrors, setCohortEngagementErrors] = useState<Record<string, string>>({})
   const [newCohortName, setNewCohortName] = useState('')
   const [creatingCohort, setCreatingCohort] = useState(false)
   const [inviteCohortId, setInviteCohortId] = useState('')
@@ -207,6 +212,9 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
     setStats(null)
     setCohorts([])
     setCohortSubmissions({})
+    setCohortEngagement({})
+    setCohortEngagementLoading({})
+    setCohortEngagementErrors({})
     setMembersLoading(true)
     setStatsLoading(true)
     setMembersError(null)
@@ -441,6 +449,35 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
     } catch (error) {
       if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
       toast.error(error instanceof Error ? error.message : 'Cohort submissions failed to load')
+    }
+  }
+
+  const loadCohortEngagement = async (cohortId: string) => {
+    if (!canActForOwner() || !isCurrentSelection() || !selected) return
+    const requestId = detailRequestRef.current
+    setCohortEngagementLoading((current) => ({ ...current, [cohortId]: true }))
+    setCohortEngagementErrors((current) => {
+      const next = { ...current }
+      delete next[cohortId]
+      return next
+    })
+    try {
+      const engagement = await apiClient.getTenantCohortEngagement(
+        selected.id,
+        cohortId,
+        requestContext(() => canActForOwner() && isCurrentSelection()),
+      )
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
+      setCohortEngagement((current) => ({ ...current, [cohortId]: engagement }))
+    } catch (error) {
+      if (!isCurrentOwner() || requestId !== detailRequestRef.current) return
+      const message = error instanceof Error ? error.message : 'Cohort engagement failed to load'
+      setCohortEngagementErrors((current) => ({ ...current, [cohortId]: message }))
+      toast.error(message)
+    } finally {
+      if (isCurrentOwner() && requestId === detailRequestRef.current) {
+        setCohortEngagementLoading((current) => ({ ...current, [cohortId]: false }))
+      }
     }
   }
 
@@ -888,12 +925,21 @@ function TenantAdminContent({ ownerId, ownerGeneration, ownerScopeRef, admission
                         <div>
                           <p className="text-sm font-medium text-fg">{cohort.name}</p>
                           <p className="text-xs text-fg-3">{cohort.member_count} students/admins · {cohort.resume_count} submissions</p>
+                          <TenantCohortProgressSummary progress={cohort.progress} />
                         </div>
                         <div className="flex gap-3 text-xs">
+                          <button type="button" onClick={() => void loadCohortEngagement(cohort.id)} className="text-accent-strong underline">Reviewer engagement</button>
                           <button type="button" onClick={() => void loadCohortSubmissions(cohort.id)} className="text-accent-strong underline">Refresh milestones</button>
                           <Link href={`/workspaces/${cohort.id}/recruiter`} className="text-accent-strong underline">Review & comment</Link>
                         </div>
                       </div>
+                      {(cohortEngagement[cohort.id] || cohortEngagementLoading[cohort.id] || cohortEngagementErrors[cohort.id]) && (
+                        <TenantCohortEngagementDetail
+                          engagement={cohortEngagement[cohort.id]}
+                          loading={cohortEngagementLoading[cohort.id]}
+                          error={cohortEngagementErrors[cohort.id]}
+                        />
+                      )}
                       {cohortSubmissions[cohort.id] && (
                         <div className="mt-3 overflow-x-auto">
                           <table className="w-full text-left text-xs">

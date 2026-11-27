@@ -12761,6 +12761,12 @@ class ApiClient {
     )
   }
 
+  async getTenantCohortEngagement(tenantId: string, cohortId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantCohortEngagement> {
+    return this.request<TenantCohortEngagement>(
+      `/tenants/${tenantId}/cohorts/${cohortId}/engagement`, {}, accountContext,
+    )
+  }
+
   async getTenantStats(tenantId: string, accountContext?: AccountPreferenceRequestContext): Promise<TenantStats> {
     return this.request<TenantStats>(`/tenants/${tenantId}/stats`, {}, accountContext)
   }
@@ -13940,6 +13946,55 @@ export interface TenantCohort {
   member_count: number
   resume_count: number
   created_at: string
+  progress?: TenantCohortProgress | null
+}
+
+export interface TenantCohortProgressSuppression {
+  suppressed: boolean
+  reason: string | null
+  minimum_cohort_size: number
+  minimum_submissions: number
+  cohort_size: number
+  submissions: number
+  note: string
+}
+
+export interface TenantCohortFunnel {
+  submitted: number
+  candidate_opened: number
+  candidate_downloaded: number
+  reviewed: number
+}
+
+export interface TenantCohortProgress {
+  cohort_id: string
+  generated_at: string
+  suppressed: boolean
+  suppression: TenantCohortProgressSuppression
+  submissions: number
+  reviewed: number | null
+  unreviewed: number | null
+  reviewer_count: number | null
+  reviewer_actions: number | null
+  reviewer_coverage: number | null
+  median_time_to_review_hours: number | null
+  stale_submissions: number | null
+  stale_after_days: number
+  funnel: TenantCohortFunnel | null
+}
+
+export interface CohortEngagementTrendPoint {
+  date: string
+  submissions: number
+  reviewed: number
+  reviewer_actions: number
+}
+
+export interface TenantCohortEngagement {
+  cohort_id: string
+  generated_at: string
+  summary: TenantCohortProgress
+  trends: Record<string, CohortEngagementTrendPoint[]> | null
 }
 
 export interface CohortSubmission {
