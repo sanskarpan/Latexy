@@ -41,6 +41,18 @@ This pass used the T3 Code in-app browser (same Chromium tabs the person sees), 
 
 Screenshots: `browser-review/` (workspace/new, templates-0, billing-loading, settings-loading, admin-top, pricing-anon, optimize-blank, dashboard-loading, dashboard-loaded). Logged-in captures are cropped 65px from the top to remove the account chip; pricing is anonymous.
 
+## Additional pages (same pass)
+
+- **Public/marketing:** `/`, `/platform`, `/faq`, `/resources`, `/updates`, `/try` - 1 H1 each, no horizontal overflow, no console errors. The consent panel is present on every first visit and sits over the lower content (FE-03).
+- **Auth:** `/login` (2 unlabeled inputs), `/signup` (4), `/forgot-password` (1), `/reset-password` (0), `/verify-email` (0, shows the expected "Verification failed" without a token), `/two-factor` (0). The consent panel covers the lower sign-in options (FE-03/FE-07).
+- **Legal:** `/accessibility` (1 H1, 1,788px), `/privacy` (1 H1, 5,281px), `/terms` (1 H1, 6,648px) - clean, no overflow.
+- **Admin/tenant:** blank shell for ~3s, then "Tenant Management" + "No tenants yet" at ~10s with no loading indicator; one 404 resource in the console (handled as an empty state). Add to the #2345 loading-shell class; the 404 is logged for follow-up.
+- **Tenant invite:** `/tenant-invite` without a token shows a clear "Invalid invitation / missing token" state. Good.
+- **Developer/BYOK:** `/developer` (1 H1, 1,325 chars) and `/byok` (1 H1) load cleanly, no unlabeled controls.
+- **Legacy/fixture routes:** `/workspace/{id}/batch-tailor` shows the "Checking feature availability..." shell (same class as FE-01); `/workspace/builder/{id}` shows "Checking guided builder compatibility..." for a non-builder resume (FE-02). Both are covered by the existing reports.
+
+Total: **38 of 44 routes** exercised in the in-app browser in this pass (plus the 44/44 Playwright sweep). The editor was deliberately not opened on the live account because auto-compile would create a real job; team/recruiter/portfolio routes need live fixtures. Their evidence remains in `pages/` from the controlled sweep.
+
 ## Verdict on this pass
 
 The page shells are visually strong and consistent; the problems are **time-to-content and missing loading states**, not layout collapse. The live browser confirmed the existing P1/P2 findings and added one revenue-page performance/polish issue: billing refetches plans three times and shows bare loading text for ~12s, while the dashboard's KPI cards render as empty boxes first.
