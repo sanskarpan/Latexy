@@ -1,0 +1,99 @@
+{
+  "route": "/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+  "role": "free",
+  "slug": "workspace-builder",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 ()"
+  ],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [
+    {
+      "status": 404,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/70e3fa53-0f92-4b64-8a0d-8ce256639f32/builder/v1",
+      "type": "fetch"
+    }
+  ],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+    "h1": [
+      "Builder resume could not be loaded"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Builder resume could not be loaded"
+      }
+    ],
+    "bodyTextLength": 742,
+    "links": 9,
+    "buttons": 9,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 702,
+      "load": 705,
+      "ttfb": 77,
+      "transfer": 8591
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 207
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+    "h1": [
+      "Builder resume could not be loaded"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Builder resume could not be loaded"
+      }
+    ],
+    "bodyTextLength": 694,
+    "links": 9,
+    "buttons": 9,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 453,
+      "load": 817,
+      "ttfb": 88,
+      "transfer": 8545
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 207
+  }
+}

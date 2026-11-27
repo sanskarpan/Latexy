@@ -1,0 +1,40 @@
+{
+  "steps": [
+    {
+      "step": "builder-filled.png",
+      "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e",
+      "title": "Latexy | Build a résumé for your next opportunity"
+    },
+    {
+      "step": "builder-preview.png",
+      "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e",
+      "title": "Latexy | Build a résumé for your next opportunity"
+    },
+    {
+      "step": "optimize-builder-resume.png",
+      "url": "https://latexy.xyz/workspace/e4672413-b158-447e-86ed-d0d31c3d912e/optimize",
+      "title": "Latexy | Build a résumé for your next opportunity"
+    },
+    {
+      "step": "cover-letter-builder-resume.png",
+      "url": "https://latexy.xyz/workspace/e4672413-b158-447e-86ed-d0d31c3d912e/cover-letter",
+      "title": "Latexy | Build a résumé for your next opportunity"
+    },
+    {
+      "step": "career-builder-resume.png",
+      "url": "https://latexy.xyz/workspace/e4672413-b158-447e-86ed-d0d31c3d912e/career",
+      "title": "Latexy | Build a résumé for your next opportunity"
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "httpErrors": [],
+  "preview": {
+    "text": "ward\n\nLanguages\n\nState the language and actual proficiency rather than broad claims.\n\nAdd language\n\nInterests\n\nKeep this optional and only use it when it sharpens memorability or fit.\n\nAdd interest\n\nLIVE PREVIEW\n\nYour content as you edit. Choose Preview PDF to check the final layout before downloading.\n\n35% FILLED\n\nTEMPLATE\n\nats\n\nESTIMATED LENGTH\n\n1 page\n\nSECTIONS INCLUDED\n\n1\n\nSUMMARY\nAudit Candidate\n\nProduct Engineer\n\naudit@example.test • +91 90000 00000 • Bengaluru, India • linkedin.com/in/audit • github.com/audit • audit.example\n\nSUMMARY\n\nProduct engineer with experience shipping fast, accessible web applications and distributed systems. Strong focus on measurable customer impact.\n\nElement history\n\nSave immutable snapshots of a bullet or other builder element. Restore creates a new snapshot; it never erases history.\n\nAdd an experience or project bullet to start tracking versions.\n\nBuilder Notes\n\nSection order and visibility update both the preview and the generated LaTeX.\n\nChanging the template keeps your content.\n\nEditing the code in the advanced editor pauses guided editing. You can return here and choose whether to replace those code changes.\n\nGuided editing active · ATS-Safe",
+    "iframes": 0,
+    "imgs": 0,
+    "pdfLinks": []
+  },
+  "optimizeText": "Skip to content\n\nOPTIMIZATION\n\nTargeted Optimization\n\nOptimize \"Audit UI Journey 1795793570144\" — add a job description to tailor it to a specific role, or leave blank for general improvements.\n\nVariant\nBack to Editor\nCover Letter\nPRO PIPELINE\nOPTIMIZATION STYLE\noptional\n\nChoose a persona to bias the AI toward a specific context.\n\n🚀\n\nStartup / Scale-up\n\nLean, impact-driven language — metrics, growth, and ownership.\n\n🏢\n\nEnterprise / Corporate\n\nFormal, structured — collaboration, process, and scale.\n\n🎓\n\nAcademic / Research\n\nPublications, grants, teaching, and scholarly contributions.\n\n🔄\n\nCareer Change / Pivot\n\nSurfaces transferable skills and bridges to the new field.\n\n💼\n\nExecutive / C-Suite\n\nP&L, vision, and board-level leadership impact.\n\nJOB DESCRIPTION\noptional\nImport\nFine-tune the AI (optional)\nProcessing...\nPIPELINE STATUS\nd504bbad\n\nInitializing\n\nConnecting to workers...\n\nLIVE LOGS\nNo log output yet\nVERSION HISTORY\nShow\n\nLATEX SOURCE\n\nAuto\nLuaLaTeX\nRestore Original\nLaTeX Presets\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n\\documentclass[11pt,letterpaper]\n{article}\n\\usepackage[margin=0.65in]{geometry}\n\\usepackage[T1]{fontenc}\n\\usepackage[utf8]{inputenc}\n\\usepackage{enumitem}\n\\us",
+  "coverLetterText": "Skip to content\n\nCOVER LETTER\n\nAI Cover Letter Generator\n\nGenerate a tailored cover letter for \"Audit UI Journey 1795793570144\" — matching your resume's style.\n\nBack to Editor\nCOVER LETTER\nJOB DESCRIPTION\nrequired\n\n0 chars\n\nDETAILS (OPTIONAL)\nTONE\nFormal\nConversational\nEnthusiastic\nLENGTH\n3 Paragraphs\n4 Paragraphs\nDetailed\nGenerate Cover Letter\nSIGNATURE\n\nType, draw, or upload a signature. Review local conventions before using one.\n\nType\nDraw\nUpload\nPrinted name\nAdd signature\nLIVE LOGS\nNo log output yet\n\nCOVER LETTER LATEX\n\nAuto\nCompile PDF\nLaTeX Presets\n1\n\nEMPTY DOCUMENT\n\nContent will appear here once generated.\n\nLATEX EDITOR\nEditor keybindings\nStandard\nVim\nEmacs\nSTANDARD\n0 CHARS\n⌘↵ COMPILE · ⌘⇧H PRESETS\n\nOUTPUT PREVIEW\n\nYour PDF will appear here\n\nCompile to render a live preview"
+}

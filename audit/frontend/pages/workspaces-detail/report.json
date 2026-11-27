@@ -1,0 +1,104 @@
+{
+  "route": "/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+  "role": "team",
+  "slug": "workspaces-detail",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/pricing?_rsc=Pt2lMmYTnVf76szx",
+      "err": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://latexy.xyz/try?_rsc=Pt2lMmYTnVf76szx",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+    "h1": [],
+    "headings": [
+      {
+        "tag": "H2",
+        "text": "Members"
+      },
+      {
+        "tag": "H2",
+        "text": "Shared Resumes"
+      }
+    ],
+    "bodyTextLength": 837,
+    "links": 9,
+    "buttons": 11,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 15,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 1,
+    "inputs": 3,
+    "unlabelledInputs": 1,
+    "nav": {
+      "dcl": 579,
+      "load": 579,
+      "ttfb": 76,
+      "transfer": 8336
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 263
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+    "h1": [],
+    "headings": [
+      {
+        "tag": "H2",
+        "text": "Members"
+      },
+      {
+        "tag": "H2",
+        "text": "Shared Resumes"
+      }
+    ],
+    "bodyTextLength": 789,
+    "links": 9,
+    "buttons": 11,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 15,
+    "horizontalOverflow": false,
+    "documentWidth": 401,
+    "viewportWidth": 401,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 1,
+    "inputs": 3,
+    "unlabelledInputs": 1,
+    "nav": {
+      "dcl": 660,
+      "load": 947,
+      "ttfb": 81,
+      "transfer": 8344
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 253
+  }
+}

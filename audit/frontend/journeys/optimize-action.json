@@ -1,0 +1,41 @@
+{
+  "elapsed": 60407,
+  "state": {
+    "text": "ION\noptional\nImport\nFine-tune the AI (optional)\nOptimize for this Role\nLIVE LOGS\nNo log output yet\nVERSION HISTORY\nShow\n\nLATEX SOURCE\n\nAuto\nLuaLaTeX\nRestore Original\nLaTeX Presets\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n\\documentclass[11pt,letterpaper]\n{article}\n\\usepackage[margin=0.65in]{geometry}\n\\usepackage[T1]{fontenc}\n\\usepackage[utf8]{inputenc}\n\\usepackage{enumitem}\n\\usepackage[hidelinks,\nbookmarks=false]{hyperref}\n\\usepackage{xcolor}\n\\setlist[itemize]{leftmargin=1.2em, \nitemsep=0.15em, topsep=0.15em}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0pt}\n\\begin{document}\n{\\Large\\textbf{Audit Candidate}}\\\\\n[2pt]\nProduct Engineer\\\\[2pt]\naudit@example.test \\quad | \\quad +91 \n90000 00000 \\quad | \\quad Bengaluru, \nIndia \\quad | \\quad linkedin.com/in/\naudit \\quad | \\quad github.com/audit \n\\quad | \\quad audit.example\\\\[4pt]\n\\section*{Summary}\\vspace{-0.4em}\n\\hrule\\vspace{0.25em}\nProduct engineer with experience \nshipping fast, accessible web \napplications and distributed \nsystems. Strong focus on measurable \nLATEX EDITOR\nEditor keybindings\nStandard\nVim\nEmacs\nSTANDARD\n~1 PAGE\nATS 46\n814 CHARS\n⌘↵ COMPILE · ⌘⇧H PRESETS\n\nOUTPUT PREVIEW\n\nYour PDF will appear here\n\nCompile to render a live preview\n\nATS SIMULATOR\nKEYWORDS\nPUBLICATIONS\n\nCompare Latexy's heuristic checks grouped by common platform constraints. These are not the vendors' parsers and do not predict screening decisions. Inspect the extracted plain text and address concrete document issues.\n\nSELECT CHECK PROFILE\nGreenhouse\nGood\nLever\nGood\nAshby\nGood\nWorkday\nMedium\nSmartRecruiters\nMedium\nTaleo (Oracle)\nPoor\niCIMS\nMedium\nRun checks",
+    "buttons": [
+      "LuaLaTeX",
+      "Restore Original",
+      "LaTeX Presets",
+      "ATS 46",
+      "ATS SIMULATOR",
+      "KEYWORDS",
+      "PUBLICATIONS",
+      "Greenhouse\nGood",
+      "Lever\nGood",
+      "Ashby\nGood",
+      "Workday\nMedium",
+      "SmartRecruiters\nMedium",
+      "Taleo (Oracle)\nPoor",
+      "iCIMS\nMedium",
+      "Run checks"
+    ]
+  },
+  "log": {
+    "console": [
+      "Failed to load resource: the server responded with a status of 402 ()"
+    ],
+    "http": [
+      {
+        "status": 402,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/submit"
+      }
+    ],
+    "jobs": [
+      {
+        "status": 402,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/submit"
+      }
+    ],
+    "noButton": true
+  }
+}

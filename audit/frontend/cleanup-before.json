@@ -1,0 +1,41 @@
+{
+  "users": [
+    {
+      "id": "1c862f06-c771-42d3-92ae-694f56fb7223",
+      "email": "audit.fe.1795791587@example.test",
+      "subscription_plan": "free",
+      "role": "user"
+    },
+    {
+      "id": "6b3d0f74-82c8-4ec7-8676-94851e780a2b",
+      "email": "audit.fe.admin.20261127150805@example.test",
+      "subscription_plan": "free",
+      "role": "admin"
+    },
+    {
+      "id": "1f8b7f65-1bbd-4074-af52-737a57593519",
+      "email": "audit.fe.free.20261127150805@example.test",
+      "subscription_plan": "free",
+      "role": "user"
+    },
+    {
+      "id": "193cd496-12af-4fab-adc2-5586f5fe99c9",
+      "email": "audit.fe.pro.20261127150805@example.test",
+      "subscription_plan": "pro",
+      "role": "user"
+    },
+    {
+      "id": "d9fc364b-5374-456b-b9db-3c940221ed54",
+      "email": "audit.fe.probe.1795791961@example.test",
+      "subscription_plan": "free",
+      "role": "user"
+    },
+    {
+      "id": "1b8e6fb6-d016-4ec9-b688-fd261ab5c5b1",
+      "email": "audit.fe.probe2.1795792012@example.test",
+      "subscription_plan": "team",
+      "role": "user"
+    }
+  ],
+  "count": 6
+}

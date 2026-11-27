@@ -1,0 +1,99 @@
+{
+  "route": "/workspace/merge",
+  "role": "free",
+  "slug": "workspace-merge",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/merge",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/merge",
+    "h1": [
+      "Merge Resumes"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Merge Resumes"
+      },
+      {
+        "tag": "H2",
+        "text": "Step 1 of 4 — Select Resumes"
+      }
+    ],
+    "bodyTextLength": 772,
+    "links": 9,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 1,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 433,
+      "load": 843,
+      "ttfb": 89,
+      "transfer": 8324
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 215
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/merge",
+    "h1": [
+      "Merge Resumes"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Merge Resumes"
+      },
+      {
+        "tag": "H2",
+        "text": "Step 1 of 4 — Select Resumes"
+      }
+    ],
+    "bodyTextLength": 724,
+    "links": 9,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 1,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 877,
+      "load": 877,
+      "ttfb": 92,
+      "transfer": 8357
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 226
+  }
+}

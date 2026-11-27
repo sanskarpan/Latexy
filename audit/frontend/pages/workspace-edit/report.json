@@ -1,0 +1,199 @@
+{
+  "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+  "role": "free",
+  "slug": "workspace-edit",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/public/engine/capabilities",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+    "h1": [],
+    "headings": [
+      {
+        "tag": "H2",
+        "text": "Edit your resume"
+      }
+    ],
+    "bodyTextLength": 1089,
+    "links": 5,
+    "buttons": 22,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 28,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [
+      {
+        "tag": "BUTTON",
+        "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surfa",
+        "text": "Update preview",
+        "right": 1517,
+        "left": 1392
+      },
+      {
+        "tag": "BUTTON",
+        "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] border px-3 py-1.5 text-[11",
+        "text": "AI Optimize",
+        "right": 1625,
+        "left": 1521
+      },
+      {
+        "tag": "svg",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 1545,
+        "left": 1534
+      },
+      {
+        "tag": "path",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 1544,
+        "left": 1535
+      },
+      {
+        "tag": "circle",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 1537,
+        "left": 1535
+      }
+    ],
+    "smallText": 23,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 701,
+      "load": 956,
+      "ttfb": 128,
+      "transfer": 7353
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 315
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+    "h1": [],
+    "headings": [
+      {
+        "tag": "H2",
+        "text": "Edit your resume"
+      }
+    ],
+    "bodyTextLength": 1020,
+    "links": 5,
+    "buttons": 23,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 29,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [
+      {
+        "tag": "DIV",
+        "cls": "relative",
+        "text": "Tools",
+        "right": 465,
+        "left": 383
+      },
+      {
+        "tag": "BUTTON",
+        "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] f",
+        "text": "Tools",
+        "right": 465,
+        "left": 383
+      },
+      {
+        "tag": "svg",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 405,
+        "left": 393
+      },
+      {
+        "tag": "svg",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 455,
+        "left": 444
+      },
+      {
+        "tag": "path",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 452,
+        "left": 447
+      },
+      {
+        "tag": "A",
+        "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] f",
+        "text": "Cover Letter",
+        "right": 570,
+        "left": 469
+      },
+      {
+        "tag": "svg",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 491,
+        "left": 479
+      },
+      {
+        "tag": "path",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 490,
+        "left": 480
+      },
+      {
+        "tag": "rect",
+        "cls": "[object SVGAnimatedString]",
+        "text": "",
+        "right": 490,
+        "left": 480
+      },
+      {
+        "tag": "A",
+        "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] f",
+        "text": "Career Path",
+        "right": 673,
+        "left": 574
+      }
+    ],
+    "smallText": 23,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 494,
+      "load": 679,
+      "ttfb": 74,
+      "transfer": 7371
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 315
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "route": "/tracker",
+  "role": "free",
+  "slug": "tracker",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/tracker",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/tracker",
+    "h1": [
+      "Job Applications"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Job Applications"
+      },
+      {
+        "tag": "H2",
+        "text": "No applications yet"
+      }
+    ],
+    "bodyTextLength": 966,
+    "links": 9,
+    "buttons": 15,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 11,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 653,
+      "load": 786,
+      "ttfb": 75,
+      "transfer": 8352
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 230
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/tracker",
+    "h1": [
+      "Job Applications"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Job Applications"
+      },
+      {
+        "tag": "H2",
+        "text": "No applications yet"
+      }
+    ],
+    "bodyTextLength": 918,
+    "links": 9,
+    "buttons": 15,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 11,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 565,
+      "load": 642,
+      "ttfb": 74,
+      "transfer": 8334
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 230
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "buttons": [],
+  "inputs": [],
+  "tracker": {
+    "opened": true,
+    "form": {
+      "inputs": [
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "",
+          "label": "Interface language"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "",
+          "placeholder": "e.g. Google",
+          "label": null
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "",
+          "placeholder": "e.g. Software Engineer",
+          "label": null
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "",
+          "label": null
+        },
+        {
+          "tag": "INPUT",
+          "type": "date",
+          "name": "",
+          "placeholder": "",
+          "label": null
+        },
+        {
+          "tag": "INPUT",
+          "type": "url",
+          "name": "",
+          "placeholder": "https://...",
+          "label": null
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "",
+          "label": null
+        },
+        {
+          "tag": "TEXTAREA",
+          "type": "textarea",
+          "name": "",
+          "placeholder": "Referral, recruiter name, etc.",
+          "label": null
+        }
+      ],
+      "buttons": [
+        "Turn on high contrast mode",
+        "Toggle light or dark mode",
+        "A\nAudit",
+        "Review forwarded email",
+        "Add Application",
+        "Board",
+        "Saved jobs",
+        "Alerts",
+        "Contacts",
+        "Add your first application",
+        "▼ Show job description",
+        "Cancel",
+        "Add Application"
+      ]
+    }
+  },
+  "log": {
+    "console": [],
+    "http": []
+  }
+}

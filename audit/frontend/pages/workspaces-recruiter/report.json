@@ -1,0 +1,96 @@
+{
+  "route": "/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+  "role": "team",
+  "slug": "workspaces-recruiter",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/resources?_rsc=gMvR9fSoUTadUpzd",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+    "h1": [
+      "Recruiter Dashboard"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Recruiter Dashboard"
+      }
+    ],
+    "bodyTextLength": 788,
+    "links": 9,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 653,
+      "load": 753,
+      "ttfb": 97,
+      "transfer": 8392
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 215
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+    "h1": [
+      "Recruiter Dashboard"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Recruiter Dashboard"
+      }
+    ],
+    "bodyTextLength": 740,
+    "links": 9,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 663,
+      "load": 844,
+      "ttfb": 98,
+      "transfer": 8420
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 215
+  }
+}

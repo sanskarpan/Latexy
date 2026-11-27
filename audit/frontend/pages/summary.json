@@ -1,0 +1,7164 @@
+[
+  {
+    "route": "/",
+    "role": "anon",
+    "slug": "home",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Resume Builder, ATS Feedback & LaTeX Studio",
+      "url": "https://latexy.xyz/",
+      "h1": [
+        "A better résumé\nis a stronger you."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "A better résumé\nis a stronger you."
+        },
+        {
+          "tag": "H2",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H3",
+          "text": "EXPERIENCE"
+        },
+        {
+          "tag": "H3",
+          "text": "Make the contribution clear"
+        },
+        {
+          "tag": "H2",
+          "text": "From first draft\nto final PDF."
+        },
+        {
+          "tag": "H3",
+          "text": "1. Write"
+        },
+        {
+          "tag": "H3",
+          "text": "2. Review"
+        },
+        {
+          "tag": "H3",
+          "text": "3. Tailor"
+        },
+        {
+          "tag": "H3",
+          "text": "4. Export"
+        },
+        {
+          "tag": "H2",
+          "text": "Thoughtful feedback, right where you write."
+        },
+        {
+          "tag": "H3",
+          "text": "Line review"
+        },
+        {
+          "tag": "H4",
+          "text": "Suggested revision"
+        },
+        {
+          "tag": "H2",
+          "text": "Different roles. Sharper résumés."
+        },
+        {
+          "tag": "H3",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H3",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H2",
+          "text": "Real documents. Beautifully typeset."
+        },
+        {
+          "tag": "H3",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H2",
+          "text": "Before you start."
+        },
+        {
+          "tag": "H2",
+          "text": "Put your experience\non the page."
+        },
+        {
+          "tag": "H3",
+          "text": "The document studio"
+        },
+        {
+          "tag": "H3",
+          "text": "Product"
+        },
+        {
+          "tag": "H3",
+          "text": "Help"
+        },
+        {
+          "tag": "H3",
+          "text": "Company"
+        }
+      ],
+      "bodyTextLength": 5924,
+      "links": 31,
+      "buttons": 16,
+      "forms": 0,
+      "images": 1,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 28,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 43,
+      "unlabeledInteractive": 0,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 833,
+        "load": 873,
+        "ttfb": 110,
+        "transfer": 14797
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 612
+    },
+    "mobile": {
+      "title": "Latexy | Resume Builder, ATS Feedback & LaTeX Studio",
+      "url": "https://latexy.xyz/",
+      "h1": [
+        "A better résumé is a stronger you."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "A better résumé is a stronger you."
+        },
+        {
+          "tag": "H2",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H3",
+          "text": "EXPERIENCE"
+        },
+        {
+          "tag": "H3",
+          "text": "Make the contribution clear"
+        },
+        {
+          "tag": "H2",
+          "text": "From first draft\nto final PDF."
+        },
+        {
+          "tag": "H3",
+          "text": "1. Write"
+        },
+        {
+          "tag": "H3",
+          "text": "2. Review"
+        },
+        {
+          "tag": "H3",
+          "text": "3. Tailor"
+        },
+        {
+          "tag": "H3",
+          "text": "4. Export"
+        },
+        {
+          "tag": "H2",
+          "text": "Thoughtful feedback, right where you write."
+        },
+        {
+          "tag": "H3",
+          "text": "Line review"
+        },
+        {
+          "tag": "H4",
+          "text": "Suggested revision"
+        },
+        {
+          "tag": "H2",
+          "text": "Different roles. Sharper résumés."
+        },
+        {
+          "tag": "H3",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H3",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H2",
+          "text": "Real documents. Beautifully typeset."
+        },
+        {
+          "tag": "H3",
+          "text": "Alex Morgan"
+        },
+        {
+          "tag": "H2",
+          "text": "Before you start."
+        },
+        {
+          "tag": "H2",
+          "text": "Put your experience\non the page."
+        },
+        {
+          "tag": "H3",
+          "text": "The document studio"
+        },
+        {
+          "tag": "H3",
+          "text": "Product"
+        },
+        {
+          "tag": "H3",
+          "text": "Help"
+        },
+        {
+          "tag": "H3",
+          "text": "Company"
+        }
+      ],
+      "bodyTextLength": 5731,
+      "links": 31,
+      "buttons": 16,
+      "forms": 0,
+      "images": 1,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 28,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 42,
+      "unlabeledInteractive": 0,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 357,
+        "load": 628,
+        "ttfb": 79,
+        "transfer": 14797
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 611
+    }
+  },
+  {
+    "route": "/accessibility",
+    "role": "anon",
+    "slug": "accessibility",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/resources?_rsc=p6JBf-Gtq-35482P",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/accessibility",
+    "redirected": false,
+    "metrics": {
+      "title": "Accessibility — Latexy",
+      "url": "https://latexy.xyz/accessibility",
+      "h1": [
+        "Building a résumé tool more people can use"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Building a résumé tool more people can use"
+        },
+        {
+          "tag": "H2",
+          "text": "Current support"
+        },
+        {
+          "tag": "H2",
+          "text": "Known limitations"
+        },
+        {
+          "tag": "H2",
+          "text": "Accessibility support"
+        },
+        {
+          "tag": "H2",
+          "text": "Testing and updates"
+        }
+      ],
+      "bodyTextLength": 3073,
+      "links": 17,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 8,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 492,
+        "load": 1087,
+        "ttfb": 81,
+        "transfer": 10180
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 239
+    },
+    "mobile": {
+      "title": "Accessibility — Latexy",
+      "url": "https://latexy.xyz/accessibility",
+      "h1": [
+        "Building a résumé tool more people can use"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Building a résumé tool more people can use"
+        },
+        {
+          "tag": "H2",
+          "text": "Current support"
+        },
+        {
+          "tag": "H2",
+          "text": "Known limitations"
+        },
+        {
+          "tag": "H2",
+          "text": "Accessibility support"
+        },
+        {
+          "tag": "H2",
+          "text": "Testing and updates"
+        }
+      ],
+      "bodyTextLength": 3026,
+      "links": 20,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 847,
+        "load": 847,
+        "ttfb": 89,
+        "transfer": 10180
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 244
+    }
+  },
+  {
+    "route": "/admin",
+    "role": "admin",
+    "slug": "admin",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/templates?_rsc=f6buO9EWxguZ60wc",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/admin",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/admin",
+      "h1": [
+        "Control Plane"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Control Plane"
+        },
+        {
+          "tag": "H2",
+          "text": "Capability inventory"
+        },
+        {
+          "tag": "H2",
+          "text": "Job Queue"
+        },
+        {
+          "tag": "H2",
+          "text": "Job Queue"
+        }
+      ],
+      "bodyTextLength": 89624,
+      "links": 8,
+      "buttons": 930,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 13,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 469,
+      "unlabeledInteractive": 1,
+      "inputs": 13,
+      "unlabelledInputs": 2,
+      "nav": {
+        "dcl": 772,
+        "load": 992,
+        "ttfb": 200,
+        "transfer": 8353
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 6135
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/admin",
+      "h1": [
+        "Control Plane"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Control Plane"
+        },
+        {
+          "tag": "H2",
+          "text": "Capability inventory"
+        },
+        {
+          "tag": "H2",
+          "text": "Job Queue"
+        },
+        {
+          "tag": "H2",
+          "text": "Job Queue"
+        }
+      ],
+      "bodyTextLength": 89576,
+      "links": 8,
+      "buttons": 930,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 13,
+      "horizontalOverflow": false,
+      "documentWidth": 798,
+      "viewportWidth": 798,
+      "offscreen": [
+        {
+          "tag": "TABLE",
+          "cls": "w-full min-w-[800px] border-collapse text-sm",
+          "text": "FEATURE\tGLOBAL\tFREE\tBASIC\tPRO\tBYOK\tTEAM\nCORE\n\nLaTeX Compilation\n\ncompile\n\nAdmiss",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "THEAD",
+          "cls": "",
+          "text": "FEATURE\tGLOBAL\tFREE\tBASIC\tPRO\tBYOK\tTEAM",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "TR",
+          "cls": "sticky top-0 z-20 bg-bg/95 backdrop-blur",
+          "text": "FEATURE\tGLOBAL\tFREE\tBASIC\tPRO\tBYOK\tTEAM",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "TH",
+          "cls": "min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-",
+          "text": "TEAM",
+          "right": 834,
+          "left": 758
+        },
+        {
+          "tag": "TBODY",
+          "cls": "",
+          "text": "CORE\n\nLaTeX Compilation\n\ncompile\n\nAdmission switch for new LaTeX compilation job",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "TR",
+          "cls": "",
+          "text": "CORE",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "TH",
+          "cls": "sticky left-0 bg-surface-2 px-4 py-2 text-left text-[10px] font-semibold upperca",
+          "text": "CORE",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "TR",
+          "cls": "group border-t border-line transition-colors hover:bg-surface-2  ",
+          "text": "LaTeX Compilation\n\ncompile\n\nAdmission switch for new LaTeX compilation jobs. Exi",
+          "right": 834,
+          "left": 17
+        },
+        {
+          "tag": "TD",
+          "cls": "px-3 py-3 text-center",
+          "text": "Allowed by this scope; other plan and role restrictions still apply",
+          "right": 834,
+          "left": 758
+        },
+        {
+          "tag": "DIV",
+          "cls": "inline-flex min-h-[40px] flex-col items-center justify-center gap-1 px-1",
+          "text": "Allowed by this scope; other plan and role restrictions still apply",
+          "right": 822,
+          "left": 770
+        }
+      ],
+      "smallText": 468,
+      "unlabeledInteractive": 1,
+      "inputs": 13,
+      "unlabelledInputs": 2,
+      "nav": {
+        "dcl": 426,
+        "load": 592,
+        "ttfb": 80,
+        "transfer": 8312
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 6125
+    }
+  },
+  {
+    "route": "/admin/tenant",
+    "role": "admin",
+    "slug": "admin-tenant",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/admin/tenant",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/admin/tenant",
+      "h1": [
+        "Tenant Management"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Tenant Management"
+        }
+      ],
+      "bodyTextLength": 710,
+      "links": 8,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 4,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 444,
+        "load": 551,
+        "ttfb": 83,
+        "transfer": 8234
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 191
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/admin/tenant",
+      "h1": [
+        "Tenant Management"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Tenant Management"
+        }
+      ],
+      "bodyTextLength": 662,
+      "links": 8,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 568,
+        "load": 574,
+        "ttfb": 76,
+        "transfer": 8234
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 199
+    }
+  },
+  {
+    "route": "/billing",
+    "role": "pro",
+    "slug": "billing",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/login?_rsc=OyPRjfKnuJ5ZQayv",
+        "err": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://latexy.xyz/faq?_rsc=OyPRjfKnuJ5ZQayv",
+        "err": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://latexy.xyz/workspace?_rsc=OyPRjfKnuJ5ZQayv",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/billing",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/billing",
+      "h1": [
+        "Pricing & Billing"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Pricing & Billing"
+        },
+        {
+          "tag": "H2",
+          "text": "Choose a plan"
+        },
+        {
+          "tag": "H3",
+          "text": "Free"
+        },
+        {
+          "tag": "H3",
+          "text": "Basic"
+        },
+        {
+          "tag": "H3",
+          "text": "Pro"
+        },
+        {
+          "tag": "H3",
+          "text": "BYOK (Bring Your Own Key)"
+        },
+        {
+          "tag": "H3",
+          "text": "Student"
+        },
+        {
+          "tag": "H3",
+          "text": "Team"
+        },
+        {
+          "tag": "H2",
+          "text": "Current subscription"
+        },
+        {
+          "tag": "H3",
+          "text": "Pro"
+        }
+      ],
+      "bodyTextLength": 2968,
+      "links": 8,
+      "buttons": 19,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 6,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 2160,
+        "load": 2370,
+        "ttfb": 72,
+        "transfer": 8817
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 1328
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/billing",
+      "h1": [
+        "Pricing & Billing"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Pricing & Billing"
+        },
+        {
+          "tag": "H2",
+          "text": "Choose a plan"
+        },
+        {
+          "tag": "H3",
+          "text": "Free"
+        },
+        {
+          "tag": "H3",
+          "text": "Basic"
+        },
+        {
+          "tag": "H3",
+          "text": "Pro"
+        },
+        {
+          "tag": "H3",
+          "text": "BYOK (Bring Your Own Key)"
+        },
+        {
+          "tag": "H3",
+          "text": "Student"
+        },
+        {
+          "tag": "H3",
+          "text": "Team"
+        },
+        {
+          "tag": "H2",
+          "text": "Current subscription"
+        },
+        {
+          "tag": "H3",
+          "text": "Pro"
+        }
+      ],
+      "bodyTextLength": 2920,
+      "links": 8,
+      "buttons": 19,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 5,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 543,
+        "load": 623,
+        "ttfb": 72,
+        "transfer": 8812
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 1338
+    }
+  },
+  {
+    "route": "/byok",
+    "role": "pro",
+    "slug": "byok",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/byok",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/byok",
+      "h1": [
+        "API Key Management"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "API Key Management"
+        },
+        {
+          "tag": "H2",
+          "text": "PROVIDER-LEVEL PERFORMANCE"
+        },
+        {
+          "tag": "H2",
+          "text": "ENCRYPTED SECRET STORAGE"
+        },
+        {
+          "tag": "H2",
+          "text": "OPERATIONAL CONTROL"
+        },
+        {
+          "tag": "H2",
+          "text": "API Key Management"
+        },
+        {
+          "tag": "H3",
+          "text": "No API Keys Yet"
+        },
+        {
+          "tag": "H2",
+          "text": "Provider Capabilities"
+        },
+        {
+          "tag": "H3",
+          "text": "OPENAI"
+        },
+        {
+          "tag": "H3",
+          "text": "ANTHROPIC"
+        },
+        {
+          "tag": "H3",
+          "text": "OPENROUTER"
+        }
+      ],
+      "bodyTextLength": 1503,
+      "links": 8,
+      "buttons": 12,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 13,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 587,
+        "load": 588,
+        "ttfb": 73,
+        "transfer": 8237
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 256
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/byok",
+      "h1": [
+        "API Key Management"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "API Key Management"
+        },
+        {
+          "tag": "H2",
+          "text": "PROVIDER-LEVEL PERFORMANCE"
+        },
+        {
+          "tag": "H2",
+          "text": "ENCRYPTED SECRET STORAGE"
+        },
+        {
+          "tag": "H2",
+          "text": "OPERATIONAL CONTROL"
+        },
+        {
+          "tag": "H2",
+          "text": "API Key Management"
+        },
+        {
+          "tag": "H3",
+          "text": "No API Keys Yet"
+        },
+        {
+          "tag": "H2",
+          "text": "Provider Capabilities"
+        },
+        {
+          "tag": "H3",
+          "text": "OPENAI"
+        },
+        {
+          "tag": "H3",
+          "text": "ANTHROPIC"
+        },
+        {
+          "tag": "H3",
+          "text": "OPENROUTER"
+        }
+      ],
+      "bodyTextLength": 1455,
+      "links": 8,
+      "buttons": 12,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 12,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 658,
+        "load": 793,
+        "ttfb": 77,
+        "transfer": 8213
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 250
+    }
+  },
+  {
+    "route": "/dashboard",
+    "role": "free",
+    "slug": "dashboard",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/dashboard",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/dashboard",
+      "h1": [
+        "Usage Intelligence"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Usage Intelligence"
+        },
+        {
+          "tag": "H2",
+          "text": "Activity Trend"
+        },
+        {
+          "tag": "H2",
+          "text": "Feature Usage Mix"
+        },
+        {
+          "tag": "H2",
+          "text": "Job Queue"
+        },
+        {
+          "tag": "H2",
+          "text": "RUN STATUS DISTRIBUTION"
+        },
+        {
+          "tag": "H2",
+          "text": "RECENT RUNS"
+        }
+      ],
+      "bodyTextLength": 1843,
+      "links": 10,
+      "buttons": 12,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 24,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [
+        {
+          "tag": "text",
+          "cls": "[object SVGAnimatedString]",
+          "text": "11/22",
+          "right": -1402,
+          "left": -1440
+        }
+      ],
+      "smallText": 45,
+      "unlabeledInteractive": 1,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 529,
+        "load": 670,
+        "ttfb": 78,
+        "transfer": 8352
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 490
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/dashboard",
+      "h1": [
+        "Usage Intelligence"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Usage Intelligence"
+        },
+        {
+          "tag": "H2",
+          "text": "Activity Trend"
+        },
+        {
+          "tag": "H2",
+          "text": "Feature Usage Mix"
+        },
+        {
+          "tag": "H2",
+          "text": "Job Queue"
+        },
+        {
+          "tag": "H2",
+          "text": "RUN STATUS DISTRIBUTION"
+        },
+        {
+          "tag": "H2",
+          "text": "RECENT RUNS"
+        }
+      ],
+      "bodyTextLength": 1795,
+      "links": 10,
+      "buttons": 12,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 24,
+      "horizontalOverflow": false,
+      "documentWidth": 647,
+      "viewportWidth": 647,
+      "offscreen": [
+        {
+          "tag": "text",
+          "cls": "[object SVGAnimatedString]",
+          "text": "11/22",
+          "right": -352,
+          "left": -390
+        }
+      ],
+      "smallText": 44,
+      "unlabeledInteractive": 1,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 629,
+        "load": 629,
+        "ttfb": 73,
+        "transfer": 8333
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 491
+    }
+  },
+  {
+    "route": "/developer",
+    "role": "pro",
+    "slug": "developer",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=hK8D8DLN6ufDJ4MX",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/developer",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/developer",
+      "h1": [
+        "Compile, optimize, and score — from your own stack."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Compile, optimize, and score — from your own stack."
+        },
+        {
+          "tag": "H2",
+          "text": "API keys"
+        },
+        {
+          "tag": "H2",
+          "text": "Usage"
+        },
+        {
+          "tag": "H2",
+          "text": "Documentation"
+        }
+      ],
+      "bodyTextLength": 1827,
+      "links": 17,
+      "buttons": 13,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 6,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 727,
+        "load": 727,
+        "ttfb": 92,
+        "transfer": 8638
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 301
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/developer",
+      "h1": [
+        "Compile, optimize, and score — from your own stack."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Compile, optimize, and score — from your own stack."
+        },
+        {
+          "tag": "H2",
+          "text": "API keys"
+        },
+        {
+          "tag": "H2",
+          "text": "Usage"
+        },
+        {
+          "tag": "H2",
+          "text": "Documentation"
+        }
+      ],
+      "bodyTextLength": 1779,
+      "links": 17,
+      "buttons": 13,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 5,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 769,
+        "load": 769,
+        "ttfb": 73,
+        "transfer": 8638
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 301
+    }
+  },
+  {
+    "route": "/faq",
+    "role": "anon",
+    "slug": "faq",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/faq",
+    "redirected": false,
+    "metrics": {
+      "title": "Resume Builder Questions, Answered | Latexy FAQ",
+      "url": "https://latexy.xyz/faq",
+      "h1": [
+        "A few answers before your first edit."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "A few answers before your first edit."
+        },
+        {
+          "tag": "H2",
+          "text": "Do I need to know LaTeX or write code?"
+        },
+        {
+          "tag": "H2",
+          "text": "What can I try without an account?"
+        },
+        {
+          "tag": "H2",
+          "text": "Can I start with a template?"
+        },
+        {
+          "tag": "H2",
+          "text": "Will AI change my resume automatically?"
+        },
+        {
+          "tag": "H2",
+          "text": "How do I tailor my resume to a job?"
+        },
+        {
+          "tag": "H2",
+          "text": "What does the resume score mean?"
+        },
+        {
+          "tag": "H2",
+          "text": "Can I keep different resumes for different roles?"
+        },
+        {
+          "tag": "H2",
+          "text": "Can I use my own AI provider key?"
+        },
+        {
+          "tag": "H2",
+          "text": "See how it feels."
+        }
+      ],
+      "bodyTextLength": 3274,
+      "links": 23,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 427,
+        "load": 658,
+        "ttfb": 76,
+        "transfer": 11118
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 253
+    },
+    "mobile": {
+      "title": "Resume Builder Questions, Answered | Latexy FAQ",
+      "url": "https://latexy.xyz/faq",
+      "h1": [
+        "A few answers before your first edit."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "A few answers before your first edit."
+        },
+        {
+          "tag": "H2",
+          "text": "Do I need to know LaTeX or write code?"
+        },
+        {
+          "tag": "H2",
+          "text": "What can I try without an account?"
+        },
+        {
+          "tag": "H2",
+          "text": "Can I start with a template?"
+        },
+        {
+          "tag": "H2",
+          "text": "Will AI change my resume automatically?"
+        },
+        {
+          "tag": "H2",
+          "text": "How do I tailor my resume to a job?"
+        },
+        {
+          "tag": "H2",
+          "text": "What does the resume score mean?"
+        },
+        {
+          "tag": "H2",
+          "text": "Can I keep different resumes for different roles?"
+        },
+        {
+          "tag": "H2",
+          "text": "Can I use my own AI provider key?"
+        },
+        {
+          "tag": "H2",
+          "text": "See how it feels."
+        }
+      ],
+      "bodyTextLength": 3222,
+      "links": 23,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 456,
+        "load": 665,
+        "ttfb": 77,
+        "transfer": 11091
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 262
+    }
+  },
+  {
+    "route": "/forgot-password",
+    "role": "anon",
+    "slug": "forgot-password",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/forgot-password",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/forgot-password",
+      "h1": [
+        "Forgot password"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Forgot password"
+        }
+      ],
+      "bodyTextLength": 1004,
+      "links": 20,
+      "buttons": 9,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 456,
+        "load": 651,
+        "ttfb": 80,
+        "transfer": 9138
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 227
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/forgot-password",
+      "h1": [
+        "Forgot password"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Forgot password"
+        }
+      ],
+      "bodyTextLength": 952,
+      "links": 20,
+      "buttons": 9,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 437,
+        "load": 650,
+        "ttfb": 75,
+        "transfer": 9128
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 220
+    }
+  },
+  {
+    "route": "/login",
+    "role": "anon",
+    "slug": "login",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=j7s84HGI7papZ6oY",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/login",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/login",
+      "h1": [
+        "Welcome back"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Welcome back"
+        }
+      ],
+      "bodyTextLength": 1147,
+      "links": 21,
+      "buttons": 12,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 2,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 436,
+        "load": 547,
+        "ttfb": 77,
+        "transfer": 9552
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 263
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/login",
+      "h1": [
+        "Welcome back"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Welcome back"
+        }
+      ],
+      "bodyTextLength": 1095,
+      "links": 21,
+      "buttons": 12,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 2,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 530,
+        "load": 629,
+        "ttfb": 81,
+        "transfer": 9536
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 263
+    }
+  },
+  {
+    "route": "/platform",
+    "role": "anon",
+    "slug": "platform",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/platform",
+    "redirected": false,
+    "metrics": {
+      "title": "How Latexy Works | Resumes, Cover Letters & Interview Practice",
+      "url": "https://latexy.xyz/platform",
+      "h1": [
+        "A calmer way to prepare your next application."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "A calmer way to prepare your next application."
+        },
+        {
+          "tag": "H2",
+          "text": "Your experience"
+        },
+        {
+          "tag": "H2",
+          "text": "A specific opportunity"
+        },
+        {
+          "tag": "H2",
+          "text": "Your decisions"
+        },
+        {
+          "tag": "H2",
+          "text": "Ready for the next step"
+        },
+        {
+          "tag": "H2",
+          "text": "Choose what helps you move forward."
+        },
+        {
+          "tag": "H3",
+          "text": "Build a résumé that reads well"
+        },
+        {
+          "tag": "H3",
+          "text": "Improve it with clear feedback"
+        },
+        {
+          "tag": "H3",
+          "text": "Keep a version for each opportunity"
+        },
+        {
+          "tag": "H3",
+          "text": "Write the letter that goes with it"
+        },
+        {
+          "tag": "H3",
+          "text": "Practise explaining your experience"
+        },
+        {
+          "tag": "H3",
+          "text": "Keep track of where you applied"
+        },
+        {
+          "tag": "H2",
+          "text": "Simple to start.\nRoom to go deeper."
+        },
+        {
+          "tag": "H3",
+          "text": "For people who like more control"
+        },
+        {
+          "tag": "H2",
+          "text": "Start with one good edit."
+        }
+      ],
+      "bodyTextLength": 3389,
+      "links": 24,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 21,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 403,
+        "load": 610,
+        "ttfb": 75,
+        "transfer": 12283
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 342
+    },
+    "mobile": {
+      "title": "How Latexy Works | Resumes, Cover Letters & Interview Practice",
+      "url": "https://latexy.xyz/platform",
+      "h1": [
+        "A calmer way to prepare your next application."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "A calmer way to prepare your next application."
+        },
+        {
+          "tag": "H2",
+          "text": "Your experience"
+        },
+        {
+          "tag": "H2",
+          "text": "A specific opportunity"
+        },
+        {
+          "tag": "H2",
+          "text": "Your decisions"
+        },
+        {
+          "tag": "H2",
+          "text": "Ready for the next step"
+        },
+        {
+          "tag": "H2",
+          "text": "Choose what helps you move forward."
+        },
+        {
+          "tag": "H3",
+          "text": "Build a résumé that reads well"
+        },
+        {
+          "tag": "H3",
+          "text": "Improve it with clear feedback"
+        },
+        {
+          "tag": "H3",
+          "text": "Keep a version for each opportunity"
+        },
+        {
+          "tag": "H3",
+          "text": "Write the letter that goes with it"
+        },
+        {
+          "tag": "H3",
+          "text": "Practise explaining your experience"
+        },
+        {
+          "tag": "H3",
+          "text": "Keep track of where you applied"
+        },
+        {
+          "tag": "H2",
+          "text": "Simple to start.\nRoom to go deeper."
+        },
+        {
+          "tag": "H3",
+          "text": "For people who like more control"
+        },
+        {
+          "tag": "H2",
+          "text": "Start with one good edit."
+        }
+      ],
+      "bodyTextLength": 3337,
+      "links": 24,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 21,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 654,
+        "load": 659,
+        "ttfb": 80,
+        "transfer": 12283
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 342
+    }
+  },
+  {
+    "route": "/pricing",
+    "role": "anon",
+    "slug": "pricing",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/resources?_rsc=yrzGVZEURCHTUGxG",
+        "err": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://latexy.xyz/updates?_rsc=yrzGVZEURCHTUGxG",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/pricing",
+    "redirected": false,
+    "metrics": {
+      "title": "Pricing | Latexy",
+      "url": "https://latexy.xyz/pricing",
+      "h1": [
+        "Start free. Pay only when it's working for you."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Start free. Pay only when it's working for you."
+        },
+        {
+          "tag": "H2",
+          "text": "Free"
+        },
+        {
+          "tag": "H2",
+          "text": "Basic"
+        },
+        {
+          "tag": "H2",
+          "text": "Pro"
+        },
+        {
+          "tag": "H2",
+          "text": "Your AI key"
+        }
+      ],
+      "bodyTextLength": 1929,
+      "links": 24,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 25,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 488,
+        "load": 614,
+        "ttfb": 74,
+        "transfer": 10349
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 311
+    },
+    "mobile": {
+      "title": "Pricing | Latexy",
+      "url": "https://latexy.xyz/pricing",
+      "h1": [
+        "Start free. Pay only when it's working for you."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Start free. Pay only when it's working for you."
+        },
+        {
+          "tag": "H2",
+          "text": "Free"
+        },
+        {
+          "tag": "H2",
+          "text": "Basic"
+        },
+        {
+          "tag": "H2",
+          "text": "Pro"
+        },
+        {
+          "tag": "H2",
+          "text": "Your AI key"
+        }
+      ],
+      "bodyTextLength": 1877,
+      "links": 24,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 25,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 624,
+        "load": 815,
+        "ttfb": 87,
+        "transfer": 10364
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 314
+    }
+  },
+  {
+    "route": "/privacy",
+    "role": "anon",
+    "slug": "privacy",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/privacy",
+    "redirected": false,
+    "metrics": {
+      "title": "Privacy Policy — Latexy",
+      "url": "https://latexy.xyz/privacy",
+      "h1": [
+        "Privacy Policy"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Privacy Policy"
+        },
+        {
+          "tag": "H2",
+          "text": "1. Information we process"
+        },
+        {
+          "tag": "H3",
+          "text": "Account and billing data"
+        },
+        {
+          "tag": "H3",
+          "text": "Documents and feature data"
+        },
+        {
+          "tag": "H3",
+          "text": "Integrations and AI providers"
+        },
+        {
+          "tag": "H3",
+          "text": "Technical, security, and usage data"
+        },
+        {
+          "tag": "H2",
+          "text": "2. How we use information"
+        },
+        {
+          "tag": "H2",
+          "text": "3. Public sharing"
+        },
+        {
+          "tag": "H2",
+          "text": "4. Service providers and disclosures"
+        },
+        {
+          "tag": "H2",
+          "text": "5. Cookies and local browser storage"
+        },
+        {
+          "tag": "H2",
+          "text": "6. Retention and deletion"
+        },
+        {
+          "tag": "H2",
+          "text": "7. Security"
+        },
+        {
+          "tag": "H2",
+          "text": "8. Your choices and rights"
+        },
+        {
+          "tag": "H2",
+          "text": "9. Children"
+        },
+        {
+          "tag": "H2",
+          "text": "10. Changes and contact"
+        }
+      ],
+      "bodyTextLength": 11491,
+      "links": 19,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 683,
+        "load": 683,
+        "ttfb": 85,
+        "transfer": 14048
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 280
+    },
+    "mobile": {
+      "title": "Privacy Policy — Latexy",
+      "url": "https://latexy.xyz/privacy",
+      "h1": [
+        "Privacy Policy"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Privacy Policy"
+        },
+        {
+          "tag": "H2",
+          "text": "1. Information we process"
+        },
+        {
+          "tag": "H3",
+          "text": "Account and billing data"
+        },
+        {
+          "tag": "H3",
+          "text": "Documents and feature data"
+        },
+        {
+          "tag": "H3",
+          "text": "Integrations and AI providers"
+        },
+        {
+          "tag": "H3",
+          "text": "Technical, security, and usage data"
+        },
+        {
+          "tag": "H2",
+          "text": "2. How we use information"
+        },
+        {
+          "tag": "H2",
+          "text": "3. Public sharing"
+        },
+        {
+          "tag": "H2",
+          "text": "4. Service providers and disclosures"
+        },
+        {
+          "tag": "H2",
+          "text": "5. Cookies and local browser storage"
+        },
+        {
+          "tag": "H2",
+          "text": "6. Retention and deletion"
+        },
+        {
+          "tag": "H2",
+          "text": "7. Security"
+        },
+        {
+          "tag": "H2",
+          "text": "8. Your choices and rights"
+        },
+        {
+          "tag": "H2",
+          "text": "9. Children"
+        },
+        {
+          "tag": "H2",
+          "text": "10. Changes and contact"
+        }
+      ],
+      "bodyTextLength": 11439,
+      "links": 19,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 593,
+        "load": 594,
+        "ttfb": 80,
+        "transfer": 14048
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 280
+    }
+  },
+  {
+    "route": "/r/xC_40DHizO7gxGhA2fdsAuG62aMPoX1P",
+    "role": "anon",
+    "slug": "share",
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 ()"
+    ],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [
+      {
+        "status": 404,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/share/xC_40DHizO7gxGhA2fdsAuG62aMPoX1P",
+        "type": "fetch"
+      }
+    ],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/r/xC_40DHizO7gxGhA2fdsAuG62aMPoX1P",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/r/xC_40DHizO7gxGhA2fdsAuG62aMPoX1P",
+      "h1": [
+        "Link unavailable"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Link unavailable"
+        }
+      ],
+      "bodyTextLength": 1002,
+      "links": 21,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 4,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 818,
+        "load": 824,
+        "ttfb": 76,
+        "transfer": 8838
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 233
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/r/xC_40DHizO7gxGhA2fdsAuG62aMPoX1P",
+      "h1": [
+        "Link unavailable"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Link unavailable"
+        }
+      ],
+      "bodyTextLength": 950,
+      "links": 21,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 4,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 657,
+        "load": 1077,
+        "ttfb": 93,
+        "transfer": 8815
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 233
+    }
+  },
+  {
+    "route": "/reset-password",
+    "role": "anon",
+    "slug": "reset-password",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/reset-password",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/reset-password",
+      "h1": [
+        "Reset password"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Reset password"
+        }
+      ],
+      "bodyTextLength": 1009,
+      "links": 20,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 517,
+        "load": 816,
+        "ttfb": 89,
+        "transfer": 8944
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 231
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/reset-password",
+      "h1": [
+        "Reset password"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Reset password"
+        }
+      ],
+      "bodyTextLength": 957,
+      "links": 20,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 525,
+        "load": 653,
+        "ttfb": 83,
+        "transfer": 8944
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 230
+    }
+  },
+  {
+    "route": "/resources",
+    "role": "anon",
+    "slug": "resources",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/resources",
+    "redirected": false,
+    "metrics": {
+      "title": "Resume Writing Guide & Practical Resources | Latexy",
+      "url": "https://latexy.xyz/resources",
+      "h1": [
+        "Make your next draft a little easier."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Make your next draft a little easier."
+        },
+        {
+          "tag": "H2",
+          "text": "Turn responsibilities into contributions"
+        },
+        {
+          "tag": "H2",
+          "text": "Tailor the emphasis, keep the facts"
+        },
+        {
+          "tag": "H2",
+          "text": "Read it once as a stranger"
+        },
+        {
+          "tag": "H2",
+          "text": "The right next step."
+        },
+        {
+          "tag": "H3",
+          "text": "Find a starting layout"
+        },
+        {
+          "tag": "H3",
+          "text": "Understand the tools"
+        },
+        {
+          "tag": "H3",
+          "text": "Get an answer"
+        },
+        {
+          "tag": "H2",
+          "text": "Try it on a real document."
+        }
+      ],
+      "bodyTextLength": 3023,
+      "links": 27,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 13,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 453,
+        "load": 694,
+        "ttfb": 72,
+        "transfer": 11405
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 301
+    },
+    "mobile": {
+      "title": "Resume Writing Guide & Practical Resources | Latexy",
+      "url": "https://latexy.xyz/resources",
+      "h1": [
+        "Make your next draft a little easier."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Make your next draft a little easier."
+        },
+        {
+          "tag": "H2",
+          "text": "Turn responsibilities into contributions"
+        },
+        {
+          "tag": "H2",
+          "text": "Tailor the emphasis, keep the facts"
+        },
+        {
+          "tag": "H2",
+          "text": "Read it once as a stranger"
+        },
+        {
+          "tag": "H2",
+          "text": "The right next step."
+        },
+        {
+          "tag": "H3",
+          "text": "Find a starting layout"
+        },
+        {
+          "tag": "H3",
+          "text": "Understand the tools"
+        },
+        {
+          "tag": "H3",
+          "text": "Get an answer"
+        },
+        {
+          "tag": "H2",
+          "text": "Try it on a real document."
+        }
+      ],
+      "bodyTextLength": 2971,
+      "links": 27,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 13,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 556,
+        "load": 556,
+        "ttfb": 84,
+        "transfer": 11398
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 303
+    }
+  },
+  {
+    "route": "/settings",
+    "role": "free",
+    "slug": "settings",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/settings",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/settings",
+      "h1": [
+        "Settings"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Settings"
+        },
+        {
+          "tag": "H2",
+          "text": "Personal Dictionary"
+        },
+        {
+          "tag": "H2",
+          "text": "Account security"
+        },
+        {
+          "tag": "H3",
+          "text": "Authenticator app"
+        },
+        {
+          "tag": "H3",
+          "text": "Passkeys"
+        },
+        {
+          "tag": "H2",
+          "text": "Export your data"
+        },
+        {
+          "tag": "H2",
+          "text": "Delete your account"
+        },
+        {
+          "tag": "H2",
+          "text": "User referrals"
+        },
+        {
+          "tag": "H2",
+          "text": "GitHub Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Zotero Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Mendeley Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Dropbox Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Google Drive export"
+        },
+        {
+          "tag": "H2",
+          "text": "Email Notifications"
+        },
+        {
+          "tag": "H2",
+          "text": "Desktop Notifications"
+        },
+        {
+          "tag": "H2",
+          "text": "Getting Started"
+        }
+      ],
+      "bodyTextLength": 4889,
+      "links": 8,
+      "buttons": 26,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 36,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 23,
+      "unlabeledInteractive": 1,
+      "inputs": 6,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 530,
+        "load": 530,
+        "ttfb": 83,
+        "transfer": 8376
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 490
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/settings",
+      "h1": [
+        "Settings"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Settings"
+        },
+        {
+          "tag": "H2",
+          "text": "Personal Dictionary"
+        },
+        {
+          "tag": "H2",
+          "text": "Account security"
+        },
+        {
+          "tag": "H3",
+          "text": "Authenticator app"
+        },
+        {
+          "tag": "H3",
+          "text": "Passkeys"
+        },
+        {
+          "tag": "H2",
+          "text": "Export your data"
+        },
+        {
+          "tag": "H2",
+          "text": "Delete your account"
+        },
+        {
+          "tag": "H2",
+          "text": "User referrals"
+        },
+        {
+          "tag": "H2",
+          "text": "GitHub Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Zotero Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Mendeley Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Dropbox Integration"
+        },
+        {
+          "tag": "H2",
+          "text": "Google Drive export"
+        },
+        {
+          "tag": "H2",
+          "text": "Email Notifications"
+        },
+        {
+          "tag": "H2",
+          "text": "Desktop Notifications"
+        },
+        {
+          "tag": "H2",
+          "text": "Getting Started"
+        }
+      ],
+      "bodyTextLength": 4841,
+      "links": 8,
+      "buttons": 26,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 36,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 22,
+      "unlabeledInteractive": 1,
+      "inputs": 6,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 652,
+        "load": 652,
+        "ttfb": 83,
+        "transfer": 8390
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 490
+    }
+  },
+  {
+    "route": "/signup",
+    "role": "anon",
+    "slug": "signup",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=UH0b-FfxT6rJaM3q",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/signup",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/signup",
+      "h1": [
+        "Set your résumé right."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Set your résumé right."
+        }
+      ],
+      "bodyTextLength": 1051,
+      "links": 20,
+      "buttons": 12,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 4,
+      "inputs": 5,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 581,
+        "load": 591,
+        "ttfb": 70,
+        "transfer": 9437
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 262
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/signup",
+      "h1": [
+        "Set your résumé right."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Set your résumé right."
+        }
+      ],
+      "bodyTextLength": 999,
+      "links": 20,
+      "buttons": 12,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 4,
+      "inputs": 5,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 577,
+        "load": 577,
+        "ttfb": 72,
+        "transfer": 9405
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 263
+    }
+  },
+  {
+    "route": "/templates",
+    "role": "anon",
+    "slug": "templates",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=hychSX8B7PZPqPM2",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/templates",
+    "redirected": false,
+    "metrics": {
+      "title": "LaTeX Templates for Resumes and Documents | Latexy",
+      "url": "https://latexy.xyz/templates",
+      "h1": [
+        "LaTeX templates, ready to use."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "LaTeX templates, ready to use."
+        },
+        {
+          "tag": "H3",
+          "text": "Phd Applicant"
+        },
+        {
+          "tag": "H3",
+          "text": "Postdoc"
+        },
+        {
+          "tag": "H3",
+          "text": "Professor"
+        },
+        {
+          "tag": "H3",
+          "text": "Research Cv"
+        },
+        {
+          "tag": "H3",
+          "text": "Stem Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Plain"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Standard"
+        },
+        {
+          "tag": "H3",
+          "text": "Hindi Professional"
+        },
+        {
+          "tag": "H3",
+          "text": "Art Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Copywriter"
+        },
+        {
+          "tag": "H3",
+          "text": "Product Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Ux Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Board Advisor"
+        },
+        {
+          "tag": "H3",
+          "text": "Cxo"
+        },
+        {
+          "tag": "H3",
+          "text": "Executive Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Vp Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Accounting"
+        },
+        {
+          "tag": "H3",
+          "text": "Fintech"
+        },
+        {
+          "tag": "H3",
+          "text": "Investment Banking"
+        },
+        {
+          "tag": "H3",
+          "text": "Quant"
+        },
+        {
+          "tag": "H3",
+          "text": "Bootcamp"
+        },
+        {
+          "tag": "H3",
+          "text": "Career Changer"
+        },
+        {
+          "tag": "H3",
+          "text": "Mba"
+        },
+        {
+          "tag": "H3",
+          "text": "New Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Attorney"
+        },
+        {
+          "tag": "H3",
+          "text": "Corporate Counsel"
+        },
+        {
+          "tag": "H3",
+          "text": "Law Clerk"
+        },
+        {
+          "tag": "H3",
+          "text": "Paralegal"
+        },
+        {
+          "tag": "H3",
+          "text": "Brand Manager"
+        },
+        {
+          "tag": "H3",
+          "text": "Content Strategist"
+        },
+        {
+          "tag": "H3",
+          "text": "Growth Marketer"
+        },
+        {
+          "tag": "H3",
+          "text": "Pmm"
+        },
+        {
+          "tag": "H3",
+          "text": "Biotech"
+        },
+        {
+          "tag": "H3",
+          "text": "Clinical Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Nursing"
+        },
+        {
+          "tag": "H3",
+          "text": "Physician"
+        },
+        {
+          "tag": "H3",
+          "text": "Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Clean Simple"
+        },
+        {
+          "tag": "H3",
+          "text": "Modern Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Ultra Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Madrid"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Metropolis"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Pitch"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Warsaw"
+        },
+        {
+          "tag": "H3",
+          "text": "Europecv"
+        },
+        {
+          "tag": "H3",
+          "text": "India Government Psu Application"
+        },
+        {
+          "tag": "H3",
+          "text": "India Professional Biodata"
+        },
+        {
+          "tag": "H3",
+          "text": "Polish Cv Rodo"
+        },
+        {
+          "tag": "H3",
+          "text": "Data Scientist"
+        },
+        {
+          "tag": "H3",
+          "text": "Devops"
+        },
+        {
+          "tag": "H3",
+          "text": "Fullstack"
+        },
+        {
+          "tag": "H3",
+          "text": "Ml Engineer"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Technical"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Creative"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Sidebar"
+        }
+      ],
+      "bodyTextLength": 4567,
+      "links": 19,
+      "buttons": 206,
+      "forms": 0,
+      "images": 61,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 72,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 63,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 660,
+        "load": 660,
+        "ttfb": 85,
+        "transfer": 8747
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 1170
+    },
+    "mobile": {
+      "title": "LaTeX Templates for Resumes and Documents | Latexy",
+      "url": "https://latexy.xyz/templates",
+      "h1": [
+        "LaTeX templates, ready to use."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "LaTeX templates, ready to use."
+        },
+        {
+          "tag": "H3",
+          "text": "Phd Applicant"
+        },
+        {
+          "tag": "H3",
+          "text": "Postdoc"
+        },
+        {
+          "tag": "H3",
+          "text": "Professor"
+        },
+        {
+          "tag": "H3",
+          "text": "Research Cv"
+        },
+        {
+          "tag": "H3",
+          "text": "Stem Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Plain"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Standard"
+        },
+        {
+          "tag": "H3",
+          "text": "Hindi Professional"
+        },
+        {
+          "tag": "H3",
+          "text": "Art Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Copywriter"
+        },
+        {
+          "tag": "H3",
+          "text": "Product Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Ux Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Board Advisor"
+        },
+        {
+          "tag": "H3",
+          "text": "Cxo"
+        },
+        {
+          "tag": "H3",
+          "text": "Executive Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Vp Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Accounting"
+        },
+        {
+          "tag": "H3",
+          "text": "Fintech"
+        },
+        {
+          "tag": "H3",
+          "text": "Investment Banking"
+        },
+        {
+          "tag": "H3",
+          "text": "Quant"
+        },
+        {
+          "tag": "H3",
+          "text": "Bootcamp"
+        },
+        {
+          "tag": "H3",
+          "text": "Career Changer"
+        },
+        {
+          "tag": "H3",
+          "text": "Mba"
+        },
+        {
+          "tag": "H3",
+          "text": "New Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Attorney"
+        },
+        {
+          "tag": "H3",
+          "text": "Corporate Counsel"
+        },
+        {
+          "tag": "H3",
+          "text": "Law Clerk"
+        },
+        {
+          "tag": "H3",
+          "text": "Paralegal"
+        },
+        {
+          "tag": "H3",
+          "text": "Brand Manager"
+        },
+        {
+          "tag": "H3",
+          "text": "Content Strategist"
+        },
+        {
+          "tag": "H3",
+          "text": "Growth Marketer"
+        },
+        {
+          "tag": "H3",
+          "text": "Pmm"
+        },
+        {
+          "tag": "H3",
+          "text": "Biotech"
+        },
+        {
+          "tag": "H3",
+          "text": "Clinical Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Nursing"
+        },
+        {
+          "tag": "H3",
+          "text": "Physician"
+        },
+        {
+          "tag": "H3",
+          "text": "Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Clean Simple"
+        },
+        {
+          "tag": "H3",
+          "text": "Modern Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Ultra Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Madrid"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Metropolis"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Pitch"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Warsaw"
+        },
+        {
+          "tag": "H3",
+          "text": "Europecv"
+        },
+        {
+          "tag": "H3",
+          "text": "India Government Psu Application"
+        },
+        {
+          "tag": "H3",
+          "text": "India Professional Biodata"
+        },
+        {
+          "tag": "H3",
+          "text": "Polish Cv Rodo"
+        },
+        {
+          "tag": "H3",
+          "text": "Data Scientist"
+        },
+        {
+          "tag": "H3",
+          "text": "Devops"
+        },
+        {
+          "tag": "H3",
+          "text": "Fullstack"
+        },
+        {
+          "tag": "H3",
+          "text": "Ml Engineer"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Technical"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Creative"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Sidebar"
+        }
+      ],
+      "bodyTextLength": 4527,
+      "links": 19,
+      "buttons": 206,
+      "forms": 0,
+      "images": 59,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 74,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 65,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 583,
+        "load": 583,
+        "ttfb": 78,
+        "transfer": 8747
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 1184
+    }
+  },
+  {
+    "route": "/tenant-invite",
+    "role": "anon",
+    "slug": "tenant-invite",
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 429 ()"
+    ],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [
+      {
+        "status": 429,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tenants/resolve-host?host=latexy.xyz",
+        "type": "fetch"
+      }
+    ],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/login?redirect=%2Ftenant-invite",
+    "redirected": true,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/login?redirect=%2Ftenant-invite",
+      "h1": [
+        "Welcome back"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Welcome back"
+        }
+      ],
+      "bodyTextLength": 1147,
+      "links": 21,
+      "buttons": 12,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 2,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 435,
+        "load": 570,
+        "ttfb": 73,
+        "transfer": 8742
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 260
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/login?redirect=%2Ftenant-invite",
+      "h1": [
+        "Welcome back"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Welcome back"
+        }
+      ],
+      "bodyTextLength": 1095,
+      "links": 21,
+      "buttons": 12,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 2,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 636,
+        "load": 636,
+        "ttfb": 77,
+        "transfer": 8719
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 260
+    }
+  },
+  {
+    "route": "/terms",
+    "role": "anon",
+    "slug": "terms",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/resources?_rsc=DNFl5fs2IjKQRqXM",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/terms",
+    "redirected": false,
+    "metrics": {
+      "title": "Terms of Service — Latexy",
+      "url": "https://latexy.xyz/terms",
+      "h1": [
+        "Terms of Service"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Terms of Service"
+        },
+        {
+          "tag": "H2",
+          "text": "1. Acceptance of Terms"
+        },
+        {
+          "tag": "H2",
+          "text": "2. Description of Service"
+        },
+        {
+          "tag": "H3",
+          "text": "2.1 Service Features"
+        },
+        {
+          "tag": "H2",
+          "text": "3. User Accounts and Registration"
+        },
+        {
+          "tag": "H3",
+          "text": "3.1 Account Creation"
+        },
+        {
+          "tag": "H3",
+          "text": "3.2 Account Eligibility"
+        },
+        {
+          "tag": "H2",
+          "text": "4. Subscription Plans and Billing"
+        },
+        {
+          "tag": "H3",
+          "text": "4.1 Plan Types"
+        },
+        {
+          "tag": "H3",
+          "text": "4.2 Billing Terms"
+        },
+        {
+          "tag": "H3",
+          "text": "4.3 Free Trial Terms"
+        },
+        {
+          "tag": "H2",
+          "text": "5. Acceptable Use Policy"
+        },
+        {
+          "tag": "H3",
+          "text": "5.1 Permitted Uses"
+        },
+        {
+          "tag": "H3",
+          "text": "5.2 Prohibited Uses"
+        },
+        {
+          "tag": "H2",
+          "text": "6. Intellectual Property Rights"
+        },
+        {
+          "tag": "H3",
+          "text": "6.1 Service Content"
+        },
+        {
+          "tag": "H3",
+          "text": "6.2 User Content"
+        },
+        {
+          "tag": "H2",
+          "text": "7. Privacy and Data Protection"
+        },
+        {
+          "tag": "H3",
+          "text": "7.1 Data Collection"
+        },
+        {
+          "tag": "H3",
+          "text": "7.2 Data Security"
+        },
+        {
+          "tag": "H2",
+          "text": "8. API Key Management (BYOK)"
+        },
+        {
+          "tag": "H3",
+          "text": "8.1 User Responsibilities"
+        },
+        {
+          "tag": "H3",
+          "text": "8.2 Supported Providers"
+        },
+        {
+          "tag": "H2",
+          "text": "9. Service Availability and Performance"
+        },
+        {
+          "tag": "H3",
+          "text": "9.1 Availability"
+        },
+        {
+          "tag": "H3",
+          "text": "9.2 Performance Standards"
+        },
+        {
+          "tag": "H2",
+          "text": "10. Limitation of Liability"
+        },
+        {
+          "tag": "H3",
+          "text": "10.1 Service Disclaimer"
+        },
+        {
+          "tag": "H3",
+          "text": "10.2 Liability Limits"
+        },
+        {
+          "tag": "H2",
+          "text": "11. Termination"
+        },
+        {
+          "tag": "H3",
+          "text": "11.1 Termination by User"
+        },
+        {
+          "tag": "H3",
+          "text": "11.2 Termination by Latexy"
+        },
+        {
+          "tag": "H2",
+          "text": "12. Dispute Resolution"
+        },
+        {
+          "tag": "H3",
+          "text": "12.1 Governing Law"
+        },
+        {
+          "tag": "H3",
+          "text": "12.2 Contact for Disputes"
+        },
+        {
+          "tag": "H2",
+          "text": "13. Changes to Terms"
+        },
+        {
+          "tag": "H3",
+          "text": "13.1 Modification Rights"
+        },
+        {
+          "tag": "H3",
+          "text": "13.2 Notification Methods"
+        },
+        {
+          "tag": "H2",
+          "text": "14. Contact Information"
+        }
+      ],
+      "bodyTextLength": 8768,
+      "links": 19,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 807,
+        "load": 814,
+        "ttfb": 80,
+        "transfer": 14721
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 405
+    },
+    "mobile": {
+      "title": "Terms of Service — Latexy",
+      "url": "https://latexy.xyz/terms",
+      "h1": [
+        "Terms of Service"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Terms of Service"
+        },
+        {
+          "tag": "H2",
+          "text": "1. Acceptance of Terms"
+        },
+        {
+          "tag": "H2",
+          "text": "2. Description of Service"
+        },
+        {
+          "tag": "H3",
+          "text": "2.1 Service Features"
+        },
+        {
+          "tag": "H2",
+          "text": "3. User Accounts and Registration"
+        },
+        {
+          "tag": "H3",
+          "text": "3.1 Account Creation"
+        },
+        {
+          "tag": "H3",
+          "text": "3.2 Account Eligibility"
+        },
+        {
+          "tag": "H2",
+          "text": "4. Subscription Plans and Billing"
+        },
+        {
+          "tag": "H3",
+          "text": "4.1 Plan Types"
+        },
+        {
+          "tag": "H3",
+          "text": "4.2 Billing Terms"
+        },
+        {
+          "tag": "H3",
+          "text": "4.3 Free Trial Terms"
+        },
+        {
+          "tag": "H2",
+          "text": "5. Acceptable Use Policy"
+        },
+        {
+          "tag": "H3",
+          "text": "5.1 Permitted Uses"
+        },
+        {
+          "tag": "H3",
+          "text": "5.2 Prohibited Uses"
+        },
+        {
+          "tag": "H2",
+          "text": "6. Intellectual Property Rights"
+        },
+        {
+          "tag": "H3",
+          "text": "6.1 Service Content"
+        },
+        {
+          "tag": "H3",
+          "text": "6.2 User Content"
+        },
+        {
+          "tag": "H2",
+          "text": "7. Privacy and Data Protection"
+        },
+        {
+          "tag": "H3",
+          "text": "7.1 Data Collection"
+        },
+        {
+          "tag": "H3",
+          "text": "7.2 Data Security"
+        },
+        {
+          "tag": "H2",
+          "text": "8. API Key Management (BYOK)"
+        },
+        {
+          "tag": "H3",
+          "text": "8.1 User Responsibilities"
+        },
+        {
+          "tag": "H3",
+          "text": "8.2 Supported Providers"
+        },
+        {
+          "tag": "H2",
+          "text": "9. Service Availability and Performance"
+        },
+        {
+          "tag": "H3",
+          "text": "9.1 Availability"
+        },
+        {
+          "tag": "H3",
+          "text": "9.2 Performance Standards"
+        },
+        {
+          "tag": "H2",
+          "text": "10. Limitation of Liability"
+        },
+        {
+          "tag": "H3",
+          "text": "10.1 Service Disclaimer"
+        },
+        {
+          "tag": "H3",
+          "text": "10.2 Liability Limits"
+        },
+        {
+          "tag": "H2",
+          "text": "11. Termination"
+        },
+        {
+          "tag": "H3",
+          "text": "11.1 Termination by User"
+        },
+        {
+          "tag": "H3",
+          "text": "11.2 Termination by Latexy"
+        },
+        {
+          "tag": "H2",
+          "text": "12. Dispute Resolution"
+        },
+        {
+          "tag": "H3",
+          "text": "12.1 Governing Law"
+        },
+        {
+          "tag": "H3",
+          "text": "12.2 Contact for Disputes"
+        },
+        {
+          "tag": "H2",
+          "text": "13. Changes to Terms"
+        },
+        {
+          "tag": "H3",
+          "text": "13.1 Modification Rights"
+        },
+        {
+          "tag": "H3",
+          "text": "13.2 Notification Methods"
+        },
+        {
+          "tag": "H2",
+          "text": "14. Contact Information"
+        }
+      ],
+      "bodyTextLength": 8716,
+      "links": 19,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 580,
+        "load": 580,
+        "ttfb": 83,
+        "transfer": 14677
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 408
+    }
+  },
+  {
+    "route": "/tracker",
+    "role": "free",
+    "slug": "tracker",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/tracker",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/tracker",
+      "h1": [
+        "Job Applications"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Job Applications"
+        },
+        {
+          "tag": "H2",
+          "text": "No applications yet"
+        }
+      ],
+      "bodyTextLength": 966,
+      "links": 9,
+      "buttons": 15,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 11,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 653,
+        "load": 786,
+        "ttfb": 75,
+        "transfer": 8352
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 230
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/tracker",
+      "h1": [
+        "Job Applications"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Job Applications"
+        },
+        {
+          "tag": "H2",
+          "text": "No applications yet"
+        }
+      ],
+      "bodyTextLength": 918,
+      "links": 9,
+      "buttons": 15,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 11,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 565,
+        "load": 642,
+        "ttfb": 74,
+        "transfer": 8334
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 230
+    }
+  },
+  {
+    "route": "/try",
+    "role": "anon",
+    "slug": "try",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/try",
+    "redirected": false,
+    "metrics": {
+      "title": "Try the résumé builder | Latexy",
+      "url": "https://latexy.xyz/try",
+      "h1": [
+        "Résumé Studio"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Résumé Studio"
+        },
+        {
+          "tag": "H2",
+          "text": "Edit your resume"
+        }
+      ],
+      "bodyTextLength": 1972,
+      "links": 4,
+      "buttons": 46,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 33,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [
+        {
+          "tag": "DIV",
+          "cls": "hidden min-h-0 min-w-0 flex-col lg:flex lg:flex-none",
+          "text": "Your PDF will appear here\n\nCompile to render a live preview",
+          "right": 1448,
+          "left": 880
+        },
+        {
+          "tag": "SECTION",
+          "cls": "flex min-h-0 flex-1 flex-col bg-surface-2",
+          "text": "Your PDF will appear here\n\nCompile to render a live preview",
+          "right": 1448,
+          "left": 880
+        },
+        {
+          "tag": "DIV",
+          "cls": "ph-no-capture relative min-h-0 flex-1",
+          "text": "Your PDF will appear here\n\nCompile to render a live preview",
+          "right": 1448,
+          "left": 880
+        },
+        {
+          "tag": "DIV",
+          "cls": "flex h-full flex-col items-center justify-center gap-5 bg-surface-2 px-6",
+          "text": "Your PDF will appear here\n\nCompile to render a live preview",
+          "right": 1448,
+          "left": 880
+        }
+      ],
+      "smallText": 14,
+      "unlabeledInteractive": 0,
+      "inputs": 0,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 530,
+        "load": 579,
+        "ttfb": 78,
+        "transfer": 10428
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 399
+    },
+    "mobile": {
+      "title": "Try the résumé builder | Latexy",
+      "url": "https://latexy.xyz/try",
+      "h1": [
+        "Résumé Studio"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Résumé Studio"
+        },
+        {
+          "tag": "H2",
+          "text": "Edit your resume"
+        }
+      ],
+      "bodyTextLength": 1787,
+      "links": 4,
+      "buttons": 46,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 33,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 14,
+      "unlabeledInteractive": 0,
+      "inputs": 0,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 521,
+        "load": 521,
+        "ttfb": 73,
+        "transfer": 10330
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 401
+    }
+  },
+  {
+    "route": "/two-factor",
+    "role": "anon",
+    "slug": "two-factor",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=RgEMkYz2rsDaYZ6O",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/two-factor",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/two-factor",
+      "h1": [
+        "Verify your sign-in"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Verify your sign-in"
+        }
+      ],
+      "bodyTextLength": 1045,
+      "links": 19,
+      "buttons": 11,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 476,
+        "load": 640,
+        "ttfb": 102,
+        "transfer": 9398
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 238
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/two-factor",
+      "h1": [
+        "Verify your sign-in"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Verify your sign-in"
+        }
+      ],
+      "bodyTextLength": 993,
+      "links": 19,
+      "buttons": 11,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 606,
+        "load": 607,
+        "ttfb": 74,
+        "transfer": 9398
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 238
+    }
+  },
+  {
+    "route": "/u/auditfe20261127",
+    "role": "anon",
+    "slug": "portfolio",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=EnY9O8NhWvDVSjt4",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/u/auditfe20261127",
+    "redirected": false,
+    "metrics": {
+      "title": "auditfe20261127 — Portfolio",
+      "url": "https://latexy.xyz/u/auditfe20261127",
+      "h1": [
+        "Audit FE pro"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Audit FE pro"
+        },
+        {
+          "tag": "H2",
+          "text": "Resumes"
+        },
+        {
+          "tag": "H2",
+          "text": "Contact"
+        }
+      ],
+      "bodyTextLength": 1016,
+      "links": 22,
+      "buttons": 9,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 4,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 3255,
+        "load": 3281,
+        "ttfb": 77,
+        "transfer": 9845
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 238
+    },
+    "mobile": {
+      "title": "auditfe20261127 — Portfolio",
+      "url": "https://latexy.xyz/u/auditfe20261127",
+      "h1": [
+        "Audit FE pro"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Audit FE pro"
+        },
+        {
+          "tag": "H2",
+          "text": "Resumes"
+        },
+        {
+          "tag": "H2",
+          "text": "Contact"
+        }
+      ],
+      "bodyTextLength": 964,
+      "links": 22,
+      "buttons": 9,
+      "forms": 1,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 4,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 3232,
+        "load": 3280,
+        "ttfb": 77,
+        "transfer": 9885
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 243
+    }
+  },
+  {
+    "route": "/updates",
+    "role": "anon",
+    "slug": "updates",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/updates",
+    "redirected": false,
+    "metrics": {
+      "title": "Product Updates and Release Notes | Latexy",
+      "url": "https://latexy.xyz/updates",
+      "h1": [
+        "Shipping log and platform progress."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Shipping log and platform progress."
+        },
+        {
+          "tag": "H2",
+          "text": "ATS Score Card & Page-Count Guidance"
+        },
+        {
+          "tag": "H2",
+          "text": "Onboarding & Workspace Redesign"
+        },
+        {
+          "tag": "H2",
+          "text": "Overleaf-Style Studio Rebuild"
+        },
+        {
+          "tag": "H2",
+          "text": "Guided Optimization & Project Import"
+        },
+        {
+          "tag": "H2",
+          "text": "Admin Control Plane"
+        },
+        {
+          "tag": "H2",
+          "text": "Production Readiness Layer"
+        },
+        {
+          "tag": "H2",
+          "text": "New Premium Frontend System"
+        },
+        {
+          "tag": "H2",
+          "text": "Expanded Job Event Streaming"
+        },
+        {
+          "tag": "H2",
+          "text": "BYOK Provider Enhancements"
+        }
+      ],
+      "bodyTextLength": 2439,
+      "links": 19,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 983,
+        "load": 983,
+        "ttfb": 94,
+        "transfer": 11045
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 370
+    },
+    "mobile": {
+      "title": "Product Updates and Release Notes | Latexy",
+      "url": "https://latexy.xyz/updates",
+      "h1": [
+        "Shipping log and platform progress."
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Shipping log and platform progress."
+        },
+        {
+          "tag": "H2",
+          "text": "ATS Score Card & Page-Count Guidance"
+        },
+        {
+          "tag": "H2",
+          "text": "Onboarding & Workspace Redesign"
+        },
+        {
+          "tag": "H2",
+          "text": "Overleaf-Style Studio Rebuild"
+        },
+        {
+          "tag": "H2",
+          "text": "Guided Optimization & Project Import"
+        },
+        {
+          "tag": "H2",
+          "text": "Admin Control Plane"
+        },
+        {
+          "tag": "H2",
+          "text": "Production Readiness Layer"
+        },
+        {
+          "tag": "H2",
+          "text": "New Premium Frontend System"
+        },
+        {
+          "tag": "H2",
+          "text": "Expanded Job Event Streaming"
+        },
+        {
+          "tag": "H2",
+          "text": "BYOK Provider Enhancements"
+        }
+      ],
+      "bodyTextLength": 2387,
+      "links": 19,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 959,
+        "load": 960,
+        "ttfb": 106,
+        "transfer": 11070
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 370
+    }
+  },
+  {
+    "route": "/verify-email",
+    "role": "free",
+    "slug": "verify-email",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/updates?_rsc=wu5Fv9n2fvgjs8RZ",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/verify-email",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/verify-email",
+      "h1": [
+        "Verification failed"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Verification failed"
+        }
+      ],
+      "bodyTextLength": 1028,
+      "links": 18,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 816,
+        "load": 1153,
+        "ttfb": 221,
+        "transfer": 8954
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 231
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/verify-email",
+      "h1": [
+        "Verification failed"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Verification failed"
+        }
+      ],
+      "bodyTextLength": 994,
+      "links": 14,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 9,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 885,
+        "load": 1054,
+        "ttfb": 78,
+        "transfer": 8961
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 226
+    }
+  },
+  {
+    "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+    "role": "free",
+    "slug": "workspace-batch-tailor",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/privacy?_rsc=6bi2sS--aBUg0wws",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+      "h1": [
+        "Batch Tailor"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Batch Tailor"
+        }
+      ],
+      "bodyTextLength": 829,
+      "links": 9,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 11,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 1,
+      "inputs": 5,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 662,
+        "load": 949,
+        "ttfb": 75,
+        "transfer": 8420
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 230
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+      "h1": [
+        "Batch Tailor"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Batch Tailor"
+        }
+      ],
+      "bodyTextLength": 781,
+      "links": 9,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 11,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 5,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 450,
+        "load": 850,
+        "ttfb": 82,
+        "transfer": 8420
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 216
+    }
+  },
+  {
+    "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+    "role": "free",
+    "slug": "workspace-career",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+      "h1": [
+        "Career Path Visualization"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Career Path Visualization"
+        },
+        {
+          "tag": "H2",
+          "text": "Past Analyses"
+        }
+      ],
+      "bodyTextLength": 915,
+      "links": 9,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 7,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 471,
+        "load": 877,
+        "ttfb": 102,
+        "transfer": 8410
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 228
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+      "h1": [
+        "Career Path Visualization"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Career Path Visualization"
+        },
+        {
+          "tag": "H2",
+          "text": "Past Analyses"
+        }
+      ],
+      "bodyTextLength": 867,
+      "links": 9,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 6,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 531,
+        "load": 950,
+        "ttfb": 74,
+        "transfer": 8433
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 223
+    }
+  },
+  {
+    "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+    "role": "free",
+    "slug": "workspace-cover-letter",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+      "h1": [
+        "AI Cover Letter Generator"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "AI Cover Letter Generator"
+        },
+        {
+          "tag": "H2",
+          "text": "JOB DESCRIPTION"
+        },
+        {
+          "tag": "H2",
+          "text": "DETAILS (OPTIONAL)"
+        },
+        {
+          "tag": "H2",
+          "text": "TONE"
+        },
+        {
+          "tag": "H2",
+          "text": "LENGTH"
+        },
+        {
+          "tag": "H2",
+          "text": "SIGNATURE"
+        },
+        {
+          "tag": "H2",
+          "text": "LIVE LOGS"
+        }
+      ],
+      "bodyTextLength": 1281,
+      "links": 3,
+      "buttons": 18,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 3,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [
+        {
+          "tag": "DIV",
+          "cls": "lines-content monaco-editor-background",
+          "text": "",
+          "right": 16777824,
+          "left": 608
+        },
+        {
+          "tag": "DIV",
+          "cls": "monaco-aria-container",
+          "text": "",
+          "right": -15984,
+          "left": -15985
+        }
+      ],
+      "smallText": 15,
+      "unlabeledInteractive": 2,
+      "inputs": 6,
+      "unlabelledInputs": 1,
+      "nav": {
+        "dcl": 570,
+        "load": 830,
+        "ttfb": 95,
+        "transfer": 7284
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 335
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+      "h1": [
+        "AI Cover Letter Generator"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "AI Cover Letter Generator"
+        },
+        {
+          "tag": "H2",
+          "text": "JOB DESCRIPTION"
+        },
+        {
+          "tag": "H2",
+          "text": "DETAILS (OPTIONAL)"
+        },
+        {
+          "tag": "H2",
+          "text": "TONE"
+        },
+        {
+          "tag": "H2",
+          "text": "LENGTH"
+        },
+        {
+          "tag": "H2",
+          "text": "SIGNATURE"
+        },
+        {
+          "tag": "H2",
+          "text": "LIVE LOGS"
+        }
+      ],
+      "bodyTextLength": 1242,
+      "links": 3,
+      "buttons": 18,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 3,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 394,
+      "viewportWidth": 394,
+      "offscreen": [
+        {
+          "tag": "DIV",
+          "cls": "lines-content monaco-editor-background",
+          "text": "",
+          "right": 16777316,
+          "left": 100
+        },
+        {
+          "tag": "DIV",
+          "cls": "monaco-aria-container",
+          "text": "",
+          "right": -15984,
+          "left": -15985
+        }
+      ],
+      "smallText": 14,
+      "unlabeledInteractive": 2,
+      "inputs": 6,
+      "unlabelledInputs": 1,
+      "nav": {
+        "dcl": 637,
+        "load": 637,
+        "ttfb": 130,
+        "transfer": 7284
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 343
+    }
+  },
+  {
+    "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+    "role": "free",
+    "slug": "workspace-edit",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/public/engine/capabilities",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+      "h1": [],
+      "headings": [
+        {
+          "tag": "H2",
+          "text": "Edit your resume"
+        }
+      ],
+      "bodyTextLength": 1089,
+      "links": 5,
+      "buttons": 22,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 28,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [
+        {
+          "tag": "BUTTON",
+          "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surfa",
+          "text": "Update preview",
+          "right": 1517,
+          "left": 1392
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] border px-3 py-1.5 text-[11",
+          "text": "AI Optimize",
+          "right": 1625,
+          "left": 1521
+        },
+        {
+          "tag": "svg",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 1545,
+          "left": 1534
+        },
+        {
+          "tag": "path",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 1544,
+          "left": 1535
+        },
+        {
+          "tag": "circle",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 1537,
+          "left": 1535
+        }
+      ],
+      "smallText": 23,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 701,
+        "load": 956,
+        "ttfb": 128,
+        "transfer": 7353
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 315
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit",
+      "h1": [],
+      "headings": [
+        {
+          "tag": "H2",
+          "text": "Edit your resume"
+        }
+      ],
+      "bodyTextLength": 1020,
+      "links": 5,
+      "buttons": 23,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 29,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [
+        {
+          "tag": "DIV",
+          "cls": "relative",
+          "text": "Tools",
+          "right": 465,
+          "left": 383
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] f",
+          "text": "Tools",
+          "right": 465,
+          "left": 383
+        },
+        {
+          "tag": "svg",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 405,
+          "left": 393
+        },
+        {
+          "tag": "svg",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 455,
+          "left": 444
+        },
+        {
+          "tag": "path",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 452,
+          "left": 447
+        },
+        {
+          "tag": "A",
+          "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] f",
+          "text": "Cover Letter",
+          "right": 570,
+          "left": 469
+        },
+        {
+          "tag": "svg",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 491,
+          "left": 479
+        },
+        {
+          "tag": "path",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 490,
+          "left": 480
+        },
+        {
+          "tag": "rect",
+          "cls": "[object SVGAnimatedString]",
+          "text": "",
+          "right": 490,
+          "left": 480
+        },
+        {
+          "tag": "A",
+          "cls": "flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] f",
+          "text": "Career Path",
+          "right": 673,
+          "left": 574
+        }
+      ],
+      "smallText": 23,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 494,
+        "load": 679,
+        "ttfb": 74,
+        "transfer": 7371
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 315
+    }
+  },
+  {
+    "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/optimize",
+    "role": "free",
+    "slug": "workspace-optimize",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/optimize",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/optimize",
+      "h1": [],
+      "headings": [],
+      "bodyTextLength": 526,
+      "links": 2,
+      "buttons": 2,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 0,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 0,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 637,
+        "load": 637,
+        "ttfb": 75,
+        "transfer": 7546
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 138
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/optimize",
+      "h1": [],
+      "headings": [],
+      "bodyTextLength": 526,
+      "links": 2,
+      "buttons": 2,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 0,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 0,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 1035,
+        "load": 1036,
+        "ttfb": 309,
+        "transfer": 7546
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 115
+    }
+  },
+  {
+    "route": "/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+    "role": "free",
+    "slug": "workspace-builder",
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 ()"
+    ],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [
+      {
+        "status": 404,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/70e3fa53-0f92-4b64-8a0d-8ce256639f32/builder/v1",
+        "type": "fetch"
+      }
+    ],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+      "h1": [
+        "Builder resume could not be loaded"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Builder resume could not be loaded"
+        }
+      ],
+      "bodyTextLength": 742,
+      "links": 9,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 702,
+        "load": 705,
+        "ttfb": 77,
+        "transfer": 8591
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 207
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+      "h1": [
+        "Builder resume could not be loaded"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Builder resume could not be loaded"
+        }
+      ],
+      "bodyTextLength": 694,
+      "links": 9,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 453,
+        "load": 817,
+        "ttfb": 88,
+        "transfer": 8545
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 207
+    }
+  },
+  {
+    "route": "/workspace/builder/new",
+    "role": "free",
+    "slug": "workspace-builder-new",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/builder/new",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/builder/new",
+      "h1": [
+        "Create your résumé"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Create your résumé"
+        },
+        {
+          "tag": "H2",
+          "text": "Choose a layout"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Plain"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Standard"
+        },
+        {
+          "tag": "H3",
+          "text": "Hindi Professional"
+        },
+        {
+          "tag": "H3",
+          "text": "Board Advisor"
+        },
+        {
+          "tag": "H3",
+          "text": "Cxo"
+        },
+        {
+          "tag": "H3",
+          "text": "Executive Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Vp Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Bootcamp"
+        },
+        {
+          "tag": "H3",
+          "text": "Career Changer"
+        },
+        {
+          "tag": "H3",
+          "text": "Mba"
+        },
+        {
+          "tag": "H3",
+          "text": "New Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Clean Simple"
+        },
+        {
+          "tag": "H3",
+          "text": "Modern Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Ultra Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Data Scientist"
+        },
+        {
+          "tag": "H3",
+          "text": "Devops"
+        },
+        {
+          "tag": "H3",
+          "text": "Fullstack"
+        },
+        {
+          "tag": "H3",
+          "text": "Ml Engineer"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Technical"
+        },
+        {
+          "tag": "H2",
+          "text": "Ats Clean"
+        }
+      ],
+      "bodyTextLength": 3509,
+      "links": 9,
+      "buttons": 32,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 14,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 673,
+        "load": 676,
+        "ttfb": 77,
+        "transfer": 8389
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 404
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/builder/new",
+      "h1": [
+        "Create your résumé"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Create your résumé"
+        },
+        {
+          "tag": "H2",
+          "text": "Choose a layout"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Plain"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Standard"
+        },
+        {
+          "tag": "H3",
+          "text": "Hindi Professional"
+        },
+        {
+          "tag": "H3",
+          "text": "Board Advisor"
+        },
+        {
+          "tag": "H3",
+          "text": "Cxo"
+        },
+        {
+          "tag": "H3",
+          "text": "Executive Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Vp Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Bootcamp"
+        },
+        {
+          "tag": "H3",
+          "text": "Career Changer"
+        },
+        {
+          "tag": "H3",
+          "text": "Mba"
+        },
+        {
+          "tag": "H3",
+          "text": "New Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Clean Simple"
+        },
+        {
+          "tag": "H3",
+          "text": "Modern Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Ultra Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Data Scientist"
+        },
+        {
+          "tag": "H3",
+          "text": "Devops"
+        },
+        {
+          "tag": "H3",
+          "text": "Fullstack"
+        },
+        {
+          "tag": "H3",
+          "text": "Ml Engineer"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Technical"
+        },
+        {
+          "tag": "H2",
+          "text": "Ats Clean"
+        }
+      ],
+      "bodyTextLength": 3461,
+      "links": 9,
+      "buttons": 32,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 14,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 1145,
+        "load": 1341,
+        "ttfb": 74,
+        "transfer": 8407
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 404
+    }
+  },
+  {
+    "route": "/workspace/cover-letters",
+    "role": "free",
+    "slug": "workspace-cover-letters",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/cover-letters",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/cover-letters",
+      "h1": [
+        "Cover Letter Library"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Cover Letter Library"
+        },
+        {
+          "tag": "H2",
+          "text": "No cover letters yet"
+        }
+      ],
+      "bodyTextLength": 880,
+      "links": 10,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 500,
+        "load": 814,
+        "ttfb": 94,
+        "transfer": 8291
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 203
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/cover-letters",
+      "h1": [
+        "Cover Letter Library"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Cover Letter Library"
+        },
+        {
+          "tag": "H2",
+          "text": "No cover letters yet"
+        }
+      ],
+      "bodyTextLength": 832,
+      "links": 10,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 2,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 805,
+        "load": 1037,
+        "ttfb": 123,
+        "transfer": 8257
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 201
+    }
+  },
+  {
+    "route": "/workspace/history",
+    "role": "free",
+    "slug": "workspace-history",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/resources?_rsc=mx_JsDsJ1hqLL4qd",
+        "err": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://latexy.xyz/privacy?_rsc=mx_JsDsJ1hqLL4qd",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/history",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/history",
+      "h1": [
+        "Run History"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Run History"
+        }
+      ],
+      "bodyTextLength": 1076,
+      "links": 10,
+      "buttons": 14,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 9,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 653,
+        "load": 839,
+        "ttfb": 92,
+        "transfer": 8283
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 250
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/history",
+      "h1": [
+        "Run History"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Run History"
+        }
+      ],
+      "bodyTextLength": 1028,
+      "links": 10,
+      "buttons": 14,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [
+        {
+          "tag": "TABLE",
+          "cls": "w-full min-w-[760px] text-left",
+          "text": "RUN ID\tSTATUS\tSTAGE\tPROGRESS\tUPDATED\nd1e092f4-0a9\tCompleted\twaiting\t\n\n100%\n\n\t27 ",
+          "right": 777,
+          "left": 17
+        },
+        {
+          "tag": "THEAD",
+          "cls": "",
+          "text": "RUN ID\tSTATUS\tSTAGE\tPROGRESS\tUPDATED",
+          "right": 777,
+          "left": 17
+        },
+        {
+          "tag": "TR",
+          "cls": "border-b border-line bg-surface-2 text-[11px] uppercase tracking-[0.14em] text-f",
+          "text": "RUN ID\tSTATUS\tSTAGE\tPROGRESS\tUPDATED",
+          "right": 777,
+          "left": 17
+        },
+        {
+          "tag": "TH",
+          "cls": "px-5 py-3 font-semibold",
+          "text": "STAGE",
+          "right": 429,
+          "left": 321
+        },
+        {
+          "tag": "TH",
+          "cls": "px-5 py-3 font-semibold",
+          "text": "PROGRESS",
+          "right": 568,
+          "left": 429
+        },
+        {
+          "tag": "TH",
+          "cls": "px-5 py-3 font-semibold",
+          "text": "UPDATED",
+          "right": 777,
+          "left": 568
+        },
+        {
+          "tag": "TBODY",
+          "cls": "divide-y divide-line",
+          "text": "d1e092f4-0a9\tCompleted\twaiting\t\n\n100%\n\n\t27 Nov 2026, 20:56\n3c4f66ea-b0f\tComplete",
+          "right": 777,
+          "left": 17
+        },
+        {
+          "tag": "TR",
+          "cls": "bg-bg/10",
+          "text": "d1e092f4-0a9\tCompleted\twaiting\t\n\n100%\n\n\t27 Nov 2026, 20:56",
+          "right": 777,
+          "left": 17
+        },
+        {
+          "tag": "TD",
+          "cls": "px-5 py-4 text-sm text-fg-2",
+          "text": "waiting",
+          "right": 429,
+          "left": 321
+        },
+        {
+          "tag": "TD",
+          "cls": "px-5 py-4",
+          "text": "100%",
+          "right": 568,
+          "left": 429
+        }
+      ],
+      "smallText": 8,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 787,
+        "load": 788,
+        "ttfb": 142,
+        "transfer": 8261
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 256
+    }
+  },
+  {
+    "route": "/workspace/merge",
+    "role": "free",
+    "slug": "workspace-merge",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/merge",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/merge",
+      "h1": [
+        "Merge Resumes"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Merge Resumes"
+        },
+        {
+          "tag": "H2",
+          "text": "Step 1 of 4 — Select Resumes"
+        }
+      ],
+      "bodyTextLength": 772,
+      "links": 9,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 1,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 433,
+        "load": 843,
+        "ttfb": 89,
+        "transfer": 8324
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 215
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/merge",
+      "h1": [
+        "Merge Resumes"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Merge Resumes"
+        },
+        {
+          "tag": "H2",
+          "text": "Step 1 of 4 — Select Resumes"
+        }
+      ],
+      "bodyTextLength": 724,
+      "links": 9,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 877,
+        "load": 877,
+        "ttfb": 92,
+        "transfer": 8357
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 226
+    }
+  },
+  {
+    "route": "/workspace/new",
+    "role": "free",
+    "slug": "workspace-new",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/new",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/new",
+      "h1": [
+        "Create Resume"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Create Resume"
+        },
+        {
+          "tag": "H2",
+          "text": "Guided Builder"
+        },
+        {
+          "tag": "H2",
+          "text": "Use Template"
+        },
+        {
+          "tag": "H2",
+          "text": "Import File"
+        },
+        {
+          "tag": "H2",
+          "text": "Import from LinkedIn"
+        },
+        {
+          "tag": "H2",
+          "text": "Import Builder Export"
+        },
+        {
+          "tag": "H3",
+          "text": "Phd Applicant"
+        },
+        {
+          "tag": "H3",
+          "text": "Postdoc"
+        },
+        {
+          "tag": "H3",
+          "text": "Professor"
+        },
+        {
+          "tag": "H3",
+          "text": "Research Cv"
+        },
+        {
+          "tag": "H3",
+          "text": "Stem Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Plain"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Standard"
+        },
+        {
+          "tag": "H3",
+          "text": "Hindi Professional"
+        },
+        {
+          "tag": "H3",
+          "text": "Art Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Copywriter"
+        },
+        {
+          "tag": "H3",
+          "text": "Product Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Ux Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Board Advisor"
+        },
+        {
+          "tag": "H3",
+          "text": "Cxo"
+        },
+        {
+          "tag": "H3",
+          "text": "Executive Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Vp Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Accounting"
+        },
+        {
+          "tag": "H3",
+          "text": "Fintech"
+        },
+        {
+          "tag": "H3",
+          "text": "Investment Banking"
+        },
+        {
+          "tag": "H3",
+          "text": "Quant"
+        },
+        {
+          "tag": "H3",
+          "text": "Bootcamp"
+        },
+        {
+          "tag": "H3",
+          "text": "Career Changer"
+        },
+        {
+          "tag": "H3",
+          "text": "Mba"
+        },
+        {
+          "tag": "H3",
+          "text": "New Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Attorney"
+        },
+        {
+          "tag": "H3",
+          "text": "Corporate Counsel"
+        },
+        {
+          "tag": "H3",
+          "text": "Law Clerk"
+        },
+        {
+          "tag": "H3",
+          "text": "Paralegal"
+        },
+        {
+          "tag": "H3",
+          "text": "Brand Manager"
+        },
+        {
+          "tag": "H3",
+          "text": "Content Strategist"
+        },
+        {
+          "tag": "H3",
+          "text": "Growth Marketer"
+        },
+        {
+          "tag": "H3",
+          "text": "Pmm"
+        },
+        {
+          "tag": "H3",
+          "text": "Biotech"
+        },
+        {
+          "tag": "H3",
+          "text": "Clinical Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Nursing"
+        },
+        {
+          "tag": "H3",
+          "text": "Physician"
+        },
+        {
+          "tag": "H3",
+          "text": "Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Clean Simple"
+        },
+        {
+          "tag": "H3",
+          "text": "Modern Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Ultra Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Madrid"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Metropolis"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Pitch"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Warsaw"
+        },
+        {
+          "tag": "H3",
+          "text": "Europecv"
+        },
+        {
+          "tag": "H3",
+          "text": "India Government Psu Application"
+        },
+        {
+          "tag": "H3",
+          "text": "India Professional Biodata"
+        },
+        {
+          "tag": "H3",
+          "text": "Polish Cv Rodo"
+        },
+        {
+          "tag": "H3",
+          "text": "Data Scientist"
+        },
+        {
+          "tag": "H3",
+          "text": "Devops"
+        },
+        {
+          "tag": "H3",
+          "text": "Fullstack"
+        },
+        {
+          "tag": "H3",
+          "text": "Ml Engineer"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Technical"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Creative"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Sidebar"
+        }
+      ],
+      "bodyTextLength": 4505,
+      "links": 10,
+      "buttons": 211,
+      "forms": 0,
+      "images": 61,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 74,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 64,
+      "unlabeledInteractive": 0,
+      "inputs": 4,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 729,
+        "load": 732,
+        "ttfb": 78,
+        "transfer": 8451
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 1197
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/new",
+      "h1": [
+        "Create Resume"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Create Resume"
+        },
+        {
+          "tag": "H2",
+          "text": "Guided Builder"
+        },
+        {
+          "tag": "H2",
+          "text": "Use Template"
+        },
+        {
+          "tag": "H2",
+          "text": "Import File"
+        },
+        {
+          "tag": "H2",
+          "text": "Import from LinkedIn"
+        },
+        {
+          "tag": "H2",
+          "text": "Import Builder Export"
+        },
+        {
+          "tag": "H3",
+          "text": "Phd Applicant"
+        },
+        {
+          "tag": "H3",
+          "text": "Postdoc"
+        },
+        {
+          "tag": "H3",
+          "text": "Professor"
+        },
+        {
+          "tag": "H3",
+          "text": "Research Cv"
+        },
+        {
+          "tag": "H3",
+          "text": "Stem Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Plain"
+        },
+        {
+          "tag": "H3",
+          "text": "Ats Standard"
+        },
+        {
+          "tag": "H3",
+          "text": "Hindi Professional"
+        },
+        {
+          "tag": "H3",
+          "text": "Art Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Copywriter"
+        },
+        {
+          "tag": "H3",
+          "text": "Product Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Ux Designer"
+        },
+        {
+          "tag": "H3",
+          "text": "Board Advisor"
+        },
+        {
+          "tag": "H3",
+          "text": "Cxo"
+        },
+        {
+          "tag": "H3",
+          "text": "Executive Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Vp Director"
+        },
+        {
+          "tag": "H3",
+          "text": "Accounting"
+        },
+        {
+          "tag": "H3",
+          "text": "Fintech"
+        },
+        {
+          "tag": "H3",
+          "text": "Investment Banking"
+        },
+        {
+          "tag": "H3",
+          "text": "Quant"
+        },
+        {
+          "tag": "H3",
+          "text": "Bootcamp"
+        },
+        {
+          "tag": "H3",
+          "text": "Career Changer"
+        },
+        {
+          "tag": "H3",
+          "text": "Mba"
+        },
+        {
+          "tag": "H3",
+          "text": "New Grad"
+        },
+        {
+          "tag": "H3",
+          "text": "Attorney"
+        },
+        {
+          "tag": "H3",
+          "text": "Corporate Counsel"
+        },
+        {
+          "tag": "H3",
+          "text": "Law Clerk"
+        },
+        {
+          "tag": "H3",
+          "text": "Paralegal"
+        },
+        {
+          "tag": "H3",
+          "text": "Brand Manager"
+        },
+        {
+          "tag": "H3",
+          "text": "Content Strategist"
+        },
+        {
+          "tag": "H3",
+          "text": "Growth Marketer"
+        },
+        {
+          "tag": "H3",
+          "text": "Pmm"
+        },
+        {
+          "tag": "H3",
+          "text": "Biotech"
+        },
+        {
+          "tag": "H3",
+          "text": "Clinical Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Nursing"
+        },
+        {
+          "tag": "H3",
+          "text": "Physician"
+        },
+        {
+          "tag": "H3",
+          "text": "Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Clean Simple"
+        },
+        {
+          "tag": "H3",
+          "text": "Modern Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Ultra Minimal"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Madrid"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Metropolis"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Pitch"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Research"
+        },
+        {
+          "tag": "H3",
+          "text": "Beamer Warsaw"
+        },
+        {
+          "tag": "H3",
+          "text": "Europecv"
+        },
+        {
+          "tag": "H3",
+          "text": "India Government Psu Application"
+        },
+        {
+          "tag": "H3",
+          "text": "India Professional Biodata"
+        },
+        {
+          "tag": "H3",
+          "text": "Polish Cv Rodo"
+        },
+        {
+          "tag": "H3",
+          "text": "Data Scientist"
+        },
+        {
+          "tag": "H3",
+          "text": "Devops"
+        },
+        {
+          "tag": "H3",
+          "text": "Fullstack"
+        },
+        {
+          "tag": "H3",
+          "text": "Ml Engineer"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Clean"
+        },
+        {
+          "tag": "H3",
+          "text": "Swe Technical"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Classic"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Creative"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Modern"
+        },
+        {
+          "tag": "H3",
+          "text": "Two Col Sidebar"
+        }
+      ],
+      "bodyTextLength": 4457,
+      "links": 10,
+      "buttons": 211,
+      "forms": 0,
+      "images": 61,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 74,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 63,
+      "unlabeledInteractive": 0,
+      "inputs": 4,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 639,
+        "load": 639,
+        "ttfb": 71,
+        "transfer": 8469
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 1197
+    }
+  },
+  {
+    "route": "/workspace",
+    "role": "free",
+    "slug": "workspace",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/resources?_rsc=yWidoI1wYTauRU_O",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace",
+      "h1": [
+        "Resume Library"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Resume Library"
+        },
+        {
+          "tag": "H3",
+          "text": "Audit Free Resume"
+        },
+        {
+          "tag": "H2",
+          "text": "ORGANIZE"
+        },
+        {
+          "tag": "H2",
+          "text": "RECENT ACTIVITY"
+        },
+        {
+          "tag": "H3",
+          "text": "WORKFLOW TIP"
+        },
+        {
+          "tag": "H2",
+          "text": "Welcome to Latexy"
+        },
+        {
+          "tag": "H3",
+          "text": "Résumés, typeset."
+        }
+      ],
+      "bodyTextLength": 1690,
+      "links": 14,
+      "buttons": 26,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 27,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 5,
+      "unlabeledInteractive": 0,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 470,
+        "load": 584,
+        "ttfb": 85,
+        "transfer": 8458
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 403
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace",
+      "h1": [
+        "Resume Library"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Resume Library"
+        },
+        {
+          "tag": "H3",
+          "text": "Audit Free Resume"
+        },
+        {
+          "tag": "H2",
+          "text": "ORGANIZE"
+        },
+        {
+          "tag": "H2",
+          "text": "RECENT ACTIVITY"
+        },
+        {
+          "tag": "H3",
+          "text": "WORKFLOW TIP"
+        },
+        {
+          "tag": "H2",
+          "text": "Welcome to Latexy"
+        },
+        {
+          "tag": "H3",
+          "text": "Résumés, typeset."
+        }
+      ],
+      "bodyTextLength": 1610,
+      "links": 14,
+      "buttons": 26,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 27,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 4,
+      "unlabeledInteractive": 0,
+      "inputs": 3,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 568,
+        "load": 568,
+        "ttfb": 72,
+        "transfer": 8480
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 403
+    }
+  },
+  {
+    "route": "/workspace/variant/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+    "role": "free",
+    "slug": "workspace-variant",
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 409 ()"
+    ],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/templates?_rsc=VrenO7L3vBQAR-YX",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [
+      {
+        "status": 409,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/70e3fa53-0f92-4b64-8a0d-8ce256639f32/variant-visibility",
+        "type": "fetch"
+      }
+    ],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspace/variant/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/variant/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+      "h1": [
+        "Linked variant could not be loaded"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Linked variant could not be loaded"
+        }
+      ],
+      "bodyTextLength": 725,
+      "links": 8,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 443,
+        "load": 609,
+        "ttfb": 71,
+        "transfer": 8489
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 190
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspace/variant/70e3fa53-0f92-4b64-8a0d-8ce256639f32",
+      "h1": [
+        "Linked variant could not be loaded"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Linked variant could not be loaded"
+        }
+      ],
+      "bodyTextLength": 677,
+      "links": 8,
+      "buttons": 9,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 7,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 473,
+        "load": 597,
+        "ttfb": 144,
+        "transfer": 8480
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 198
+    }
+  },
+  {
+    "route": "/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+    "role": "team",
+    "slug": "workspaces-detail",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/pricing?_rsc=Pt2lMmYTnVf76szx",
+        "err": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://latexy.xyz/try?_rsc=Pt2lMmYTnVf76szx",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+      "h1": [],
+      "headings": [
+        {
+          "tag": "H2",
+          "text": "Members"
+        },
+        {
+          "tag": "H2",
+          "text": "Shared Resumes"
+        }
+      ],
+      "bodyTextLength": 837,
+      "links": 9,
+      "buttons": 11,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 15,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 1,
+      "inputs": 3,
+      "unlabelledInputs": 1,
+      "nav": {
+        "dcl": 579,
+        "load": 579,
+        "ttfb": 76,
+        "transfer": 8336
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 263
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0",
+      "h1": [],
+      "headings": [
+        {
+          "tag": "H2",
+          "text": "Members"
+        },
+        {
+          "tag": "H2",
+          "text": "Shared Resumes"
+        }
+      ],
+      "bodyTextLength": 789,
+      "links": 9,
+      "buttons": 11,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 15,
+      "horizontalOverflow": false,
+      "documentWidth": 401,
+      "viewportWidth": 401,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 1,
+      "inputs": 3,
+      "unlabelledInputs": 1,
+      "nav": {
+        "dcl": 660,
+        "load": 947,
+        "ttfb": 81,
+        "transfer": 8344
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 253
+    }
+  },
+  {
+    "route": "/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+    "role": "team",
+    "slug": "workspaces-recruiter",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/resources?_rsc=gMvR9fSoUTadUpzd",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+      "h1": [
+        "Recruiter Dashboard"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Recruiter Dashboard"
+        }
+      ],
+      "bodyTextLength": 788,
+      "links": 9,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 653,
+        "load": 753,
+        "ttfb": 97,
+        "transfer": 8392
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 215
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter",
+      "h1": [
+        "Recruiter Dashboard"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Recruiter Dashboard"
+        }
+      ],
+      "bodyTextLength": 740,
+      "links": 9,
+      "buttons": 8,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 10,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 663,
+        "load": 844,
+        "ttfb": 98,
+        "transfer": 8420
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 215
+    }
+  },
+  {
+    "route": "/workspaces",
+    "role": "team",
+    "slug": "workspaces",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0?_rsc=nM-YGvVOLalU4eQV",
+        "err": "net::ERR_ABORTED"
+      }
+    ],
+    "httpErrors": [],
+    "redirects": [],
+    "status": 200,
+    "finalUrl": "https://latexy.xyz/workspaces",
+    "redirected": false,
+    "metrics": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspaces",
+      "h1": [
+        "Team Workspaces"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Team Workspaces"
+        }
+      ],
+      "bodyTextLength": 712,
+      "links": 9,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "offscreen": [],
+      "smallText": 3,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 823,
+        "load": 823,
+        "ttfb": 81,
+        "transfer": 8263
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 236
+    },
+    "mobile": {
+      "title": "Latexy | Build a résumé for your next opportunity",
+      "url": "https://latexy.xyz/workspaces",
+      "h1": [
+        "Team Workspaces"
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Team Workspaces"
+        }
+      ],
+      "bodyTextLength": 664,
+      "links": 9,
+      "buttons": 10,
+      "forms": 0,
+      "images": 0,
+      "imagesMissingAlt": 0,
+      "iframes": 0,
+      "canvases": 0,
+      "svgs": 12,
+      "horizontalOverflow": false,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "offscreen": [],
+      "smallText": 2,
+      "unlabeledInteractive": 0,
+      "inputs": 1,
+      "unlabelledInputs": 0,
+      "nav": {
+        "dcl": 787,
+        "load": 924,
+        "ttfb": 80,
+        "transfer": 8263
+      },
+      "lcp": null,
+      "cls": 0,
+      "domNodes": 233
+    }
+  }
+]

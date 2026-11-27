@@ -1,0 +1,22 @@
+{
+  "counts": {
+    "users_found": 6,
+    "tenant_members": "DELETE 1",
+    "tenants": "DELETE 1",
+    "workspace_members": "DELETE 0",
+    "workspace_resumes": "DELETE 0",
+    "workspaces": "DELETE 0",
+    "team_seats": "DELETE 0",
+    "developer_api_keys": "DELETE 0",
+    "sessions": "DELETE 11",
+    "subscriptions": "DELETE 2",
+    "compilations": "DELETE 11",
+    "optimizations": "DELETE 4",
+    "usage_analytics": "DELETE 4",
+    "users": "DELETE 6"
+  },
+  "remaining_users": 0,
+  "remaining_tenants": 0,
+  "remaining_workspaces": 0,
+  "migration_head": "0109_error_alerts"
+}

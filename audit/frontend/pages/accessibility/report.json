@@ -1,0 +1,128 @@
+{
+  "route": "/accessibility",
+  "role": "anon",
+  "slug": "accessibility",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/resources?_rsc=p6JBf-Gtq-35482P",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/accessibility",
+  "redirected": false,
+  "metrics": {
+    "title": "Accessibility — Latexy",
+    "url": "https://latexy.xyz/accessibility",
+    "h1": [
+      "Building a résumé tool more people can use"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Building a résumé tool more people can use"
+      },
+      {
+        "tag": "H2",
+        "text": "Current support"
+      },
+      {
+        "tag": "H2",
+        "text": "Known limitations"
+      },
+      {
+        "tag": "H2",
+        "text": "Accessibility support"
+      },
+      {
+        "tag": "H2",
+        "text": "Testing and updates"
+      }
+    ],
+    "bodyTextLength": 3073,
+    "links": 17,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 8,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 492,
+      "load": 1087,
+      "ttfb": 81,
+      "transfer": 10180
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 239
+  },
+  "mobile": {
+    "title": "Accessibility — Latexy",
+    "url": "https://latexy.xyz/accessibility",
+    "h1": [
+      "Building a résumé tool more people can use"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Building a résumé tool more people can use"
+      },
+      {
+        "tag": "H2",
+        "text": "Current support"
+      },
+      {
+        "tag": "H2",
+        "text": "Known limitations"
+      },
+      {
+        "tag": "H2",
+        "text": "Accessibility support"
+      },
+      {
+        "tag": "H2",
+        "text": "Testing and updates"
+      }
+    ],
+    "bodyTextLength": 3026,
+    "links": 20,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 847,
+      "load": 847,
+      "ttfb": 89,
+      "transfer": 10180
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 244
+  }
+}

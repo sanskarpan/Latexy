@@ -1,0 +1,96 @@
+{
+  "route": "/workspaces",
+  "role": "team",
+  "slug": "workspaces",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0?_rsc=nM-YGvVOLalU4eQV",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspaces",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspaces",
+    "h1": [
+      "Team Workspaces"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Team Workspaces"
+      }
+    ],
+    "bodyTextLength": 712,
+    "links": 9,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 823,
+      "load": 823,
+      "ttfb": 81,
+      "transfer": 8263
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 236
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspaces",
+    "h1": [
+      "Team Workspaces"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Team Workspaces"
+      }
+    ],
+    "bodyTextLength": 664,
+    "links": 9,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 787,
+      "load": 924,
+      "ttfb": 80,
+      "transfer": 8263
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 233
+  }
+}

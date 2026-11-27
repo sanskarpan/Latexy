@@ -1,0 +1,85 @@
+{
+  "optState": {
+    "text": "Skip to content\n\nHelp us improve Latexy\n\nWith your permission we use optional browser analytics and masked session replay to understand how the product is used and to fix problems. Text and form inputs are masked, and résumé editing and public document pages are excluded from replay. Limited server-side service and billing analytics run without replay and never include document content.\n\nRead the privacy policy. You can change this choice later from “Privacy choices” in the footer.\n\nEssential only\nAllow analytics\n\nOPTIMIZATION\n\nTargeted Optimization\n\nOptimize \"Audit UI Journey 1795793570144\" — add a job description to tailor it to a specific role, or leave blank for general improvements.\n\nVariant\nBack to Editor\nCover Letter\nPRO PIPELINE\nOPTIMIZATION STYLE\noptional\n\nChoose a persona to bias the AI toward a specific context.\n\n🚀\n\nStartup / Scale-up\n\nLean, impact-driven language — metrics, growth, and ownership.\n\n🏢\n\nEnterprise / Corporate\n\nFormal, structured — collaboration, process, and scale.\n\n🎓\n\nAcademic / Research\n\nPublications, grants, teaching, and scholarly contributions.\n\n🔄\n\nCareer Change / Pivot\n\nSurfaces transferable skills and bridges to the new field.\n\n💼\n\nExecutive / C-Suite\n\nP&L, vision, and board-level leadership impact.\n\nJOB DESCRIPTION\noptional\nImport\nFine-tune the AI (optional)\nOptimize Resume\nLIVE LOGS\nNo log output yet\nVERSION HISTORY\nShow\n\nLATEX SOURCE\n\nAuto\nLuaLaTeX\nRestore Original\nLaTeX Presets\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n\\documentclass[11pt,letterpaper]\n{article}\n\\usepackage[margin=0.65in]{geometry}\n\\usepackage[T1]{fontenc}\n\\usepackage[utf8]{inputenc}\n\\usepackage{enumitem}\n\\usepackage[hidelinks,\nbookmarks=false]{hyperref}\n\\usepackage{xcolor}\n\\setlist[itemize]{leftmargin=1.2em, \nitemsep=0.15em, topsep=0.15em}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0pt}\n\\begin{document}\n{\\Large\\textbf{Audit Candidate}}\\\\\n[2pt]\nProduct Engineer\\\\[2pt]\naudit@example.test \\quad | \\quad +91 \n90000 00000 \\quad | \\quad Bengaluru, \nIndia \\quad | \\quad linkedin.com/in/\naudit \\quad | \\quad github.com/audit \n\\quad | \\quad audit.example\\\\[4pt]\n\\section*{Summary}\\vspace{-0.4em}\n\\hrule\\vspace{0.25em}\nProduct engineer with experience \nshipping fast, accessible web \napplications and distributed \nsystems. Strong focus on measurable \nLATEX EDITOR\nEditor keybindings\nStandard\nVim\nEmacs\nSTANDARD\n~1 PAGE\nATS 45\n814 CHARS\n⌘↵ COMPILE · ⌘⇧H PRESETS\n\nOUTPUT PREVIEW\n\nYour PDF will appear here\n\nCompile to render a live preview\n\nATS SIMULATOR\nKEYWORDS\nPUBLICATIONS\n",
+    "buttons": [
+      "Essential only",
+      "Allow analytics",
+      "Variant",
+      "Turn on high contrast mode",
+      "Toggle light or dark mode",
+      "🚀\n\nStartup / Scale-up\n\nLean, impact-driven language — metrics, growth, and ownership.",
+      "🏢\n\nEnterprise / Corporate\n\nFormal, structured — collaboration, process, and scale.",
+      "🎓\n\nAcademic / Research\n\nPublications, grants, teaching, and scholarly contributions.",
+      "🔄\n\nCareer Change / Pivot\n\nSurfaces transferable skills and bridges to the new field.",
+      "💼\n\nExecutive / C-Suite\n\nP&L, vision, and board-level leadership impact.",
+      "Import",
+      "Fine-tune the AI (optional)",
+      "Optimize Resume",
+      "VERSION HISTORY\nShow",
+      "Auto",
+      "LuaLaTeX",
+      "Restore Original",
+      "LaTeX Presets",
+      "ATS 45",
+      "Close error explanation",
+      "ATS SIMULATOR",
+      "KEYWORDS",
+      "PUBLICATIONS",
+      "Greenhouse\nGood",
+      "Lever\nGood",
+      "Ashby\nGood",
+      "Workday\nMedium",
+      "SmartRecruiters\nMedium",
+      "Taleo (Oracle)\nPoor",
+      "iCIMS\nMedium",
+      "Run checks"
+    ],
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "placeholder": "Paste job URL (Greenhouse, Lever, Workday, Indeed…)",
+        "type": "url"
+      },
+      {
+        "tag": "TEXTAREA",
+        "placeholder": "Paste a job description to tailor the optimization to a specific role. Leave blank for general improvements.",
+        "type": "textarea"
+      },
+      {
+        "tag": "TEXTAREA",
+        "placeholder": "",
+        "type": "textarea"
+      }
+    ]
+  },
+  "tracker": {
+    "opened": true,
+    "after": {
+      "text": "Skip to content\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nA\nAudit\n\nTRACKER\n\nJob Applications\n\nTrack every application across its full lifecycle.\n\nWorkspace\nReview forwarded email\nAdd Application\nBoard\nSaved jobs\nAlerts\nContacts\nNo applications yet\n\nTrack every job application from first submission to offer — add one to see your pipeline take shape across the columns below.\n\nAdd your first application\nAdd Application\nCOMPANY *\nROLE *\nSTATUS\nApplied\nPhone Screen\nTechnical\nOn-Site\nOffer\nRejected\nWithdrawn\nAPPLIED ON\nJOB URL\nLINKED RESUME\n— None —\nAudit UI Journey 1795793570144\nAudit UI Journey 1795793531629\nAudit Free Resume\nNOTES\n▼ Show job description\nCancel\nAdding…",
+      "buttons": [
+        "A\nAudit",
+        "Review forwarded email",
+        "Add Application",
+        "Board",
+        "Saved jobs",
+        "Alerts",
+        "Contacts",
+        "Add your first application",
+        "▼ Show job description",
+        "Cancel",
+        "Adding…"
+      ]
+    }
+  },
+  "log": {
+    "console": [
+      "Failed to load resource: the server responded with a status of 402 ()"
+    ],
+    "http": [
+      {
+        "status": 402,
+        "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/submit"
+      }
+    ]
+  }
+}
