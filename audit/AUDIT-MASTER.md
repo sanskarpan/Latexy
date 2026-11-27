@@ -102,7 +102,7 @@ Compile stage baseline (warm single 1-page, n=5): queue/acquisition **1.35 s**, 
 
 All **44 App Router pages** were loaded in production at 1440x900 and 390x844 with anonymous/free/pro/admin/team roles. Evidence: `audit/frontend/AUDIT.md`, `page-inventory.csv`, 44 `report.json` files, desktop/mobile screenshots and the builder journey.
 
-**14 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2339. The critical ones:
+**14 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2335, #2339, #2342. The critical ones:
 - **FE-01 P1:** Optimize page can sit on a blank "Checking feature availability" spinner for 25s+ with no error.
 - **FE-02 P1:** Imported/legacy LaTeX resumes have no coherent edit path (edit read-only, builder 404, variant 409, optimize spinner).
 - **FE-03 P2:** Consent banner overlays sign-in, pricing and admin controls.
@@ -112,6 +112,7 @@ All **44 App Router pages** were loaded in production at 1440x900 and 390x844 wi
 - **FE-07 P2:** Builder/auth controls have no accessible names.
 - **FE-08 P2:** Share page shows a generic "Link unavailable" after a successful compile.
 - **FE-13 P2:** Cover-letter generation stays at "Generating…" for 45s with no logs/error.
+- **FE-14 P2:** Guided-builder creation can sit at "Creating your résumé…" for ~30s.
 
 The page-load and visual coverage is complete; full interaction coverage remains partial (template use, PDF/LinkedIn import, ATS simulator, tracker CRUD, team invite, billing checkout, admin mutations).
 
@@ -145,6 +146,6 @@ The page-load and visual coverage is complete; full interaction coverage remains
 - [`cleanup.md`](cleanup.md), [`cleanup-verification.md`](cleanup-verification.md)
 - [`optimization-backlog.md`](optimization-backlog.md)
 - [`cross-check/`](cross-check/)
-- [`frontend/`](frontend/) - 44-page audit, screenshots, journeys, 13 defects
+- [`frontend/`](frontend/) - 44-page audit, screenshots, journeys, 14 defects
 - [`architecture/latency-advisor.md`](architecture/latency-advisor.md)
 - GitHub issue index #2341
