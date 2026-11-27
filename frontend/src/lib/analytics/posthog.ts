@@ -21,6 +21,7 @@ import {
   type ConsentDecision,
   type ConsentSurface,
 } from './consent'
+import { reportClientErrorSignal } from './error-signals'
 import {
   replayTriageLinks,
   type ReplayLinkConfig,
@@ -490,7 +491,14 @@ async function loadClient(): Promise<PostHogClient | null> {
         rageclick: true,
         // Applies to every SDK-created event, including autocapture, dead
         // clicks, and exceptions, not just the wrapper's explicit captures.
-        before_send: (event) => sanitizeAnalyticsEvent(event),
+        before_send: (event) => {
+          const sanitized = sanitizeAnalyticsEvent(event)
+          // Mirror only the sanitized identity of an exception to the backend
+          // aggregate feed. This runs after the consent-gated SDK loaded and the
+          // sanitizer stripped document surfaces and free-form exception text.
+          if (sanitized) reportClientErrorSignal(sanitized)
+          return sanitized
+        },
         persistence: 'localStorage+cookie',
         // Never record until the explicit consent path below starts it.
         disable_session_recording: true,

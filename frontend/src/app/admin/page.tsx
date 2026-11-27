@@ -16,6 +16,7 @@ import { JobQueue } from '@/components/JobQueue'
 import AdminPlanCatalog from '@/components/admin/AdminPlanCatalog'
 import AdminAnalytics from '@/components/admin/AdminAnalytics'
 import AdminQualityTriage from '@/components/admin/AdminQualityTriage'
+import AdminErrorFeed from '@/components/admin/AdminErrorFeed'
 import AdminReplayBrowser from '@/components/admin/AdminReplayBrowser'
 import AdminBilling from '@/components/admin/AdminBilling'
 import AdminSubscriptions from '@/components/admin/AdminSubscriptions'
@@ -1115,6 +1116,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'quality' && (
           <div className="space-y-6">
             <AdminQualityTriage />
+            <AdminErrorFeed />
             <AdminTemplateHealth />
             <AdminTemplatePerformance />
           </div>

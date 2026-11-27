@@ -1781,6 +1781,71 @@ class AdminAlert(Base):
     )
 
 
+class AdminErrorGroup(Base):
+    """Sanitized, aggregate-only exception group for the admin error feed.
+
+    A row is keyed by ``(source, route, release, error_class)``. It never stores
+    an exception message, stack trace, source snippet, prompt, document content,
+    email, token, user id, IP address or user agent. Route, release and class
+    values are sanitized before they reach this table and again when read.
+    """
+
+    __tablename__ = "admin_error_groups"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('frontend', 'backend')",
+            name="ck_admin_error_groups_source",
+        ),
+        CheckConstraint(
+            "occurrence_count >= 0 AND window_events >= 0 AND alert_count >= 0",
+            name="ck_admin_error_groups_non_negative",
+        ),
+        CheckConstraint(
+            "length(trim(route)) > 0 AND length(trim(release)) > 0 "
+            "AND length(trim(error_class)) > 0",
+            name="ck_admin_error_groups_required_text",
+        ),
+        UniqueConstraint(
+            "source",
+            "route",
+            "release",
+            "error_class",
+            name="uq_admin_error_groups_key",
+        ),
+        Index("idx_admin_error_groups_last_seen", "last_seen_at"),
+        Index(
+            "idx_admin_error_groups_source_last_seen",
+            "source",
+            "last_seen_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    route: Mapped[str] = mapped_column(String(128), nullable=False)
+    release: Mapped[str] = mapped_column(String(64), nullable=False)
+    error_class: Mapped[str] = mapped_column(String(80), nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    window_events: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    window_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_alerted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    alert_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class AdminIncident(Base):
     """Operator-owned incident timeline row.
 

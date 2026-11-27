@@ -1833,6 +1833,92 @@ export interface AdminCompileErrorsResponse {
   generated_at: string
 }
 
+export interface AdminErrorGroup {
+  id: string
+  source: 'frontend' | 'backend'
+  route: string
+  release: string
+  error_class: string
+  occurrence_count: number
+  window_events: number
+  window_started_at: string | null
+  first_seen_at: string | null
+  last_seen_at: string | null
+  last_alerted_at: string | null
+  alert_count: number
+}
+
+export interface AdminErrorFeedResponse {
+  generated_at: string
+  days: number
+  window: { start: string; end: string }
+  filters: {
+    source: 'frontend' | 'backend' | null
+    route: string | null
+    error_class: string | null
+  }
+  threshold: {
+    occurrences: number
+    window_minutes: number
+    cooldown_minutes: number
+  }
+  groups: AdminErrorGroup[]
+  totals: {
+    events: number
+    groups: number
+    visible_groups: number
+    routes: number
+    releases: number
+    suppressed_groups: number
+    suppressed_events: number
+  }
+  suppression: {
+    minimum_cohort_size: number
+    user_dimension_included: false
+    messages_included: false
+  }
+  delivery: {
+    configured: boolean
+    channels: string[]
+  }
+  runbook_url: string
+}
+
+export interface AdminErrorAlertEvaluation {
+  dry_run: boolean
+  threshold: {
+    occurrences: number
+    window_minutes: number
+    cooldown_minutes: number
+  }
+  candidate_count: number
+  selected_count: number
+  skipped_cooldown: number
+  delivery_configured: boolean
+  runbook_url: string
+  alerts: Array<{
+    kind: 'error_threshold'
+    source: 'frontend' | 'backend'
+    route: string
+    release: string
+    error_class: string
+    window_events: number
+    total_events: number
+    threshold: number
+    window_minutes: number
+    first_seen_at: string | null
+    last_seen_at: string | null
+    environment: string
+    runbook_url: string
+  }>
+  delivery: {
+    attempted: boolean
+    delivered: boolean
+    channels: Array<{ channel: string; status: string }>
+  }
+  alerted: number
+}
+
 export interface AdminDocumentComplexityBucket {
   bucket: string
   lower_bound: number | null
@@ -10560,6 +10646,34 @@ class ApiClient {
     if (params?.error_class) qs.set('error_class', params.error_class)
     const suffix = qs.toString() ? `?${qs}` : ''
     return this.request<AdminCompileErrorsResponse>(`/admin/analytics/compile-errors${suffix}`)
+  }
+
+  async getAdminErrorFeed(params?: {
+    days?: number
+    source?: 'frontend' | 'backend'
+    route?: string
+    error_class?: string
+    limit?: number
+  }): Promise<AdminErrorFeedResponse> {
+    const qs = new URLSearchParams()
+    if (params?.days != null) qs.set('days', String(params.days))
+    if (params?.source) qs.set('source', params.source)
+    if (params?.route) qs.set('route', params.route)
+    if (params?.error_class) qs.set('error_class', params.error_class)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminErrorFeedResponse>(`/admin/analytics/errors${suffix}`)
+  }
+
+  async evaluateAdminErrorAlerts(body: {
+    reason: string
+    confirm: boolean
+    dry_run?: boolean
+  }): Promise<AdminErrorAlertEvaluation> {
+    return this.request<AdminErrorAlertEvaluation>('/admin/analytics/errors/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   async getAdminDocumentComplexity(params?: {
