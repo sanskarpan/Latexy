@@ -176,3 +176,17 @@ Severity follows the audit scale. Every finding is from live production `https:/
 **Proposed fix:** surface the job id/state and provider error; show streamed log lines; add a timeout and Retry; do not leave the button in an indeterminate state.
 
 **Acceptance:** success returns a document within the target; failure shows a typed error and Retry within 30s; the live log shows progress.
+
+
+## FE-14 - P2 - Guided builder creation can sit at "Creating your résumé…" for ~30s
+
+**Surface:** `/workspace/builder/new`.
+**Observed:** after entering a title and clicking **Start my résumé**, the button stayed at "Creating your résumé…" for ~30s; one run was still on `/workspace/builder/new` after the wait, another navigated at ~30s. `POST /resumes/builder/v1` returned 201 and the editor loaded. No error or progress beyond the button label.
+
+**Evidence:** `journeys/builder-create-net.json`, `journeys/builder-create-stuck.png`.
+
+**Impact:** users cannot tell whether creation is working; a 30s wait is abandonment territory.
+
+**Proposed fix:** prefetch capabilities/templates, show a step/progress state, add a timeout with Retry, and prevent duplicate submits.
+
+**Acceptance:** creation navigates within 3s warm / 8s cold, or shows a progress step; timeout error by 10s; no duplicate resume created.
