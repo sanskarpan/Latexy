@@ -102,6 +102,14 @@ from .admin_flag_exposure_routes import router as flag_exposure_router
 router.include_router(flag_exposure_router)
 router.include_router(admin_flag_exposure_router)
 
+# Pre-registered A/B experiments: consent-covered first-party assignment and
+# aggregate-only admin results (issue #2158).
+from .admin_experiment_routes import admin_router as admin_experiment_router
+from .admin_experiment_routes import router as experiment_assignment_router
+
+router.include_router(experiment_assignment_router)
+router.include_router(admin_experiment_router)
+
 # Privacy-safe editor mode, auto-compile and SyncTeX usage (issue #2077).
 from .editor_mode_telemetry_routes import router as editor_mode_telemetry_router
 

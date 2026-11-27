@@ -1429,6 +1429,235 @@ class AdminApproval(Base):
     )
 
 
+class AdminExperiment(Base):
+    """Pre-registered A/B experiment with one primary metric and guardrails.
+
+    Registration fields are frozen by a database trigger after insert. Only the
+    lifecycle (status, start/stop metadata) may change, so a results read can
+    prove the analysis was registered before exposure. Rows never contain
+    customer documents, prompts, emails, tokens, IP addresses or user agents.
+    """
+
+    __tablename__ = "admin_experiments"
+    __table_args__ = (
+        CheckConstraint(
+            "experiment_key ~ '^[a-z][a-z0-9_]{1,63}$'",
+            name="ck_admin_experiments_key",
+        ),
+        CheckConstraint(
+            "length(trim(name)) BETWEEN 1 AND 160",
+            name="ck_admin_experiments_name",
+        ),
+        CheckConstraint(
+            "length(trim(hypothesis)) BETWEEN 20 AND 4000",
+            name="ck_admin_experiments_hypothesis",
+        ),
+        CheckConstraint(
+            "primary_metric IN ('activation', 'compile_success', "
+            "'checkout_started', 'retention_7d')",
+            name="ck_admin_experiments_primary_metric",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(guardrail_metrics) = 'array' "
+            "AND jsonb_array_length(guardrail_metrics) BETWEEN 1 AND 2",
+            name="ck_admin_experiments_guardrails",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(variants) = 'array' "
+            "AND jsonb_array_length(variants) BETWEEN 2 AND 4",
+            name="ck_admin_experiments_variants",
+        ),
+        CheckConstraint(
+            "flag_key IS NULL OR flag_key IN ('trial_limits', "
+            "'deep_analysis_trial', 'compile_timeouts', 'task_priority', "
+            "'billing', 'upgrade_ctas')",
+            name="ck_admin_experiments_flag_key",
+        ),
+        CheckConstraint(
+            "posthog_insight_url IS NULL OR posthog_insight_url ~ "
+            "'^https://(app|us|eu)[.]posthog[.]com/[A-Za-z0-9._~:/@!$&()*+,;=%-]*$'",
+            name="ck_admin_experiments_posthog_url",
+        ),
+        CheckConstraint(
+            "minimum_sample_per_variant BETWEEN 5 AND 1000000",
+            name="ck_admin_experiments_minimum_sample",
+        ),
+        CheckConstraint(
+            "status IN ('preregistered', 'running', 'stopped')",
+            name="ck_admin_experiments_status",
+        ),
+        CheckConstraint(
+            "registration_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_experiments_registration_hash",
+        ),
+        CheckConstraint(
+            "status = 'preregistered' OR started_at IS NOT NULL",
+            name="ck_admin_experiments_started",
+        ),
+        CheckConstraint(
+            "status <> 'stopped' OR (stopped_at IS NOT NULL AND stop_reason IS NOT NULL)",
+            name="ck_admin_experiments_stopped",
+        ),
+        Index("idx_admin_experiments_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_key: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    hypothesis: Mapped[str] = mapped_column(Text, nullable=False)
+    primary_metric: Mapped[str] = mapped_column(String(40), nullable=False)
+    guardrail_metrics: Mapped[List[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    variants: Mapped[List[Dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    flag_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    posthog_insight_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
+    minimum_sample_per_variant: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="preregistered", server_default="preregistered"
+    )
+    registration_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    started_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    stopped_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stopped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stop_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AdminExperimentAssignment(Base):
+    """Stable first-party variant assignment for one experiment and account.
+
+    The unique constraint prevents a subject from drifting between variants.
+    The row stores no direct identifier beyond the account UUID needed to keep
+    the assignment stable; admin responses expose aggregate counts only.
+    """
+
+    __tablename__ = "admin_experiment_assignments"
+    __table_args__ = (
+        CheckConstraint(
+            "variant ~ '^[a-z][a-z0-9_]{0,31}$'",
+            name="ck_admin_experiment_assignments_variant",
+        ),
+        CheckConstraint(
+            "bucket BETWEEN 0 AND 99",
+            name="ck_admin_experiment_assignments_bucket",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "user_id",
+            name="uq_admin_experiment_assignments_subject",
+        ),
+        Index(
+            "idx_admin_experiment_assignments_experiment_variant",
+            "experiment_id",
+            "variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant: Mapped[str] = mapped_column(String(32), nullable=False)
+    bucket: Mapped[int] = mapped_column(Integer, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reverted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class AdminExperimentExposure(Base):
+    """One deduped consent-covered exposure per experiment/account/UTC day."""
+
+    __tablename__ = "admin_experiment_exposures"
+    __table_args__ = (
+        CheckConstraint(
+            "variant ~ '^[a-z][a-z0-9_]{0,31}$'",
+            name="ck_admin_experiment_exposures_variant",
+        ),
+        CheckConstraint(
+            "source = 'first_party_experiment_evaluation'",
+            name="ck_admin_experiment_exposures_source",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "user_id",
+            "window_date",
+            name="uq_admin_experiment_exposures_window",
+        ),
+        Index(
+            "idx_admin_experiment_exposures_experiment_time",
+            "experiment_id",
+            "exposed_at",
+        ),
+        Index(
+            "idx_admin_experiment_exposures_experiment_variant",
+            "experiment_id",
+            "variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assignment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiment_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant: Mapped[str] = mapped_column(String(32), nullable=False)
+    window_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="first_party_experiment_evaluation",
+        server_default="first_party_experiment_evaluation",
+    )
+    exposed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class GdprRequest(Base):
     """One data-subject export or erasure request.
 

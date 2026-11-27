@@ -21,6 +21,7 @@ from app.api import (
     admin_alert_routes,
     admin_billing_reconciliation_routes,
     admin_control_routes,
+    admin_experiment_routes,
     admin_incident_routes,
     admin_operations_routes,
     admin_routes,
@@ -53,6 +54,10 @@ AUDITED_SERVICE_CALLS = (
     "service.create_segment",
     "service.update_segment",
     "service.delete_segment",
+    "service.create_experiment",
+    "service.start_experiment",
+    "service.stop_experiment",
+    "service.revert_experiment_assignments",
 )
 
 # POST endpoints that are read-only previews, not mutations.
@@ -76,6 +81,7 @@ ADMIN_ROUTERS = (
     admin_control_routes.router,
     admin_alert_routes.router,
     admin_billing_reconciliation_routes.router,
+    admin_experiment_routes.admin_router,
     admin_incident_routes.router,
     admin_operations_routes.router,
     admin_saved_views_routes.router,
