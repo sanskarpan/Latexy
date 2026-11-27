@@ -99,3 +99,52 @@
 | FE-12 | [#2335](https://github.com/sanskarpan/Latexy/issues/2335) |
 | FE-13 | [#2339](https://github.com/sanskarpan/Latexy/issues/2339) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
+
+## Visual disposition by page
+
+| Route | Visual analysis |
+|---|---|
+| `/accessibility` | Long-form accessibility statement; readable hierarchy; no visual defects. |
+| `/admin` | Control plane is clean at the top; capability matrix becomes a 21k px wall of toggles. |
+| `/admin/tenant` | Clean empty state; no navigation link into the route. |
+| `/billing` | Clear plan cards with real prices; coupon/student panels align; no visual defects. |
+| `/byok` | Strong hierarchy; provider cards clear; direct-provider copy contradicts the P0. |
+| `/dashboard` | Clear KPI cards/charts; 0% empty state reads as failure; metric labels are misleading. |
+| `/developer` | Strong typographic API hero; key form clear; consent overlay covers the list. |
+| `/faq` | Readable accordion; consistent typography. |
+| `/forgot-password` | Centered card; clear instruction; consent overlay covers the lower card. |
+| `/` | Clean editorial hero; sample resume card is legible; consent banner overlaps lower proof section. |
+| `/login` | Polished centered auth card; consent overlay covers GitHub/passkey options. |
+| `/platform` | Editorial feature narrative; clean spacing. |
+| `/u/auditfe20261127` | Clean public portfolio with resume/contact blocks; good hierarchy. |
+| `/pricing` | Strong hero; plan cards hide all prices; consent overlay covers the cards. |
+| `/privacy` | Long legal document; readable measure. |
+| `/reset-password` | Centered card; clear input; no visual defects. |
+| `/resources` | Editorial resource grid; clean. |
+| `/settings` | Clean section cards; dictionary/security/passkeys align; small labels. |
+| `/r/xC_40DHizO7gxGhA2fdsAuG62aMPoX1P` | Centered empty/error card; 'Link unavailable' is generic. |
+| `/signup` | Centered auth card; consent overlay hides lower options; several unlabeled controls. |
+| `/templates` | Library grid is well organized; 61 cards; preview modal loads slowly; consent overlay covers first row. |
+| `/tenant-invite` | Redirects to login; cannot assess invite layout without a token. |
+| `/terms` | Long legal document; readable measure. |
+| `/tracker` | Excellent empty state; board columns clear; add form is dense but readable. |
+| `/try` | Editor/preview split is clear; CTAs strong. |
+| `/two-factor` | Centered card; verification code input; consent overlay. |
+| `/updates` | Editorial changelog; clean. |
+| `/verify-email` | Centered card; clear resend CTA. |
+| `/workspace` | Onboarding modal covers the library on first visit. |
+| `/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor` | Form is clear; 1 unlabeled control; no overflow. |
+| `/workspace/builder/70e3fa53-0f92-4b64-8a0d-8ce256639f32` | Error card 'Builder resume could not be loaded'; no recovery path. |
+| `/workspace/builder/new` | Clean guided-builder start; template cards clear. |
+| `/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career` | Career path visualization is clear; 9 buttons. |
+| `/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter` | Two-column generator is clear; 2 unlabeled controls. |
+| `/workspace/cover-letters` | Clear library empty state. |
+| `/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/edit` | PDF preview is good; left editor is blank/read-only for a legacy LaTeX resume; no H1. |
+| `/workspace/history` | Run table is readable; filters clear. |
+| `/workspace/merge` | Step 1/3 picker is clear. |
+| `/workspace/new` | Strong create hub: guided builder, imports, templates. |
+| `/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/optimize` | Blank spinner; no skeleton or error. |
+| `/workspace/variant/70e3fa53-0f92-4b64-8a0d-8ce256639f32` | Error card 409 with Retry; no explanation how to create a variant. |
+| `/workspaces` | Clear team workspace list; consent overlay. |
+| `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0` | Clean member/share panels; heading is not an H1. |
+| `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter` | Clean empty recruiter dashboard. |
