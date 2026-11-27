@@ -114,11 +114,11 @@ All **44 App Router pages** were loaded in production at 1440x900 and 390x844 wi
 - **FE-13 P2:** Cover-letter generation stays at "Generating…" for 45s with no logs/error.
 - **FE-14 P2:** Guided-builder creation can sit at "Creating your résumé…" for ~30s.
 - **FE-15 P2:** Templates page shows "0 templates" for ~10s; Use Template stays at "CREATING…" >7s; PDF import extraction >8s.
-- **FE-16 P1:** Compiled share links cannot render their PDF: the R2 presigned URL returns no `Access-Control-Allow-Origin`, so `/r/{token}` shows "The review document could not be loaded." (#2344).
+- **FE-16 P1 (fixed, verification partial):** compiled share links could not render their PDF because the R2 presigned URL had no `Access-Control-Allow-Origin`. A bucket CORS rule was applied on 2026-11-27; plain 200 / Range 206, PDF render and public page-1 review comment verified. Remaining #2344 checks: revoked-token state, anonymous share, regression test.
 - **FE-17 P3:** Billing/dashboard/settings show bare loading text or empty cards for 3-12s; billing refetches plans three times (#2345).
 - **FE-18 P2:** Workspace invite succeeds but the owner's member list/count stays stale until reload; invite button is icon-only (#2347).
 
-The page-load and visual coverage is complete. Interaction coverage now includes the full builder, PDF import (end-to-end), ATS simulator (PASS), tracker add, team invite (PASS with FE-18), LinkedIn import (PASS with a synthetic fixture, source-only FE-02), cover-letter attempt and share/review (blocked by FE-16). Still partial: billing checkout (no live charges), admin mutations (safety).
+The page-load and visual coverage is complete. Interaction coverage now includes the full builder, PDF import (end-to-end), ATS simulator (PASS), tracker add, team invite (PASS with FE-18), LinkedIn import (PASS with a synthetic fixture, source-only FE-02), cover-letter attempt, and share/review (PASS after the R2 CORS fix). In-app coverage is 44/44. Still partial: billing checkout (no live charges), admin mutations (safety).
 
 ## Architecture review
 

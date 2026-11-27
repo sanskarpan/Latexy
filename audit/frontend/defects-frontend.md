@@ -219,6 +219,8 @@ Severity follows the audit scale. Every finding is from live production `https:/
 
 **Acceptance:** a compiled accepted resume's share link renders the PDF in Chrome/Firefox/Safari with no CORS console error; the review surface loads and accepts a pinned comment; Range requests work; revoked/no-artifact states stay distinct; anonymous shares are unaffected. Full issue: [#2344](https://github.com/sanskarpan/Latexy/issues/2344).
 
+**Status 2026-11-27:** R2 bucket CORS applied; PDF render, Range 206 and a public page-1 review comment verified. #2344 remains open for revoked-token, anonymous-share and deployed regression checks.
+
 ## FE-17 - P3 - Async shells show bare loading text/blank cards; billing refetches plans 3x
 
 **Surface:** `/billing`, `/dashboard`, `/settings`; related `/templates` (FE-15), `/workspace/merge`, `/workspace/builder/new`.

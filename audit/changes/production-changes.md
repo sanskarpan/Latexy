@@ -40,6 +40,22 @@ Findings from this pass:
 - `kill_switches[key] = true` means **enabled** in this implementation, despite the name. The admin request/response shape inverts the usual kill-switch convention and is easy to misread (audit operational hazard).
 - BYOK key-management endpoints (`/byok/api-keys`) do not consult `d25`; they stayed 200 while free d25 was false. Only the resume-engine/GitHub BYOK admission paths check d25. Recorded as `CAP-02`.
 
+## R2 CORS fix for public share PDFs (2026-11-27)
+
+Purpose: fix #2344, where `/r/{token}` could not render the compiled PDF because the R2 presigned URL had no `Access-Control-Allow-Origin`.
+
+- Before: `get_bucket_cors(Bucket=latexy)` -> `NoSuchCORSConfiguration`.
+- Change: `put_bucket_cors` with one rule:
+  - Origins: `https://latexy.xyz`, `https://www.latexy.xyz`, `http://localhost:3000`
+  - Methods: `GET, HEAD`
+  - Allowed headers: `Range, Content-Type, Authorization, Origin, Accept`
+  - Exposed headers: `Content-Length, Content-Range, Accept-Ranges, ETag, Content-Type`
+  - `MaxAgeSeconds`: 86400
+- After: `get_bucket_cors` returns the rule; `curl` with `Origin: https://latexy.xyz` returns `Access-Control-Allow-Origin` and `Access-Control-Expose-Headers`; browser plain fetch 200 and Range fetch 206.
+- Verification: synthetic compiled/accepted share link renders the PDF and accepts a page-1 public review comment (see `audit/frontend/journeys/share-review.md`).
+- Restore: not restored - this is the intended production fix for #2344. It only adds cross-origin read access for the listed first-party origins; it does not broaden write access or expose other buckets.
+- Test objects under `audit-cors-check/` were deleted immediately after verification.
+
 ## Cleanup
 
 - No plan catalog, pricing, role grant or deployment was changed.

@@ -60,6 +60,7 @@ Redis compile streams and R2 PDF artifacts are not deleted by the Postgres clean
 | Team invite (interact9) | owner + member + tenant/workspace | 2 workspace members, workspace, tenant member, tenant, 1 subscription, 2 sessions, 2 users | 0 |
 | LinkedIn import (interact10) | 1 free user | 1 compilation, 2 usage rows, 2 sessions, resume deleted via API, user | 0 |
 | Team detail/recruiter (interact9 rerun) | owner + member + tenant/workspace; synthetic portfolio | 1 workspace member, workspace, tenant member, tenant, 1 subscription, 3 sessions, 2 users (portfolio fields cascade with user) | 0 |
+| Share CORS verification (interact11) | 1 pro user | 1 compilation, 1 subscription, 1 session, 1 resume (API delete), 1 review comment capability, user | 0 |
 
 - All audit/interaction users matching `interact%` and `audit.fe.%`: **0**.
 - DB head remains `0109_error_alerts`.

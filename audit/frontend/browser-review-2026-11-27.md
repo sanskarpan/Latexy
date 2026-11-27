@@ -51,7 +51,7 @@ Screenshots: `browser-review/` (workspace/new, templates-0, billing-loading, set
 - **Developer/BYOK:** `/developer` (1 H1, 1,325 chars) and `/byok` (1 H1) load cleanly, no unlabeled controls.
 - **Legacy/fixture routes:** `/workspace/{id}/batch-tailor` shows the "Checking feature availability..." shell (same class as FE-01); `/workspace/builder/{id}` shows "Checking guided builder compatibility..." for a non-builder resume (FE-02). Both are covered by the existing reports.
 
-Total: **43 of 44 routes** exercised in the in-app browser (plus the 44/44 Playwright sweep). Team detail, recruiter dashboard and the public portfolio were reviewed with controlled fixtures (`workspace-detail.png`, `recruiter-dashboard.png`, `portfolio-public.png`). The only remaining route is `/r/{token}`: it needs a live share token and is currently broken by FE-16/#2344, so it is recorded as a blocker rather than rendered.
+Total: **44 of 44 routes** exercised in the in-app browser after the R2 CORS fix. The last route, `/r/{token}`, now renders the shared PDF and accepts a public reviewer comment. Team detail, recruiter dashboard and the public portfolio were reviewed with controlled fixtures (`workspace-detail.png`, `recruiter-dashboard.png`, `portfolio-public.png`).
 
 The editor was exercised through the synthetic LinkedIn import; `/workspaces` empty state was reviewed separately. The public portfolio used a synthetic user and a synthetic tagline; it showed the empty "No public resumes yet" state and the contact form.
 
@@ -66,7 +66,7 @@ The editor was exercised through the synthetic LinkedIn import; `/workspaces` em
 - **`/workspaces/{id}`** (synthetic team): clean two-panel layout, 1/5 members, owner row, invite-by-email form with Editor/Viewer selector and an **icon-only Plus button** (no accessible name; FE-18/FE-07), empty shared-resume panel. Screenshot: `workspace-detail.png`.
 - **`/workspaces/{id}/recruiter`** (same fixture): clear "Recruiter Dashboard / 0 resumes / No resumes shared yet" empty state. Screenshot: `recruiter-dashboard.png`.
 - **`/u/{username}`** (synthetic portfolio): light-theme public page with name, tagline, "No public resumes yet", contact form (Name/Email/Message), footer. No overflow or console errors. Screenshot: `portfolio-public.png`.
-- **`/r/{token}`**: not rendered in-app because the only safe synthetic token was deleted and any new token is subject to the known CORS failure (#2344). Recorded as an explicit blocker; the Playwright evidence shows the "review document could not be loaded" state.
+- **`/r/{token}`**: now PASS after the R2 CORS fix. The shared PDF renders in the browser (canvas present), Range fetch returns 206, and a page-1 public review comment was posted successfully. Evidence: `../journeys/share-review-fixed.png`, `../journeys/share-review-comment.png`.
 
 ## Verdict on this pass
 

@@ -51,3 +51,23 @@ Tracked in **#2344** (P1). The no-accepted-artifact state remains tracked in **#
 - User, synthetic subscription, resume, compilation, job finalization and session rows deleted.
 - Remaining `interact7.%` users: **0**; resume rows: **0**.
 - The generated R2 artifact becomes an orphan and is eligible for the existing render-artifact retention sweep (no DB reference remains).
+
+## Fix verification - 2026-11-27
+
+Applied a bucket-level R2 CORS policy to the `latexy` bucket (previously `NoSuchCORSConfiguration`):
+
+- Allowed origins: `https://latexy.xyz`, `https://www.latexy.xyz`, `http://localhost:3000`.
+- Methods: `GET, HEAD`; headers: `Range, Content-Type, Authorization, Origin, Accept`.
+- Exposed: `Content-Length, Content-Range, Accept-Ranges, ETag, Content-Type`; max age 86400s.
+- `curl -H 'Origin: https://latexy.xyz'` now returns `Access-Control-Allow-Origin: https://latexy.xyz` and `Access-Control-Expose-Headers`.
+- Browser fetch from `https://latexy.xyz` succeeds for plain (200) and **Range (206)** requests.
+
+Fresh synthetic pro user, compiled/accepted resume, share link `https://latexy.xyz/r/lWmhD00q9oD-hS8N4Db8DidNVKDCd7qg`:
+
+- `/r/{token}` renders the PDF (**canvas present**, no "review document could not be loaded").
+- Anchoring a point selects **page 1**, and posting a public review comment succeeds; the comment appears with a pseudonymous reviewer label and a page-1 marker.
+
+Evidence: `share-review-fixed.png`, `share-review-comment.png`. This satisfies the PDF+comment part of #2344; revoked-token, anonymous-share and regression-test criteria remain to be checked before closing the issue.
+
+Change register: `audit/changes/production-changes.md`.
+
