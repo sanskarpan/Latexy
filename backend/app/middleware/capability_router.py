@@ -267,6 +267,10 @@ PASSTHROUGH_ENDPOINTS: dict[str, frozenset[str]] = {
     "admin_career_adoption_routes": frozenset({
         "get_admin_career_adoption", "get_admin_career_feature_adoption",
     }),
+    "admin_cohort_routes": frozenset({
+        "evaluate_cohort_flags", "list_feature_cohorts", "create_feature_cohort",
+        "map_cohort_flag", "unmap_cohort_flag", "sync_feature_cohort",
+    }),
     "ai_routes": frozenset({
         "list_bullet_variants", "delete_bullet_variant_set", "list_personas",
     }),
