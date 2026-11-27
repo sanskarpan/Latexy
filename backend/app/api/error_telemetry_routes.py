@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
-from ..core.log_sanitize import sanitize_for_log
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
@@ -98,10 +97,6 @@ async def ingest_frontend_error(
 
     logger.info(
         "frontend_error_signal_ingested",
-        extra={
-            "error_class": sanitize_for_log(payload.error_class, max_len=80),
-            "route_name": sanitize_for_log(normalized_route, max_len=128),
-            "request_id": sanitize_for_log(getattr(request.state, "request_id", None)),
-        },
+        extra={"source": "frontend"},
     )
     return {"accepted": True}

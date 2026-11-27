@@ -330,7 +330,7 @@ class TestRetentionCohorts:
         self, client: AsyncClient, db_session: AsyncSession
     ):
         headers = await _admin_headers(db_session)
-        anchor = NOW - timedelta(days=120)
+        anchor = NOW - timedelta(days=350)
         signup = datetime(anchor.year, anchor.month, 5, 12, tzinfo=timezone.utc)
         month = signup.strftime("%Y-%m")
         users = [await _create_user(db_session, created_at=signup) for _ in range(5)]

@@ -128,8 +128,8 @@ def sanitize_error_class(value: object) -> str:
     """
     if not isinstance(value, str):
         return "UnknownError"
-    error_class = value.strip()
-    if not error_class or _EMAIL_RE.search(error_class) or _TOKEN_RE.search(error_class):
+    error_class = value.strip()[:128]
+    if not error_class or _TOKEN_RE.search(error_class):
         return "UnknownError"
     if not _ERROR_CLASS_RE.fullmatch(error_class):
         return "UnknownError"
