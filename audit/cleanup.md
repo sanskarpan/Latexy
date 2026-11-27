@@ -62,3 +62,10 @@ Redis compile streams and R2 PDF artifacts are not deleted by the Postgres clean
 - The interact7 render artifact in R2 has no DB reference and is eligible for the existing `render-artifacts/v1` orphan sweep (retention prefix, 1 h grace).
 - No live payment, global flag, plan catalog or entitlement change was made by these passes; the only plan row was the synthetic pro subscription deleted with interact7.
 
+## In-app browser review - 2026-11-27T17:00Z
+
+- Read-only: no compile, save, invite, checkout or admin mutation was triggered.
+- Used the person's logged-in default profile at 1279x799 and an incognito tab for anonymous pricing; the person's 741x1362 tab was only read for the header annotation.
+- No new users or fixtures were created.
+- Screenshots copied to `audit/frontend/browser-review/`; page text/console only.
+

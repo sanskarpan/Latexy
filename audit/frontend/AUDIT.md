@@ -16,6 +16,20 @@
 | Missing H1 | 3 pages (workspace-edit, workspace-optimize, workspaces-detail) |
 | Pages with unlabeled interactive controls | 10 |
 
+## In-app browser verification
+
+A separate read-only pass used the T3 Code in-app browser at 1279x799 (logged-in default profile) plus an incognito tab for anonymous pricing, and the person's 741x1362 tab for the header annotation. It confirmed, live:
+
+- Optimize stays a **blank page + spinner for ~25-30s** (FE-01).
+- Templates shows **"0 TEMPLATES" at 3s**, then **61 at ~12s** (FE-15).
+- Anonymous pricing shows **no prices** and the consent panel covers plan cards/CTAs (FE-05/FE-03).
+- Admin is **21,105px** with **925 visible buttons** (FE-04).
+- Billing shows bare "Loading plans..." / "Loading subscription state..." for ~12s and fires **five** subscription requests (new FE-17).
+- Dashboard KPI cards are empty boxes before data arrives (FE-17).
+- Cover letter has **2 unlabeled controls** (FE-12); settings has **1** (FE-07).
+
+Full notes and screenshots: [`browser-review-2026-11-27.md`](browser-review-2026-11-27.md), `browser-review/`.
+
 ## Per-page results
 
 | Page | Role | Status | H1 | DOM | Small text | Unlabeled | Console/HTTP | Notes |
@@ -101,6 +115,7 @@
 | FE-14 | [#2342](https://github.com/sanskarpan/Latexy/issues/2342) |
 | FE-15 | [#2343](https://github.com/sanskarpan/Latexy/issues/2343) |
 | FE-16 | [#2344](https://github.com/sanskarpan/Latexy/issues/2344) |
+| FE-17 | [#2345](https://github.com/sanskarpan/Latexy/issues/2345) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
 
 ## Visual disposition by page

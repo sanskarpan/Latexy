@@ -69,7 +69,7 @@ The evidence supports signing off the **functional baseline with the P0/P1 excep
 
 ## Front-end page audit (follow-up)
 
-All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 16 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342-#2344.
+All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 17 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342-#2345.
 
 - **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant; compiled share links cannot render their PDF because the R2 artifact URL is blocked by CORS.
 - **P2:** Consent banner covers auth/pricing/admin controls; admin capability matrix is 21,101px/930 toggles; pricing hides prices; dashboard says 3.5s compile vs 20.7s measured; builder/auth controls are unlabeled; share says "Link unavailable" after compile; cover-letter generation hangs at "Generating…" for 45s.
@@ -83,7 +83,7 @@ The builder happy path works: create (201) → fill fields → preview PDF → d
 
 ## Issue tracking
 
-**49 GitHub issues** were filed (#2295-#2344, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
+**50 GitHub issues** were filed (#2295-#2345, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
 
 ## Evidence index
 
