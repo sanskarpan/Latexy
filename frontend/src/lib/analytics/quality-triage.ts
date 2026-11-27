@@ -319,6 +319,85 @@ export function buildQualityErrorTrackingUrl(config: ReplayLinkConfig): string {
   return `${posthogHost(config)}/project/${encodeURIComponent(config.projectId)}/error-tracking`
 }
 
+/**
+ * Sanitized identity shared by the backend error feed and PostHog link
+ * builders. Values that are not bounded identifiers/routes are dropped rather
+ * than echoed into a URL.
+ */
+export interface QualityErrorGroupIdentity {
+  route?: string | null
+  release?: string | null
+  error_class?: string | null
+}
+
+const QUALITY_ERROR_CLASS_PATTERN = /^[A-Za-z][A-Za-z0-9_.:-]{0,79}$/
+
+export function normalizeQualityErrorClass(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const errorClass = value.trim()
+  return QUALITY_ERROR_CLASS_PATTERN.test(errorClass) ? errorClass : null
+}
+
+/**
+ * Open masked replays that fired `$exception`, filtered by the same sanitized
+ * route, release, and error class as a backend feed row. No free-form text,
+ * person property, or unmask control is included.
+ */
+export function buildQualityErrorGroupReplayUrl(
+  config: ReplayLinkConfig,
+  group: QualityErrorGroupIdentity,
+): string {
+  const route = normalizeQualityRoute(group.route)
+  const release = normalizeQualityRelease(group.release)
+  const errorClass = normalizeQualityErrorClass(group.error_class)
+  const values: Array<ReplayEventFilter | ReplayPropertyFilter> = [
+    { id: '$exception', type: 'events', order: 0, name: '$exception' },
+  ]
+  if (route) {
+    values.push({
+      key: '$current_url',
+      operator: 'icontains',
+      type: 'event',
+      value: route,
+    })
+  }
+  if (release) {
+    values.push({
+      key: '$release_id',
+      operator: 'exact',
+      type: 'event',
+      value: [release],
+    })
+  }
+  if (errorClass) {
+    values.push({
+      key: 'error_type',
+      operator: 'exact',
+      type: 'event',
+      value: [errorClass],
+    })
+  }
+  return buildReplayUrl(config, { filter_group: replayFilterGroup(values) })
+}
+
+/**
+ * Open PostHog error tracking with a bounded search term. Filtering is a
+ * best-effort search; the grouped issue itself remains PostHog's source of
+ * truth. Only sanitized identifiers are ever placed in the URL.
+ */
+export function buildQualityErrorGroupErrorTrackingUrl(
+  config: ReplayLinkConfig,
+  group: QualityErrorGroupIdentity,
+): string {
+  const terms = [
+    normalizeQualityErrorClass(group.error_class),
+    normalizeQualityRoute(group.route),
+    normalizeQualityRelease(group.release),
+  ].filter((value): value is string => Boolean(value))
+  const suffix = terms.length > 0 ? `?search=${encodeURIComponent(terms.join(' '))}` : ''
+  return `${posthogHost(config)}/project/${encodeURIComponent(config.projectId)}/error-tracking${suffix}`
+}
+
 export interface QualitySavedInsight {
   id: string
   label: string

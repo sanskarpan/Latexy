@@ -312,6 +312,29 @@ The module and UI are unit tested in
 `frontend/src/__tests__/quality-triage.test.ts` and
 `frontend/src/__tests__/admin-quality-triage.test.ts`.
 
+### Backend error grouping and threshold alerts
+
+PostHog remains the source of truth for browser exception grouping, error
+tracking, and masked replay. In addition, the backend keeps an aggregate-only
+error feed keyed by `(source, route, release, error_class)`:
+
+- The consent-gated `before_send` hook mirrors a sanitized
+  `{route, release, error_class}` signal to `POST /telemetry/errors`; it never
+  sends an exception message or stack.
+- Unhandled backend 5xx responses record the route template and
+  `type(exc).__name__` only.
+- `/admin/analytics/errors` returns groups with at least five occurrences,
+  suppression counts, the current threshold, delivery configuration, and a
+  runbook link. It never returns per-user rows.
+- `/admin/analytics/errors/evaluate` previews or dispatches one aggregate
+  Slack/email message per group per cooldown window. A real dispatch requires
+  `confirm: true` and an audited reason.
+
+Alert payloads carry the sanitized route, release, error class, counters,
+environment, and the
+[error alert runbook](observability/error-alert-runbook.md) link. Document,
+share, portfolio, and guest-editor routes are dropped before storage.
+
 ## Retention and deletion
 
 - Session replay: 30 days (PostHog project setting).

@@ -217,6 +217,7 @@ from .admin_document_complexity_routes import router as admin_document_complexit
 from .admin_dunning_routes import router as admin_dunning_router
 from .admin_editor_mode_routes import router as admin_editor_mode_router
 from .admin_email_health_routes import router as admin_email_health_router
+from .admin_error_routes import router as admin_error_router
 from .admin_export_routes import router as admin_export_router
 from .admin_feature_adoption_routes import router as admin_feature_adoption_router
 from .admin_gdpr_routes import router as admin_gdpr_router
@@ -254,6 +255,7 @@ router.include_router(admin_career_adoption_router)
 router.include_router(admin_checkout_funnel_router)
 router.include_router(admin_collaboration_router)
 router.include_router(admin_compile_error_router)
+router.include_router(admin_error_router)
 router.include_router(admin_document_complexity_router)
 router.include_router(admin_daily_metrics_router)
 router.include_router(admin_content_library_router)
@@ -425,11 +427,13 @@ router.include_router(team_router)
 
 # Include One-Click Application routes (Feature 87)
 from .application_routes import router as application_router
+from .error_telemetry_routes import router as error_telemetry_router
 from .linter_telemetry_routes import router as linter_telemetry_router
 from .telemetry_routes import router as telemetry_router
 
 router.include_router(application_router)
 router.include_router(telemetry_router)
+router.include_router(error_telemetry_router)
 router.include_router(linter_telemetry_router)
 
 # Include per-change accept/reject review routes (Feature 2 / P0)

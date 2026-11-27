@@ -154,6 +154,16 @@ async def _unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
         exc_info=exc,
         extra={"path": request.url.path, "method": request.method, "request_id": rid},
     )
+    # Aggregate-only error capture: route template and exception class only.
+    # The scheduler is a no-op in tests and swallows database failures so a
+    # telemetry outage can never mask the real 500 response.
+    try:
+        from ..services.error_tracking_service import schedule_backend_capture
+
+        route = getattr(request.scope.get("route"), "path", None) or request.url.path
+        schedule_backend_capture(route, exc)
+    except Exception:
+        pass
     return JSONResponse(
         status_code=500,
         content=error_body("internal_error", "An internal error occurred.", rid, detail_compat="Internal Server Error"),
