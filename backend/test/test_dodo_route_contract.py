@@ -126,3 +126,15 @@ def test_both_webhook_urls_use_the_same_dodo_handler():
     handlers = {route.path: route.endpoint for route in routes.router.routes if hasattr(route, "path")}
     assert handlers["/billing/webhook"] is routes.dodo_webhook
     assert handlers["/billing/dodo/webhook"] is routes.dodo_webhook
+
+def test_legacy_dodo_product_id_resolves_without_catalog_remap(monkeypatch):
+    from app.core.config import settings
+    from app.services.payment_service import PaymentService
+
+    monkeypatch.setattr(
+        settings,
+        "DODO_LEGACY_PRODUCT_MAP",
+        '{"pdt_legacy_byok":"byok"}',
+    )
+    assert PaymentService()._resolve_configured_plan_for_product("pdt_legacy_byok") == "byok"
+    assert PaymentService()._resolve_configured_plan_for_product("pdt_unknown") is None

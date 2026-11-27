@@ -2,6 +2,7 @@
 Application configuration settings.
 """
 
+import json
 import logging
 import os
 from copy import deepcopy
@@ -362,6 +363,10 @@ class Settings(BaseSettings):
     DODO_LIVE_PRODUCT_TEAM: str = ""
     DODO_LIVE_PRODUCT_WEEKLY: str = ""
     DODO_LIVE_PRODUCT_LIFETIME: str = ""
+    DODO_LEGACY_PRODUCT_MAP: str = Field(
+        default='{"pdt_0NpiJAXTCn91c8bNoZJQy":"byok"}',
+        description="JSON map of legacy Dodo product IDs to plan IDs",
+    )
     WEEKLY_AMOUNT_MINOR: int = Field(default=0, ge=0)
     LIFETIME_AMOUNT_MINOR: int = Field(default=0, ge=0)
     BILLING_CURRENCY: str = Field(default="INR", description="ISO currency for optional Weekly/Lifetime SKUs")
@@ -741,6 +746,24 @@ class Settings(BaseSettings):
             return ""
         mode = "LIVE" if self.normalized_dodo_mode == "live" else "TEST"
         return getattr(self, f"DODO_{mode}_PRODUCT_{product_key}", "")
+
+    def legacy_dodo_product_plan(self, product_id: str | None) -> str:
+        """Resolve a retired provider product ID to its local plan.
+
+        Older subscriptions can outlive a product catalog change. Hard-coding
+        them in webhook handlers would be opaque; this explicit map keeps the
+        compatibility surface small and operator-editable.
+        """
+        if not product_id:
+            return ""
+        try:
+            mapping = json.loads(self.DODO_LEGACY_PRODUCT_MAP or "{}")
+        except (TypeError, ValueError):
+            return ""
+        if not isinstance(mapping, dict):
+            return ""
+        plan = mapping.get(str(product_id))
+        return str(plan) if isinstance(plan, str) else ""
 
     def model_post_init(self, __context) -> None:
         """Validate required settings at startup."""
