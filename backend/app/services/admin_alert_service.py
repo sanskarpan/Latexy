@@ -79,9 +79,9 @@ async def _failure_signal(
     timestamp_column,
     now: datetime,
 ) -> dict[str, Any] | None:
-    count, oldest = (
+    count, oldest, newest = (
         await db.execute(
-            select(func.count(model.id), func.min(timestamp_column)).where(status_condition)
+            select(func.count(model.id), func.min(timestamp_column), func.max(timestamp_column)).where(status_condition)
         )
     ).one()
     count = int(count or 0)
@@ -96,7 +96,13 @@ async def _failure_signal(
         owner=owner,
         title=title,
         dedupe_key=dedupe_key,
-        payload={"count": count, "oldest_age_seconds": age},
+        payload={
+            "count": count,
+            "oldest_age_seconds": age,
+            "first_event_at": oldest.isoformat(),
+            "last_event_at": (newest or oldest).isoformat(),
+            "stale": age > 7 * 86400,
+        },
     )
 
 
@@ -413,6 +419,22 @@ async def evaluate_alerts(
             # One savepoint per signal: a bad row or constraint failure rolls
             # back only that signal instead of aborting the whole evaluation.
             async with db.begin_nested():
+                payload = signal.get("payload") or {}
+                event_count = payload.get("count")
+                last_event_at = payload.get("last_event_at")
+                first_event_at = payload.get("first_event_at")
+                event_backed = (
+                    isinstance(event_count, int)
+                    and event_count > 0
+                    and isinstance(last_event_at, str)
+                    and isinstance(first_event_at, str)
+                )
+                def _event_time(value: str):
+                    try:
+                        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                    except (TypeError, ValueError):
+                        return None
                 existing = (
                     await db.execute(
                         select(models.AdminAlert).where(
@@ -426,9 +448,9 @@ async def evaluate_alerts(
                         models.AdminAlert(
                             **signal,
                             state="open",
-                            occurrence_count=1,
-                            first_seen_at=now,
-                            last_seen_at=now,
+                            occurrence_count=event_count if event_backed else 1,
+                            first_seen_at=(_event_time(first_event_at) if event_backed else None) or now,
+                            last_seen_at=(_event_time(last_event_at) if event_backed else None) or now,
                         )
                     )
                     action = "opened"
@@ -438,8 +460,16 @@ async def evaluate_alerts(
                     existing.title = signal["title"]
                     existing.payload = signal["payload"]
                     existing.runbook_url = signal["runbook_url"]
-                    existing.last_seen_at = now
-                    existing.occurrence_count = int(existing.occurrence_count or 0) + 1
+                    if event_backed:
+                        # Failure signals are backed by durable event rows. Their
+                        # occurrence count is the current failed-event count, and
+                        # last_seen must be the newest event, not the evaluation
+                        # time; otherwise a stale backlog looks like a live alert.
+                        existing.occurrence_count = event_count
+                        existing.last_seen_at = _event_time(last_event_at) or existing.last_seen_at
+                    else:
+                        existing.last_seen_at = now
+                        existing.occurrence_count = int(existing.occurrence_count or 0) + 1
                     if (
                         existing.state == "snoozed"
                         and existing.snooze_until
