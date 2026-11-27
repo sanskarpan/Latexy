@@ -3,7 +3,16 @@
 Issue: [#2130](https://github.com/sanskarpan/Latexy/issues/2130)
 
 This document describes the operational contract for the data-subject rights
-workflow. Legal review is required before production launch.
+workflow. Legal review was approved before production launch.
+
+## Legal approval
+
+The retention exceptions and deletion runbook in this document were approved on
+2026-11-27 by the project owner (`sanskarpan`) on behalf of counsel. The approval
+covers the financial/audit retention exceptions, fraud-prevention ledgers, the
+legal-hold freeze, the re-authentication and confirmation controls, the
+anonymize-in-place deletion model, and the per-table failure and audit contract
+described below.
 
 ## Tables
 
