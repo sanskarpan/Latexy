@@ -145,3 +145,6 @@ The page-load and visual coverage is complete; full interaction coverage remains
 - [`cleanup.md`](cleanup.md), [`cleanup-verification.md`](cleanup-verification.md)
 - [`optimization-backlog.md`](optimization-backlog.md)
 - [`cross-check/`](cross-check/)
+- [`frontend/`](frontend/) - 44-page audit, screenshots, journeys, 13 defects
+- [`architecture/latency-advisor.md`](architecture/latency-advisor.md)
+- GitHub issue index #2341

@@ -66,6 +66,25 @@
 
 The evidence supports signing off the **functional baseline with the P0/P1 exceptions above**. Optimization should start only after items 1-3 are fixed, because caching or tuning would otherwise hide the defects. The audit artifacts are committed on `audit/production-2026-11-27`; cleanup is tracked in `audit/cleanup.md`.
 
+
+## Front-end page audit (follow-up)
+
+All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 13 page-level defects are in `defects-frontend.md` and GitHub #2324-#2339.
+
+- **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant.
+- **P2:** Consent banner covers auth/pricing/admin controls; admin capability matrix is 21,101px/930 toggles; pricing hides prices; dashboard says 3.5s compile vs 20.7s measured; builder/auth controls are unlabeled; share says "Link unavailable" after compile; cover-letter generation hangs at "Generating…" for 45s.
+- **P3:** missing H1/small text, onboarding modal, PDF URL wrapping, tracker labels.
+
+The builder happy path works: create (201) → fill fields → preview PDF → download; the failures are latency and feedback, not the core edit model.
+
+## Architecture
+
+`audit/architecture/latency-advisor.md` is the independent plan. First code win: collapse the two serialized finalization pipelines (fresh NullPool engines, advisory locks, R2 HEADs, two pdftotext calls). First architecture win: explicit LATEX CPU/memory. Then warm pool + admission control as a pair. Target: warm p50 <=12s, 5-concurrent p50 <=25s, finalize <=2s. Tracked in #2337, with #2309/#2310 as specific defects.
+
+## Issue tracking
+
+**36 GitHub issues** were filed (#2295-#2339, plus the complete index #2341), covering every defect ID in `audit/defects.md` and `audit/frontend/defects-frontend.md`, with proposed fixes and acceptance criteria. The index is the authoritative map.
+
 ## Evidence index
 
 - `audit/AUDIT-MASTER.md` - scope, method, coverage, gates
