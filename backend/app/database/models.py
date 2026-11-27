@@ -232,11 +232,6 @@ class DeviceTrial(Base):
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     blocked: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Set only by a reviewed, two-person-approved abuse action. A whitelisted
-    # device is exempt from automatic trial blocking and the usage ceiling.
-    whitelisted: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
-    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -1345,7 +1340,7 @@ class AdminApproval(Base):
     __table_args__ = (
         CheckConstraint(
             "request_type IN ('refund', 'account_deletion', 'impersonation', "
-            "'role_escalation', 'bulk_entitlement_change', 'abuse_review_action')",
+            "'role_escalation', 'bulk_entitlement_change')",
             name="ck_admin_approvals_request_type",
         ),
         CheckConstraint(
@@ -1434,135 +1429,232 @@ class AdminApproval(Base):
     )
 
 
-class AbuseReviewItem(Base):
-    """One human-reviewable abuse signal with an opaque subject.
+class AdminExperiment(Base):
+    """Pre-registered A/B experiment with one primary metric and guardrails.
 
-    The queue deliberately stores a hashed subject key, never a raw device
-    fingerprint, IP address, account identifier, email or document. A signal is
-    materialised by an admin-triggered scan and can advance only through reason-
-    and-confirm reviewed transitions. Enforcement actions additionally require a
-    two-person approval and are applied to ``device_trials`` only.
+    Registration fields are frozen by a database trigger after insert. Only the
+    lifecycle (status, start/stop metadata) may change, so a results read can
+    prove the analysis was registered before exposure. Rows never contain
+    customer documents, prompts, emails, tokens, IP addresses or user agents.
     """
 
-    __tablename__ = "abuse_review_items"
+    __tablename__ = "admin_experiments"
     __table_args__ = (
         CheckConstraint(
-            "signal_type IN ('blocked_device', 'trial_limit_reached', "
-            "'repeat_ip_cluster', 'trial_velocity', 'payment_failure', "
-            "'referral_rejection', 'coupon_reuse', 'rate_limit_pressure')",
-            name="ck_abuse_review_signal_type",
+            "experiment_key ~ '^[a-z][a-z0-9_]{1,63}$'",
+            name="ck_admin_experiments_key",
         ),
         CheckConstraint(
-            "subject_type IN ('device', 'ip', 'account', 'reason', 'coupon')",
-            name="ck_abuse_review_subject_type",
+            "length(trim(name)) BETWEEN 1 AND 160",
+            name="ck_admin_experiments_name",
         ),
         CheckConstraint(
-            "severity IN ('low', 'medium', 'high', 'critical')",
-            name="ck_abuse_review_severity",
+            "length(trim(hypothesis)) BETWEEN 20 AND 4000",
+            name="ck_admin_experiments_hypothesis",
         ),
         CheckConstraint(
-            "status IN ('open', 'approved', 'dismissed', 'actioned')",
-            name="ck_abuse_review_status",
+            "primary_metric IN ('activation', 'compile_success', "
+            "'checkout_started', 'retention_7d')",
+            name="ck_admin_experiments_primary_metric",
         ),
         CheckConstraint(
-            "decision IS NULL OR decision IN ('approve', 'dismiss', 'action')",
-            name="ck_abuse_review_decision",
+            "jsonb_typeof(guardrail_metrics) = 'array' "
+            "AND jsonb_array_length(guardrail_metrics) BETWEEN 1 AND 2",
+            name="ck_admin_experiments_guardrails",
         ),
         CheckConstraint(
-            "enforcement_action IS NULL OR enforcement_action IN "
-            "('block', 'unblock', 'whitelist')",
-            name="ck_abuse_review_enforcement_action",
+            "jsonb_typeof(variants) = 'array' "
+            "AND jsonb_array_length(variants) BETWEEN 2 AND 4",
+            name="ck_admin_experiments_variants",
         ),
         CheckConstraint(
-            "occurrence_count > 0",
-            name="ck_abuse_review_occurrences",
+            "flag_key IS NULL OR flag_key IN ('trial_limits', "
+            "'deep_analysis_trial', 'compile_timeouts', 'task_priority', "
+            "'billing', 'upgrade_ctas')",
+            name="ck_admin_experiments_flag_key",
         ),
         CheckConstraint(
-            "execution_count >= 0",
-            name="ck_abuse_review_execution_count",
+            "posthog_insight_url IS NULL OR posthog_insight_url ~ "
+            "'^https://(app|us|eu)[.]posthog[.]com/[A-Za-z0-9._~:/@!$&()*+,;=%-]*$'",
+            name="ck_admin_experiments_posthog_url",
         ),
         CheckConstraint(
-            "status = 'open' OR (decision IS NOT NULL AND decided_by IS NOT NULL "
-            "AND decided_at IS NOT NULL)",
-            name="ck_abuse_review_decided",
+            "minimum_sample_per_variant BETWEEN 5 AND 1000000",
+            name="ck_admin_experiments_minimum_sample",
         ),
         CheckConstraint(
-            "status <> 'approved' OR decision = 'approve'",
-            name="ck_abuse_review_approved",
+            "status IN ('preregistered', 'running', 'stopped')",
+            name="ck_admin_experiments_status",
         ),
         CheckConstraint(
-            "status <> 'dismissed' OR decision = 'dismiss'",
-            name="ck_abuse_review_dismissed",
+            "registration_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_experiments_registration_hash",
         ),
         CheckConstraint(
-            "status <> 'actioned' OR (decision = 'action' "
-            "AND enforcement_action IS NOT NULL AND approval_id IS NOT NULL "
-            "AND execution_count > 0)",
-            name="ck_abuse_review_actioned",
+            "status = 'preregistered' OR started_at IS NOT NULL",
+            name="ck_admin_experiments_started",
         ),
         CheckConstraint(
-            "assigned_to IS NULL OR length(assigned_to) = 36",
-            name="ck_abuse_review_assignee",
+            "status <> 'stopped' OR (stopped_at IS NOT NULL AND stop_reason IS NOT NULL)",
+            name="ck_admin_experiments_stopped",
         ),
-        CheckConstraint(
-            "jsonb_typeof(evidence) = 'object'",
-            name="ck_abuse_review_evidence_object",
-        ),
-        CheckConstraint(
-            "jsonb_typeof(evidence_links) = 'array'",
-            name="ck_abuse_review_links_array",
-        ),
-        UniqueConstraint("dedupe_key", name="uq_abuse_review_dedupe"),
-        Index("idx_abuse_review_status_severity", "status", "severity", "last_seen_at"),
-        Index("idx_abuse_review_signal_last_seen", "signal_type", "last_seen_at"),
-        Index("idx_abuse_review_assignee_status", "assigned_to", "status"),
+        Index("idx_admin_experiments_status_created", "status", "created_at"),
     )
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
-    signal_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    subject_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_key: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    hypothesis: Mapped[str] = mapped_column(Text, nullable=False)
+    primary_metric: Mapped[str] = mapped_column(String(40), nullable=False)
+    guardrail_metrics: Mapped[List[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    variants: Mapped[List[Dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    flag_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    posthog_insight_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
+    minimum_sample_per_variant: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="open", server_default="open"
+        String(16), nullable=False, default="preregistered", server_default="preregistered"
     )
-    dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
-    occurrence_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
-    )
-    window_days: Mapped[int] = mapped_column(Integer, nullable=False)
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    evidence: Mapped[Dict] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
-    )
-    evidence_links: Mapped[List] = mapped_column(
-        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
-    )
-    assigned_to: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    assigned_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    decision: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    decided_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    decision_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    enforcement_action: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    approval_id: Mapped[Optional[str]] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("admin_approvals.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    execution_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    last_executed_at: Mapped[Optional[datetime]] = mapped_column(
+    registration_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    started_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    stopped_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    stopped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stop_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AdminExperimentAssignment(Base):
+    """Stable first-party variant assignment for one experiment and account.
+
+    The unique constraint prevents a subject from drifting between variants.
+    The row stores no direct identifier beyond the account UUID needed to keep
+    the assignment stable; admin responses expose aggregate counts only.
+    """
+
+    __tablename__ = "admin_experiment_assignments"
+    __table_args__ = (
+        CheckConstraint(
+            "variant ~ '^[a-z][a-z0-9_]{0,31}$'",
+            name="ck_admin_experiment_assignments_variant",
+        ),
+        CheckConstraint(
+            "bucket BETWEEN 0 AND 99",
+            name="ck_admin_experiment_assignments_bucket",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "user_id",
+            name="uq_admin_experiment_assignments_subject",
+        ),
+        Index(
+            "idx_admin_experiment_assignments_experiment_variant",
+            "experiment_id",
+            "variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant: Mapped[str] = mapped_column(String(32), nullable=False)
+    bucket: Mapped[int] = mapped_column(Integer, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reverted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class AdminExperimentExposure(Base):
+    """One deduped consent-covered exposure per experiment/account/UTC day."""
+
+    __tablename__ = "admin_experiment_exposures"
+    __table_args__ = (
+        CheckConstraint(
+            "variant ~ '^[a-z][a-z0-9_]{0,31}$'",
+            name="ck_admin_experiment_exposures_variant",
+        ),
+        CheckConstraint(
+            "source = 'first_party_experiment_evaluation'",
+            name="ck_admin_experiment_exposures_source",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "user_id",
+            "window_date",
+            name="uq_admin_experiment_exposures_window",
+        ),
+        Index(
+            "idx_admin_experiment_exposures_experiment_time",
+            "experiment_id",
+            "exposed_at",
+        ),
+        Index(
+            "idx_admin_experiment_exposures_experiment_variant",
+            "experiment_id",
+            "variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assignment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_experiment_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant: Mapped[str] = mapped_column(String(32), nullable=False)
+    window_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="first_party_experiment_evaluation",
+        server_default="first_party_experiment_evaluation",
+    )
+    exposed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -1764,9 +1856,6 @@ class AdminRefundRequest(Base):
             name="ck_admin_refund_status",
         ),
         CheckConstraint("amount IS NULL OR amount > 0", name="ck_admin_refund_amount"),
-        CheckConstraint(
-            "request_kind IN ('refund', 'goodwill')", name="ck_admin_refund_request_kind"
-        ),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
@@ -1774,15 +1863,11 @@ class AdminRefundRequest(Base):
         UUID(as_uuid=False), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
     )
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", server_default="pending")
-    request_kind: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="refund", server_default="refund"
-    )
     amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
     provider_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     tax_inclusive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     requested_by: Mapped[str] = mapped_column(String(36), nullable=False)
     requested_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

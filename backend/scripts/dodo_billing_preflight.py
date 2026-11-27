@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "0104_refund_requests"
+EXPECTED_HEAD = "0106_admin_experiments"
 # Oldest first. Column checks use the current-head snapshot, so a revision that
 # predates a later billing-column addition must subtract that addition below.
 DODO_MAINLINE_REVISIONS_ORDERED = (
@@ -36,7 +36,7 @@ DODO_MAINLINE_REVISIONS_ORDERED = (
     "0089_ai_latency_retry", "0090_ats_score_baseline", "0091_dunning_history",
     "0092_document_complexity", "0093_admin_saved_views", "0094_template_health",
     "0096_retention_controls", "0097_two_person_approvals", "0099_tenant_domain_health",
-    "0100_daily_metrics", "0104_refund_requests",
+    "0100_daily_metrics", "0106_admin_experiments",
 )
 DODO_MAINLINE_REVISIONS = set(DODO_MAINLINE_REVISIONS_ORDERED)
 BILLING_COLUMNS_ADDED_BY_REVISION = {
@@ -106,7 +106,8 @@ TABLES = ("users", "subscriptions", "team_seats", "alembic_version", "resume_opt
           "llm_call_attempts", "subscription_status_history", "admin_saved_views",
           "admin_segments", "template_health_checks", "retention_policies",
           "retention_policy_revisions", "retention_runs", "admin_approvals",
-          "tenant_domain_events", "admin_daily_metrics")
+          "tenant_domain_events", "admin_daily_metrics", "admin_experiments",
+          "admin_experiment_assignments", "admin_experiment_exposures")
 CURRENT_BILLING_COLUMNS = {
     "users": {"id", "subscription_plan", "subscription_status", "subscription_id"},
     "subscriptions": {"id", "user_id", "plan_id", "status", "provider", "razorpay_subscription_id", "provider_subscription_id",
@@ -355,8 +356,22 @@ CAPABILITY_SCHEMA_COLUMNS = {
             "refunds_count", "refund_amount_minor", "refreshed_at",
         },
     },
-    "0104_refund_requests": {
-        "admin_refund_requests": {"request_kind", "evidence"},
+    "0106_admin_experiments": {
+        "admin_experiments": {
+            "id", "experiment_key", "name", "hypothesis", "primary_metric",
+            "guardrail_metrics", "variants", "flag_key", "posthog_insight_url",
+            "minimum_sample_per_variant", "status", "registration_hash",
+            "created_by", "started_by", "stopped_by", "started_at", "stopped_at",
+            "stop_reason", "created_at", "updated_at",
+        },
+        "admin_experiment_assignments": {
+            "id", "experiment_id", "user_id", "variant", "bucket", "assigned_at",
+            "reverted_at",
+        },
+        "admin_experiment_exposures": {
+            "id", "experiment_id", "assignment_id", "user_id", "variant",
+            "window_date", "source", "exposed_at",
+        },
     },
 }
 

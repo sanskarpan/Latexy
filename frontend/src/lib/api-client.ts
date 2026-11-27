@@ -5345,7 +5345,7 @@ export interface AdminFlagExposureResponse {
   generated_at: string
 }
 
-export type AdminCohortStatus =
+ =
   | 'never_synced'
   | 'synced'
   | 'stale'
@@ -5447,6 +5447,162 @@ export interface AdminCohortEvaluationResponse {
   consent_required: boolean
   exposure_recorded: number
   results: AdminCohortEvaluationResult[]
+  results: AdminCohortEvaluationResult[]
+}
+
+export interface AdminExperimentVariant {
+  key: string
+  label: string
+  weight: number
+  flag_enabled: boolean | null
+}
+
+export interface AdminExperimentSampleVariant {
+  variant: string
+  label: string
+  sample_size: number | null
+  suppressed: boolean
+  minimum_sample: number
+}
+
+export interface AdminExperimentSample {
+  variants: AdminExperimentSampleVariant[]
+  sample_size: number | null
+  minimum_sample_per_variant: number
+  minimum_sample_met: boolean
+  suppressed: boolean
+}
+
+export interface AdminExperiment {
+  id: string
+  key: string
+  name: string
+  hypothesis: string
+  primary_metric: string
+  guardrail_metrics: string[]
+  variants: AdminExperimentVariant[]
+  flag_key: string | null
+  posthog_insight_url: string | null
+  minimum_sample_per_variant: number
+  status: 'preregistered' | 'running' | 'stopped'
+  registration_hash: string
+  registration_intact: boolean
+  started_at: string | null
+  stopped_at: string | null
+  stop_reason: string | null
+  created_at: string | null
+  updated_at: string | null
+  sample: AdminExperimentSample
+  results_ready: boolean
+  reverted_assignments?: number
+}
+
+export interface AdminExperimentMetricCell {
+  numerator: number | null
+  denominator: number | null
+  rate_pct: number | null
+  suppressed: boolean
+}
+
+export interface AdminExperimentComparison {
+  variant: string
+  variant_label: string
+  control_variant: string
+  control_label: string
+  lift_pp: number | null
+  relative_lift_pct: number | null
+  ci_low_pp: number | null
+  ci_high_pp: number | null
+  confidence_level: number
+  comparable: boolean
+  suppressed: boolean
+  method: string
+  approximate: boolean
+}
+
+export interface AdminExperimentMetric {
+  key: string
+  label: string
+  kind: 'outcome' | 'guardrail'
+  direction: 'up' | 'down'
+  definition: string
+  cells: Record<string, AdminExperimentMetricCell>
+  comparisons: AdminExperimentComparison[]
+  ready: boolean
+  suppressed: boolean
+}
+
+export interface AdminExperimentClaim {
+  policy: string
+  causality: string
+  confidence_level: number
+  peeking: string
+  winner: string
+  automatic_rollout: boolean
+  multiple_looks_corrected: boolean
+}
+
+export interface AdminExperimentCatalog {
+  primary_metrics: AdminFlagExposureDefinition[]
+  guardrail_metrics: AdminFlagExposureDefinition[]
+  metric_definitions: AdminFlagExposureDefinition[]
+  operational_flags: string[]
+  statuses: string[]
+  minimum_sample_floor: number
+  minimum_group_size: number
+  outcome_horizon_days: number
+  posthog_hosts: string[]
+  claim: AdminExperimentClaim
+  notes: string[]
+}
+
+export interface AdminExperimentListResponse {
+  experiments: AdminExperiment[]
+  total: number
+  limit: number
+  offset: number
+  statuses: string[]
+  minimum_group_size: number
+  outcome_horizon_days: number
+  catalog: AdminExperimentCatalog
+  generated_at: string
+}
+
+export interface AdminExperimentResults {
+  experiment: AdminExperiment
+  analysis_window: {
+    started_at: string | null
+    stopped_at: string | null
+    as_of: string
+    analysis_end: string
+    outcome_horizon_days: number
+  }
+  sample: AdminExperimentSample
+  ready: boolean
+  primary_metric: AdminExperimentMetric
+  guardrails: AdminExperimentMetric[]
+  claim: AdminExperimentClaim
+  message: string
+  notes: string[]
+  generated_at: string
+}
+
+export interface AdminExperimentCreateInput {
+  key: string
+  name: string
+  hypothesis: string
+  primary_metric: string
+  guardrail_metrics: string[]
+  variants: Array<{
+    key: string
+    label: string
+    weight: number
+    flag_enabled?: boolean | null
+  }>
+  flag_key?: string | null
+  posthog_insight_url?: string | null
+  minimum_sample_per_variant: number
+  reason: string
 }
 
 export interface AdminLinterRuleRoute {
@@ -10518,7 +10674,7 @@ class ApiClient {
     return this.request<AdminFlagExposureResponse>('/admin/analytics/flag-exposure')
   }
 
-  async getAdminCohorts(tenantId?: string): Promise<AdminCohortListResponse> {
+(tenantId?: string): Promise<AdminCohortListResponse> {
     const qs = new URLSearchParams()
     if (tenantId) qs.set('tenant_id', tenantId)
     const suffix = qs.toString() ? `?${qs}` : ''
@@ -10546,7 +10702,56 @@ class ApiClient {
     )
   }
 
-  async unmapAdminCohortFlag(
+  async getAdminExperiments(params?: {
+    status?: AdminExperiment['status']
+    limit?: number
+    offset?: number
+  }): Promise<AdminExperimentListResponse> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminExperimentListResponse>(`/admin/experiments${suffix}`)
+  }
+
+  async createAdminExperiment(
+    payload: AdminExperimentCreateInput,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>('/admin/experiments', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, confirm: true }),
+    })
+  }
+
+  async getAdminExperiment(experimentId: string): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}`,
+    )
+  }
+
+  async getAdminExperimentResults(
+    experimentId: string,
+  ): Promise<AdminExperimentResults> {
+    return this.request<AdminExperimentResults>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/results`,
+    )
+  }
+
+  async startAdminExperiment(
+    experimentId: string,
+    reason: string,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason, confirm: true }),
+      },
+    )
+  }
+
+(
     cohortId: string,
     flagKey: string,
     reason: string,
@@ -10571,7 +10776,20 @@ class ApiClient {
     )
   }
 
-  async evaluateCohortFlags(
+  async revertAdminExperimentAssignments(
+    experimentId: string,
+    reason: string,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/revert`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason, confirm: true }),
+      },
+    )
+  }
+
+(
     anonymousId: string,
     flagKeys: string[],
   ): Promise<AdminCohortEvaluationResponse> {
@@ -10579,6 +10797,24 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ anonymous_id: anonymousId, flag_keys: flagKeys }),
     })
+  }
+
+  async stopAdminExperiment(
+    experimentId: string,
+    reason: string,
+    revertAssignments = true,
+  ): Promise<AdminExperiment> {
+    return this.request<AdminExperiment>(
+      `/admin/experiments/${encodeURIComponent(experimentId)}/stop`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          reason,
+          confirm: true,
+          revert_assignments: revertAssignments,
+        }),
+      },
+    )
   }
 
   async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {

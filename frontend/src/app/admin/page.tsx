@@ -35,6 +35,7 @@ import AdminAtsScoreDistribution from '@/components/admin/AdminAtsScoreDistribut
 import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminFlagExposure from '@/components/admin/AdminFlagExposure'
 import AdminCohorts from '@/components/admin/AdminCohorts'
+import AdminExperiments from '@/components/admin/AdminExperiments'
 import AdminAudit from '@/components/admin/AdminAudit'
 import AdminAbuseQueue from '@/components/admin/AdminAbuseQueue'
 import AdminApprovals from '@/components/admin/AdminApprovals'
@@ -59,7 +60,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'abuse' | 'approvals' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'abuse' | 'approvals' | 'privacy' | 'flags' | 'experiments' | 'matrix' | 'plans' | 'views'
 
 const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
   'analytics',
@@ -96,6 +97,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'approvals', label: 'Approvals' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
+  { id: 'experiments', label: 'Experiments' },
   { id: 'matrix', label: 'Features × Plans & Roles' },
   { id: 'plans', label: 'Plan Catalog' },
   { id: 'views', label: 'Saved Views' },
@@ -1160,6 +1162,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
         {tab === 'approvals' && <AdminApprovals />}
         {tab === 'privacy' && <AdminGdpr />}
         {tab === 'flags' && <FeatureFlagsTab />}
+        {tab === 'experiments' && <AdminExperiments />}
         {tab === 'matrix' && <MatrixTab />}
         {tab === 'plans' && <AdminPlanCatalog />}
         {tab === 'views' && <AdminSavedViews onApply={applySavedView} />}

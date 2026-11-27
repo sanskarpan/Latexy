@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { loadExperimentAssignments } from '@/lib/analytics/experiments'
 import { recordFlagExposures } from '@/lib/analytics/flag-exposure'
 
 export interface FeatureFlags {
@@ -31,24 +32,42 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const API_BASE =
       process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
+    let cancelled = false
 
     fetch(`${API_BASE}/config/feature-flags`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && typeof data === 'object') {
-          const safe = KNOWN_FLAG_KEYS.reduce((acc, key) => {
-            if (key in data && typeof data[key] === 'boolean') acc[key] = data[key] as boolean
+        if (cancelled || !data || typeof data !== 'object') return undefined
+        const safe = KNOWN_FLAG_KEYS.reduce((acc, key) => {
+          if (key in data && typeof data[key] === 'boolean') acc[key] = data[key] as boolean
+          return acc
+        }, {} as Partial<FeatureFlags>)
+        setFlags((prev) => ({ ...prev, ...safe }))
+        // Only server-returned values are reported; defaults are not an
+        // evaluation. The server enforces consent and daily deduplication.
+        recordFlagExposures(safe)
+
+        // Assignment is consent-gated and deduped server-side. Only allowlisted
+        // operational flags that the server already returned can be overridden,
+        // so an experiment cannot introduce a capability the plan did not grant.
+        return loadExperimentAssignments().then((overrides) => {
+          if (cancelled || !overrides) return
+          const applied = KNOWN_FLAG_KEYS.reduce((acc, key) => {
+            if (key in safe && typeof overrides[key] === 'boolean') {
+              acc[key] = overrides[key] as boolean
+            }
             return acc
           }, {} as Partial<FeatureFlags>)
-          setFlags((prev) => ({ ...prev, ...safe }))
-          // Only server-returned values are reported; defaults are not an
-          // evaluation. The server enforces consent and daily deduplication.
-          recordFlagExposures(safe)
-        }
+          if (Object.keys(applied).length > 0) setFlags((prev) => ({ ...prev, ...applied }))
+        })
       })
       .catch(() => {
         // Non-critical — keep defaults (all enabled)
       })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
