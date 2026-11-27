@@ -400,6 +400,9 @@ async def _summary_payload(
             "automatic trial blocking and the usage ceiling.",
             "Shared office, campus and carrier NAT addresses can create false "
             "positives; review the evidence before enforcing.",
+            "The five-subject floor gates multi-account clusters and reason groups. "
+            "Single-subject device/account items are operational review records, "
+            "visible only to admins and never joined to a user history.",
         ],
     }
 

@@ -584,7 +584,17 @@ class TestTwoPersonEnforcement:
             db_session, tag="unblock", usage_count=1, blocked=True
         )
         await _scan(client, admin_a)
-        item = _find(await _all_items(client, admin_a), "blocked_device")
+        subject_key = hashlib.md5(
+            fingerprint.encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
+        item = next(
+            candidate
+            for candidate in await _all_items(
+                client, admin_a, signal_type="blocked_device"
+            )
+            if candidate["subject_key"] == subject_key
+            and candidate["status"] == "open"
+        )
 
         requested = await client.post(
             f"/admin/abuse/queue/{item['id']}/decision",
