@@ -603,6 +603,7 @@ async def _compose_user_360(
                     "id": row.id,
                     "payment_id": row.payment_id,
                     "status": row.status,
+                    "request_kind": row.request_kind or "refund",
                     "amount": row.amount,
                     "currency": row.currency,
                     "requested_at": _iso(row.requested_at),

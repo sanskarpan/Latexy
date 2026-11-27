@@ -264,7 +264,14 @@ def normalize_payload(request_type: str, payload: Mapping[str, Any] | None) -> d
     if request_type == "refund":
         _reject_extra_keys(
             payload,
-            {"refund_request_id", "payment_id", "amount", "currency"},
+            {
+                "refund_request_id",
+                "payment_id",
+                "amount",
+                "currency",
+                "request_kind",
+                "evidence",
+            },
             request_type,
         )
         amount = payload.get("amount")
@@ -276,12 +283,27 @@ def normalize_payload(request_type: str, payload: Mapping[str, Any] | None) -> d
             currency = _bounded_string(currency, "currency", max_length=3).upper()
             if not _CURRENCY_RE.fullmatch(currency):
                 raise ApprovalValidationError("currency must be a three-letter ISO code")
-        return {
+        normalized = {
             "refund_request_id": _uuid(payload.get("refund_request_id"), "refund_request_id"),
             "payment_id": _uuid(payload.get("payment_id"), "payment_id"),
             "amount": amount,
             "currency": currency,
         }
+        # Legacy requests predate both fields. Only include them when present so
+        # their approved payload hash still verifies after this revision.
+        if "request_kind" in payload:
+            kind = payload.get("request_kind")
+            if kind not in {"refund", "goodwill"}:
+                raise ApprovalValidationError("request_kind must be refund or goodwill")
+            normalized["request_kind"] = kind
+        if "evidence" in payload:
+            evidence = payload.get("evidence")
+            if evidence is not None:
+                if not isinstance(evidence, str):
+                    raise ApprovalValidationError("evidence must be text")
+                evidence = " ".join(evidence.split())[:2000] or None
+            normalized["evidence"] = evidence
+        return normalized
 
     if request_type == "account_deletion":
         _reject_extra_keys(payload, {"gdpr_request_id", "user_id"}, request_type)

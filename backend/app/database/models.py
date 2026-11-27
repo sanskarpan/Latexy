@@ -1764,6 +1764,9 @@ class AdminRefundRequest(Base):
             name="ck_admin_refund_status",
         ),
         CheckConstraint("amount IS NULL OR amount > 0", name="ck_admin_refund_amount"),
+        CheckConstraint(
+            "request_kind IN ('refund', 'goodwill')", name="ck_admin_refund_request_kind"
+        ),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
@@ -1771,11 +1774,15 @@ class AdminRefundRequest(Base):
         UUID(as_uuid=False), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
     )
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", server_default="pending")
+    request_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="refund", server_default="refund"
+    )
     amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
     provider_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     tax_inclusive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     requested_by: Mapped[str] = mapped_column(String(36), nullable=False)
     requested_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

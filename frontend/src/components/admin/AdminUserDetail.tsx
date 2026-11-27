@@ -850,7 +850,7 @@ export default function AdminUserDetail({
               <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Refund requests</p>
               {data.billing.refund_requests.map((row) => (
                 <p key={row.id} className="text-[11px] text-fg-3">
-                  {row.status} · {row.amount == null ? 'full' : formatMoney(row.amount / 100, row.currency || 'INR')} · {formatDateTime(row.requested_at)}
+                  {row.request_kind === 'goodwill' ? 'goodwill' : 'refund'} · {row.status} · {row.amount == null ? 'full' : formatMoney(row.amount / 100, row.currency || 'INR')} · {formatDateTime(row.requested_at)}
                 </p>
               ))}
             </div>

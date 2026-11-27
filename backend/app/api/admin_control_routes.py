@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
@@ -47,11 +47,23 @@ class ReconcileWebhookRequest(BaseModel):
 
 class RefundCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    payment_id: str = Field(min_length=8, max_length=64)
+    # Exactly one identifier is required. The local UUID is preferred; the
+    # Dodo payment ID lets operators work from a provider receipt without a
+    # round trip through the user record.
+    payment_id: Optional[str] = Field(default=None, min_length=8, max_length=64)
+    provider_payment_id: Optional[str] = Field(default=None, min_length=4, max_length=255)
+    request_kind: Literal["refund", "goodwill"] = "refund"
     amount: Optional[int] = Field(default=None, gt=0, le=100_000_000)
     provider_item_id: Optional[str] = Field(default=None, max_length=255)
     tax_inclusive: bool = True
     reason: Reason
+    evidence: Optional[str] = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _exactly_one_payment_identifier(self) -> "RefundCreateRequest":
+        if bool(self.payment_id) == bool(self.provider_payment_id):
+            raise ValueError("Provide exactly one of payment_id or provider_payment_id")
+        return self
 
 
 class RefundDecisionRequest(BaseModel):
@@ -263,10 +275,13 @@ async def create_admin_refund_request(
         return await admin_billing_service.create_refund_request(
             db,
             payment_id=body.payment_id,
+            provider_payment_id=body.provider_payment_id,
+            request_kind=body.request_kind,
             amount=body.amount,
             provider_item_id=body.provider_item_id,
             tax_inclusive=body.tax_inclusive,
             reason=body.reason,
+            evidence=body.evidence,
             actor=actor,
             request=request,
         )
