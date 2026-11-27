@@ -3937,7 +3937,7 @@ export interface AdminApprovalList {
   pending_by_type: Record<string, number>
 }
 
- {
+export interface AdminViewAsTarget {
   id: string
   email: string | null
   name: string | null
@@ -4054,7 +4054,7 @@ export interface AdminAbuseQueueItem {
   updated_at: string | null
 }
 
- {
+export interface AdminViewAsPlan {
   subscription_plan: string
   subscription_status: string
   trial_used: boolean
@@ -5345,7 +5345,7 @@ export interface AdminFlagExposureResponse {
   generated_at: string
 }
 
- =
+export type AdminCohortStatus =
   | 'never_synced'
   | 'synced'
   | 'stale'
@@ -5446,7 +5446,6 @@ export interface AdminCohortEvaluationResponse {
   window: string
   consent_required: boolean
   exposure_recorded: number
-  results: AdminCohortEvaluationResult[]
   results: AdminCohortEvaluationResult[]
 }
 
@@ -10674,7 +10673,7 @@ class ApiClient {
     return this.request<AdminFlagExposureResponse>('/admin/analytics/flag-exposure')
   }
 
-(tenantId?: string): Promise<AdminCohortListResponse> {
+  async getAdminCohorts(tenantId?: string): Promise<AdminCohortListResponse> {
     const qs = new URLSearchParams()
     if (tenantId) qs.set('tenant_id', tenantId)
     const suffix = qs.toString() ? `?${qs}` : ''
@@ -10751,7 +10750,7 @@ class ApiClient {
     )
   }
 
-(
+  async unmapAdminCohortFlag(
     cohortId: string,
     flagKey: string,
     reason: string,
@@ -10789,7 +10788,7 @@ class ApiClient {
     )
   }
 
-(
+  async evaluateCohortFlags(
     anonymousId: string,
     flagKeys: string[],
   ): Promise<AdminCohortEvaluationResponse> {
@@ -11957,7 +11956,7 @@ class ApiClient {
     )
   }
 
-
+  async requestAdminViewAs(body: {
     target_user_id: string
     reason: string
     expires_in_minutes?: number
@@ -11998,7 +11997,7 @@ class ApiClient {
     })
   }
 
-
+  async startAdminViewAsSession(body: {
     approval_id: string
     note?: string
   }): Promise<AdminViewAsStartResult> {
