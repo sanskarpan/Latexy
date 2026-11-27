@@ -19,7 +19,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-SECRET_SESSION_TOKEN = "test_sess_access_review_SECRET_TOKEN_2137"
+SECRET_SESSION_TOKEN = f"test_sess_access_review_SECRET_TOKEN_2137_{uuid.uuid4().hex[:8]}"
 SECRET_IP = "203.0.113.213"
 SECRET_USER_AGENT = "AccessReviewSecretAgent/2137"
 
