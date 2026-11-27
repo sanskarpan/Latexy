@@ -196,13 +196,23 @@ async def test_alert_evaluation_deduplicates_and_resolves(db_session: AsyncSessi
     rows = (
         await db_session.execute(
             text(
-                "SELECT dedupe_key, occurrence_count FROM admin_alerts "
+                "SELECT dedupe_key, occurrence_count, last_seen_at FROM admin_alerts "
                 "WHERE dedupe_key IN ('billing.webhook_failures', 'billing.failed_payments', "
                 "'billing.past_due', 'jobs.stuck', 'domains.unverified')"
             )
         )
     ).all()
-    assert all(row.occurrence_count == 2 for row in rows)
+    by_key = {row.dedupe_key: row for row in rows}
+    # Event-backed failure alerts count the failed events, not evaluations, and
+    # keep the newest event time instead of the evaluation time.
+    assert by_key["billing.webhook_failures"].occurrence_count == 1
+    assert by_key["billing.failed_payments"].occurrence_count == 1
+    assert abs((by_key["billing.webhook_failures"].last_seen_at - (now - timedelta(minutes=10))).total_seconds()) < 5
+    assert abs((by_key["billing.failed_payments"].last_seen_at - (now - timedelta(minutes=10))).total_seconds()) < 5
+    # Non-event signals still count evaluations.
+    assert by_key["billing.past_due"].occurrence_count == 2
+    assert by_key["jobs.stuck"].occurrence_count == 2
+    assert by_key["domains.unverified"].occurrence_count == 2
 
     await _clear_conditions(db_session)
     resolved = await admin_alert_service.evaluate_alerts(db_session, now=now + timedelta(minutes=2))
