@@ -1102,8 +1102,7 @@ async def verify_domain(
         )
         await db.commit()
         logger.warning(
-            "Tenant domain verification provider failure tenant=%s error=%s",
-            tenant_id,
+            "Tenant domain verification provider failure error=%s",
             type(exc).__name__,
         )
         raise HTTPException(

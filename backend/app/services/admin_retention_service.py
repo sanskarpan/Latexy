@@ -980,7 +980,10 @@ async def execute_run(
     except Exception:
         logger.error(
             "Retention run failed",
-            extra={"data_class": data_class, "dry_run": dry_run},
+            extra={
+                "data_class": str(data_class).encode("unicode_escape").decode("ascii", "ignore")[:32],
+                "dry_run": dry_run,
+            },
         )
         raise
 
