@@ -940,3 +940,30 @@ jobs:
 
       - name: Validate observability stack
         run: bash scripts/ci/observability-smoke.sh
+
+  required-gate:
+    name: Required Gate
+    # Branch protection requires this single gate instead of individually
+    # path-filtered checks. Success/skipped dependencies pass; any failure,
+    # cancellation or missing result fails the gate.
+    if: always()
+    needs:
+      - classify-changes
+      - privacy-guard
+      - backend-lint
+      - deployment-parity
+      - backend-test
+      - frontend-lint
+      - frontend-build
+      - cross-browser-quality
+      - tui-test
+      - full-stack-smoke
+      - observability-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS"
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
