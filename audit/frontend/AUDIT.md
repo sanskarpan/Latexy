@@ -1,6 +1,6 @@
 # Front-end page audit - results
 
-**Verdict:** all 44 routes load in production, but the page-by-page audit found a blocked core flow (Optimize), a broken path for imported/legacy LaTeX resumes, a 21,101px admin capability page, consent overlays on critical forms, missing accessible names, and several misleading empty states/metrics. Cover-letter generation also stays at 'Generating…' for 45s with no logs or error (FE-13).
+**Verdict:** all 44 routes load in production, but the page-by-page audit found a blocked core flow (Optimize), a broken path for imported/legacy LaTeX resumes, a 21,101px admin capability page, consent overlays on critical forms, missing accessible names, and several misleading empty states/metrics. Cover-letter generation also stays at 'Generating…' for 45s with no logs or error (FE-13). The share/review journey found a P1: compiled share links cannot render their PDF because the R2 artifact URL is blocked by CORS (FE-16).
 
 ## Coverage
 
@@ -15,6 +15,20 @@
 | Horizontal overflow | 0 desktop, 0 mobile |
 | Missing H1 | 3 pages (workspace-edit, workspace-optimize, workspaces-detail) |
 | Pages with unlabeled interactive controls | 10 |
+
+## In-app browser verification
+
+A separate read-only pass used the T3 Code in-app browser at 1279x799 (logged-in default profile) plus an incognito tab for anonymous pricing, and the person's 741x1362 tab for the header annotation. It confirmed, live:
+
+- Optimize stays a **blank page + spinner for ~25-30s** (FE-01).
+- Templates shows **"0 TEMPLATES" at 3s**, then **61 at ~12s** (FE-15).
+- Anonymous pricing shows **no prices** and the consent panel covers plan cards/CTAs (FE-05/FE-03).
+- Admin is **21,105px** with **925 visible buttons** (FE-04).
+- Billing shows bare "Loading plans..." / "Loading subscription state..." for ~12s and fires **five** subscription requests (new FE-17).
+- Dashboard KPI cards are empty boxes before data arrives (FE-17).
+- Cover letter has **2 unlabeled controls** (FE-12); settings has **1** (FE-07).
+
+Full notes and screenshots: [`browser-review-2026-11-27.md`](browser-review-2026-11-27.md), `browser-review/`.
 
 ## Per-page results
 
@@ -100,6 +114,9 @@
 | FE-13 | [#2339](https://github.com/sanskarpan/Latexy/issues/2339) |
 | FE-14 | [#2342](https://github.com/sanskarpan/Latexy/issues/2342) |
 | FE-15 | [#2343](https://github.com/sanskarpan/Latexy/issues/2343) |
+| FE-16 | [#2344](https://github.com/sanskarpan/Latexy/issues/2344) |
+| FE-17 | [#2345](https://github.com/sanskarpan/Latexy/issues/2345) |
+| FE-18 | [#2347](https://github.com/sanskarpan/Latexy/issues/2347) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
 
 ## Visual disposition by page
@@ -152,12 +169,16 @@
 | `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter` | Clean empty recruiter dashboard. |
 
 
-## Additional interaction results (template use, PDF import)
+## Additional interaction results (template use, PDF import, share/review, ATS)
 
 - **Templates:** a fresh authenticated free user initially saw **0 TEMPLATES** for ~10s; after the API calls completed it showed 61. Clicking **Use Template** left the card at **"CREATING…"** for >7s. This is FE-15.
-- **PDF import:** `/workspace/new` → Import File accepted the PDF and started "Preserving your PDF and extracting its text…"; after 8s it was still extracting. The upload control and wizard are present; end-to-end creation was not completed in this pass.
+- **PDF import:** `/workspace/new` → Import File accepted the PDF and started "Preserving your PDF and extracting its text…"; after 8s the UI was still in the extraction state, but the import does complete: with a non-empty reviewed field and a layout selected, "Create editable resume" succeeded in 12.8s and reached `/workspace/{id}/edit`; the upload POST took ~6s and adapt ~16s. This is a PASS (FE-15 covers the perceived-wait issue).
+- **Share/review:** a compiled/accepted resume produced a valid share link, but the public page could not render the PDF because the R2 presigned URL has no `Access-Control-Allow-Origin`; console shows a CORS block and the review surface says "The review document could not be loaded." This is FE-16 / #2344.
+- **ATS simulator:** PASS with an accepted artifact: select a check profile (Greenhouse), Run checks enabled, `POST /ats/simulate` 200 in 3.4s, **76/100**, 2 issues, 4 recommendations. The optimize page still took 40.1s to appear (FE-01). See `journeys/ats-simulator.md`.
+- **Team invite:** PASS with a P2 state defect: owner invites a member by email; the member can sign in and sees the workspace with **2/5 members**, but the owner's page still shows **1/5** until reload. The submit button is icon-only with no accessible name. This is FE-18 / #2347. See `journeys/team-invite.md`.
+- **LinkedIn import:** PASS with a synthetic LinkedIn-style text fixture: conversion produced **2,342 characters**, created a resume, and opened the editor, but the editor is **source-only** ("layout cannot be edited safely through fields yet", FE-02 / #2325) and creation took ~30s (FE-14). See `journeys/linkedin-import.md`.
 - **Builder:** create/fill/preview/PDF works; creation can take ~30s and preview ~20–60s (FE-14/FE-01).
 - **Cover letter:** generation stayed at "Generating…" for 45s with no logs (FE-13).
 - **Tracker:** a fresh account saved an application (`POST /tracker/applications` 201) and the board updated.
 
-Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `tracker-pro-result.json`.
+Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `pdf-import-completion.json`, `pdf-import-created-final.png`, `share-review-journey.json`, `share-review-45s.png`, `ats-simulator-journey.json`, `ats-simulator-result.png`, `team-invite-journey.json`, `team-workspace-owner.png`, `team-workspace-member-loaded.png`, `linkedin-import-converted.png`, `linkedin-import-editor.png`, `tracker-pro-result.json`.

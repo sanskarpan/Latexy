@@ -1,0 +1,26 @@
+Alex Audit
+Senior Backend Engineer
+Berlin, Germany
+audit.linkedin@example.test
+
+Summary
+Backend engineer with 7 years of experience building reliable APIs and data pipelines. Focused on observability, latency, and cost.
+
+Experience
+Acme Systems — Senior Backend Engineer
+2022 - Present
+- Led migration of a monolithic API to async Python services, cutting p95 latency by 38%.
+- Built a multi-tenant job queue processing 2M tasks/day with idempotent retries.
+- Introduced OpenTelemetry tracing across 14 services.
+
+Beta Labs — Backend Engineer
+2019 - 2022
+- Designed a Postgres-backed billing pipeline with exactly-once refunds.
+- Reduced cloud spend 22% by right-sizing batch workers.
+
+Education
+Technical University of Berlin — M.Sc. Computer Science
+2017 - 2019
+
+Skills
+Python, FastAPI, PostgreSQL, Redis, Docker, Kubernetes, OpenTelemetry, AWS
