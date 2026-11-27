@@ -99,6 +99,7 @@
 | FE-12 | [#2335](https://github.com/sanskarpan/Latexy/issues/2335) |
 | FE-13 | [#2339](https://github.com/sanskarpan/Latexy/issues/2339) |
 | FE-14 | [#2342](https://github.com/sanskarpan/Latexy/issues/2342) |
+| FE-15 | [#2343](https://github.com/sanskarpan/Latexy/issues/2343) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
 
 ## Visual disposition by page
@@ -149,3 +150,14 @@
 | `/workspaces` | Clear team workspace list; consent overlay. |
 | `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0` | Clean member/share panels; heading is not an H1. |
 | `/workspaces/bf531756-d928-4b3d-a79d-b666e7415cf0/recruiter` | Clean empty recruiter dashboard. |
+
+
+## Additional interaction results (template use, PDF import)
+
+- **Templates:** a fresh authenticated free user initially saw **0 TEMPLATES** for ~10s; after the API calls completed it showed 61. Clicking **Use Template** left the card at **"CREATING…"** for >7s. This is FE-15.
+- **PDF import:** `/workspace/new` → Import File accepted the PDF and started "Preserving your PDF and extracting its text…"; after 8s it was still extracting. The upload control and wizard are present; end-to-end creation was not completed in this pass.
+- **Builder:** create/fill/preview/PDF works; creation can take ~30s and preview ~20–60s (FE-14/FE-01).
+- **Cover letter:** generation stayed at "Generating…" for 45s with no logs (FE-13).
+- **Tracker:** a fresh account saved an application (`POST /tracker/applications` 201) and the board updated.
+
+Evidence: `journeys/template-use-free.json`, `template-use-worked.png`, `pdf-import-open.png`, `pdf-import-parsed.png`, `tracker-pro-result.json`.

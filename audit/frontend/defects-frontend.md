@@ -190,3 +190,17 @@ Severity follows the audit scale. Every finding is from live production `https:/
 **Proposed fix:** prefetch capabilities/templates, show a step/progress state, add a timeout with Retry, and prevent duplicate submits.
 
 **Acceptance:** creation navigates within 3s warm / 8s cold, or shows a progress step; timeout error by 10s; no duplicate resume created.
+
+
+## FE-15 - P2 - Templates page shows "0 templates" while loading; template use stays at "CREATING…"
+
+**Surface:** `/templates`, `/workspace/new` → Use Template / Import File.
+**Observed:** a fresh authenticated user sees **0 TEMPLATES** and no skeleton for ~10s; after the API calls complete it shows 61. Clicking **Use Template** leaves the card at **"CREATING…"** for >7s, and PDF import stays at "Preserving your PDF and extracting its text…" for >8s. No error is shown.
+
+**Evidence:** `journeys/template-use-free.json`, `journeys/template-use-worked.png`, `journeys/pdf-import-parsed.png`.
+
+**Impact:** a new user's first impression is an empty library or a frozen action; the product looks broken while it is working.
+
+**Proposed fix:** show a skeleton/“Loading templates…” instead of 0; prefetch templates/categories during auth; show a progress step for template use and import; add a timeout.
+
+**Acceptance:** templates skeleton or count appears immediately; no "0 templates" flash; template use/import shows step progress and reaches the destination or an error within 15s.

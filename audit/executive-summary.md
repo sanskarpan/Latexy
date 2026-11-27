@@ -69,7 +69,7 @@ The evidence supports signing off the **functional baseline with the P0/P1 excep
 
 ## Front-end page audit (follow-up)
 
-All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 14 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342.
+All **44 App Router pages** were loaded in production at desktop and mobile widths with anonymous/free/pro/admin/team roles. Reports and screenshots are in `audit/frontend/`; 15 page-level defects are in `defects-frontend.md` and GitHub #2324-#2335, #2339, #2342, #2343.
 
 - **P1:** Optimize can sit on a blank "Checking feature availability" spinner for 25s+; imported/legacy LaTeX resumes dead-end across edit, builder and variant.
 - **P2:** Consent banner covers auth/pricing/admin controls; admin capability matrix is 21,101px/930 toggles; pricing hides prices; dashboard says 3.5s compile vs 20.7s measured; builder/auth controls are unlabeled; share says "Link unavailable" after compile; cover-letter generation hangs at "Generating…" for 45s.
