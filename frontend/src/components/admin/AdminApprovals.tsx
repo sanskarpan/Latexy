@@ -37,6 +37,7 @@ const TYPE_LABELS: Record<AdminApprovalRequestType, string> = {
     impersonation: 'Impersonation / view-as',
     role_escalation: 'Role escalation',
     bulk_entitlement_change: 'Bulk entitlement change',
+    abuse_review_action: 'Abuse review enforcement',
 }
 
 function statusTone(status: AdminApprovalStatus): string {
@@ -66,6 +67,13 @@ function payloadSummary(approval: AdminApproval): string {
     if (approval.request_type === 'bulk_entitlement_change') {
         const changes = Array.isArray(payload.changes) ? payload.changes.length : 0
         return `${changes} entitlement cell${changes === 1 ? '' : 's'} in one atomic change`
+    }
+    if (approval.request_type === 'abuse_review_action') {
+        const action = String(payload.action || 'action')
+        const subject = String(payload.subject_key || '').slice(0, 12)
+        return `${action} device subject ${subject} for queue item ${String(
+            payload.queue_item_id || ''
+        )}`
     }
     return 'Reserved request type'
 }
@@ -199,9 +207,13 @@ export default function AdminApprovals() {
 
     const canExecuteHere =
         selected?.can_execute &&
-        ['refund', 'account_deletion', 'role_escalation', 'bulk_entitlement_change'].includes(
-            selected.request_type
-        )
+        [
+            'refund',
+            'account_deletion',
+            'role_escalation',
+            'bulk_entitlement_change',
+            'abuse_review_action',
+        ].includes(selected.request_type)
 
     return (
         <div id="admin-approvals" className="space-y-6">

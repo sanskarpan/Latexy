@@ -34,7 +34,10 @@ REQUEST_TYPES = (
     "impersonation",
     "role_escalation",
     "bulk_entitlement_change",
+    "abuse_review_action",
 )
+ABUSE_ENFORCEMENT_ACTIONS = frozenset({"block", "unblock", "whitelist"})
+_OPAQUE_KEY_RE = re.compile(r"^(?:[0-9a-f]{32}|[0-9a-f]{64})$")
 STATUSES = (
     "pending",
     "approved",
@@ -285,6 +288,26 @@ def normalize_payload(request_type: str, payload: Mapping[str, Any] | None) -> d
         return {
             "gdpr_request_id": _uuid(payload.get("gdpr_request_id"), "gdpr_request_id"),
             "user_id": _uuid(payload.get("user_id"), "user_id"),
+        }
+
+    if request_type == "abuse_review_action":
+        _reject_extra_keys(
+            payload, {"queue_item_id", "subject_key", "action"}, request_type
+        )
+        subject_key = str(payload.get("subject_key") or "").strip().lower()
+        if not _OPAQUE_KEY_RE.fullmatch(subject_key):
+            raise ApprovalValidationError(
+                "subject_key must be a 32 or 64 character lowercase hex digest"
+            )
+        action = payload.get("action")
+        if action not in ABUSE_ENFORCEMENT_ACTIONS:
+            raise ApprovalValidationError(
+                "action must be block, unblock or whitelist"
+            )
+        return {
+            "queue_item_id": _uuid(payload.get("queue_item_id"), "queue_item_id"),
+            "subject_key": subject_key,
+            "action": str(action),
         }
 
     # Impersonation/view-as is reserved so a future surface cannot execute

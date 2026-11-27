@@ -86,14 +86,21 @@ class TrialService:
                 if await capture_trial_source(db, trial=trial, visitor_id=visitor_id):
                     await db.commit()
 
-            # Test users are never considered blocked regardless of usage_count
+            # Test users and reviewed, whitelisted devices are never considered
+            # blocked regardless of usage_count.
             is_test = limit > TRIAL_LIMIT
+            whitelisted = bool(getattr(trial, "whitelisted", False))
+            can_use = (
+                True
+                if whitelisted
+                else (trial.usage_count < limit if is_test else (not trial.blocked and trial.usage_count < limit))
+            )
             return {
                 "usageCount": trial.usage_count,
                 "remainingUses": max(0, limit - trial.usage_count),
-                "blocked": False if is_test else trial.blocked,
+                "blocked": False if (is_test or whitelisted) else trial.blocked,
                 "lastUsed": trial.last_used.isoformat() if trial.last_used else None,
-                "canUse": trial.usage_count < limit if is_test else (not trial.blocked and trial.usage_count < limit),
+                "canUse": can_use,
                 "trialLimit": limit,
             }
 
@@ -141,21 +148,24 @@ class TrialService:
                             "waitTime": COOLDOWN_PERIOD - time_since_last
                         }
 
-                # Check if blocked
-                if trial.blocked:
-                    return {
-                        "allowed": False,
-                        "reason": "blocked",
-                        "waitTime": None
-                    }
+                # A whitelisted device is exempt from manual blocks and the
+                # trial ceiling. Cooldown still applies to protect the service.
+                if not trial.whitelisted:
+                    # Check if blocked
+                    if trial.blocked:
+                        return {
+                            "allowed": False,
+                            "reason": "blocked",
+                            "waitTime": None
+                        }
 
-                # Check trial limit
-                if trial.usage_count >= limit:
-                    return {
-                        "allowed": False,
-                        "reason": "trial_limit_exceeded",
-                        "waitTime": None
-                    }
+                    # Check trial limit
+                    if trial.usage_count >= limit:
+                        return {
+                            "allowed": False,
+                            "reason": "trial_limit_exceeded",
+                            "waitTime": None
+                        }
 
             # Check IP-based daily limits if IP is provided
             if ip_address:
@@ -258,24 +268,26 @@ class TrialService:
                             "waitTime": COOLDOWN_PERIOD - time_since_last,
                         }
 
-                # Check blocked flag
-                if trial.blocked:
-                    record_trial_use("blocked")
-                    return {
-                        "success": False,
-                        "error": "blocked",
-                        "waitTime": None,
-                    }
+                # Check blocked flag. A whitelisted device is exempt from
+                # manual blocks and the trial ceiling, but not from cooldown.
+                if not trial.whitelisted:
+                    if trial.blocked:
+                        record_trial_use("blocked")
+                        return {
+                            "success": False,
+                            "error": "blocked",
+                            "waitTime": None,
+                        }
 
-                # Atomic limit check — no other transaction can have incremented
-                # between our SELECT FOR UPDATE and this point
-                if trial.usage_count >= limit:
-                    record_trial_use("limit_exceeded")
-                    return {
-                        "success": False,
-                        "error": "trial_limit_exceeded",
-                        "waitTime": None,
-                    }
+                    # Atomic limit check — no other transaction can have
+                    # incremented between our SELECT FOR UPDATE and this point
+                    if trial.usage_count >= limit:
+                        record_trial_use("limit_exceeded")
+                        return {
+                            "success": False,
+                            "error": "trial_limit_exceeded",
+                            "waitTime": None,
+                        }
 
                 # NOTE: device-fingerprint rotation (a fresh fingerprint grants a
                 # new 3-use trial) is an inherent limitation of anonymous trials.
@@ -293,8 +305,9 @@ class TrialService:
 
                 # Block against the effective `limit` (not the hardcoded default)
                 # so elevated test-user quotas are honoured and enforcement stays
-                # consistent with get_trial_status.
-                if trial.usage_count >= limit:
+                # consistent with get_trial_status. Whitelisted devices are never
+                # auto-blocked.
+                if trial.usage_count >= limit and not trial.whitelisted:
                     trial.blocked = True
 
                 # Analytics record inside the same savepoint
@@ -383,8 +396,9 @@ class TrialService:
             trial.session_id = session_id or trial.session_id
             trial.ip_address = ip_address or trial.ip_address
 
-            # Block if limit exceeded
-            if trial.usage_count >= TRIAL_LIMIT:
+            # Block if limit exceeded. A whitelisted device is never
+            # auto-blocked by usage.
+            if trial.usage_count >= TRIAL_LIMIT and not trial.whitelisted:
                 trial.blocked = True
 
             # Create usage analytics record

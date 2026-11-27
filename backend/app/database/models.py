@@ -232,6 +232,11 @@ class DeviceTrial(Base):
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set only by a reviewed, two-person-approved abuse action. A whitelisted
+    # device is exempt from automatic trial blocking and the usage ceiling.
+    whitelisted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -1340,7 +1345,7 @@ class AdminApproval(Base):
     __table_args__ = (
         CheckConstraint(
             "request_type IN ('refund', 'account_deletion', 'impersonation', "
-            "'role_escalation', 'bulk_entitlement_change')",
+            "'role_escalation', 'bulk_entitlement_change', 'abuse_review_action')",
             name="ck_admin_approvals_request_type",
         ),
         CheckConstraint(
@@ -1420,6 +1425,138 @@ class AdminApproval(Base):
         UUID(as_uuid=False),
         ForeignKey("admin_audit_log.id", ondelete="RESTRICT"),
         nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AbuseReviewItem(Base):
+    """One human-reviewable abuse signal with an opaque subject.
+
+    The queue deliberately stores a hashed subject key, never a raw device
+    fingerprint, IP address, account identifier, email or document. A signal is
+    materialised by an admin-triggered scan and can advance only through reason-
+    and-confirm reviewed transitions. Enforcement actions additionally require a
+    two-person approval and are applied to ``device_trials`` only.
+    """
+
+    __tablename__ = "abuse_review_items"
+    __table_args__ = (
+        CheckConstraint(
+            "signal_type IN ('blocked_device', 'trial_limit_reached', "
+            "'repeat_ip_cluster', 'trial_velocity', 'payment_failure', "
+            "'referral_rejection', 'coupon_reuse', 'rate_limit_pressure')",
+            name="ck_abuse_review_signal_type",
+        ),
+        CheckConstraint(
+            "subject_type IN ('device', 'ip', 'account', 'reason', 'coupon')",
+            name="ck_abuse_review_subject_type",
+        ),
+        CheckConstraint(
+            "severity IN ('low', 'medium', 'high', 'critical')",
+            name="ck_abuse_review_severity",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'approved', 'dismissed', 'actioned')",
+            name="ck_abuse_review_status",
+        ),
+        CheckConstraint(
+            "decision IS NULL OR decision IN ('approve', 'dismiss', 'action')",
+            name="ck_abuse_review_decision",
+        ),
+        CheckConstraint(
+            "enforcement_action IS NULL OR enforcement_action IN "
+            "('block', 'unblock', 'whitelist')",
+            name="ck_abuse_review_enforcement_action",
+        ),
+        CheckConstraint(
+            "occurrence_count > 0",
+            name="ck_abuse_review_occurrences",
+        ),
+        CheckConstraint(
+            "execution_count >= 0",
+            name="ck_abuse_review_execution_count",
+        ),
+        CheckConstraint(
+            "status = 'open' OR (decision IS NOT NULL AND decided_by IS NOT NULL "
+            "AND decided_at IS NOT NULL)",
+            name="ck_abuse_review_decided",
+        ),
+        CheckConstraint(
+            "status <> 'approved' OR decision = 'approve'",
+            name="ck_abuse_review_approved",
+        ),
+        CheckConstraint(
+            "status <> 'dismissed' OR decision = 'dismiss'",
+            name="ck_abuse_review_dismissed",
+        ),
+        CheckConstraint(
+            "status <> 'actioned' OR (decision = 'action' "
+            "AND enforcement_action IS NOT NULL AND approval_id IS NOT NULL "
+            "AND execution_count > 0)",
+            name="ck_abuse_review_actioned",
+        ),
+        CheckConstraint(
+            "assigned_to IS NULL OR length(assigned_to) = 36",
+            name="ck_abuse_review_assignee",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(evidence) = 'object'",
+            name="ck_abuse_review_evidence_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(evidence_links) = 'array'",
+            name="ck_abuse_review_links_array",
+        ),
+        UniqueConstraint("dedupe_key", name="uq_abuse_review_dedupe"),
+        Index("idx_abuse_review_status_severity", "status", "severity", "last_seen_at"),
+        Index("idx_abuse_review_signal_last_seen", "signal_type", "last_seen_at"),
+        Index("idx_abuse_review_assignee_status", "assigned_to", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    signal_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    subject_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="open", server_default="open"
+    )
+    dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    window_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evidence: Mapped[Dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    evidence_links: Mapped[List] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    assigned_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    decided_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    enforcement_action: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    approval_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    execution_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_executed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

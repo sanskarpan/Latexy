@@ -3811,6 +3811,7 @@ export type AdminApprovalRequestType =
   | 'impersonation'
   | 'role_escalation'
   | 'bulk_entitlement_change'
+  | 'abuse_review_action'
 
 export interface AdminApproval {
   id: string
@@ -3846,6 +3847,104 @@ export interface AdminApprovalList {
   offset: number
   counts: Record<AdminApprovalStatus, number>
   pending_by_type: Record<string, number>
+}
+
+export type AdminAbuseSignalType =
+  | 'blocked_device'
+  | 'trial_limit_reached'
+  | 'repeat_ip_cluster'
+  | 'trial_velocity'
+  | 'payment_failure'
+  | 'referral_rejection'
+  | 'coupon_reuse'
+  | 'rate_limit_pressure'
+
+export type AdminAbuseSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type AdminAbuseStatus = 'open' | 'approved' | 'dismissed' | 'actioned'
+export type AdminAbuseDecision = 'approve' | 'dismiss' | 'action'
+export type AdminAbuseEnforcementAction = 'block' | 'unblock' | 'whitelist'
+
+export interface AdminAbuseEvidenceLink {
+  kind: string
+  label: string
+  href: string
+}
+
+export interface AdminAbuseQueueItem {
+  id: string
+  signal_type: AdminAbuseSignalType
+  signal_label: string
+  subject_type: 'device' | 'ip' | 'account' | 'reason' | 'coupon'
+  subject_key: string
+  subject_ref: string
+  severity: AdminAbuseSeverity
+  status: AdminAbuseStatus
+  occurrence_count: number
+  window_days: number
+  first_seen_at: string | null
+  last_seen_at: string | null
+  evidence: Record<string, unknown>
+  evidence_links: AdminAbuseEvidenceLink[]
+  assigned_to: string | null
+  assigned_by: string | null
+  assigned_at: string | null
+  decision: AdminAbuseDecision | null
+  decided_by: string | null
+  decided_at: string | null
+  decision_reason: string | null
+  enforcement_action: AdminAbuseEnforcementAction | null
+  approval_id: string | null
+  execution_count: number
+  last_executed_at: string | null
+  can_acknowledge: boolean
+  can_dismiss: boolean
+  can_enforce: boolean
+  enforcement_actions: AdminAbuseEnforcementAction[]
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminAbuseQueueList {
+  items: AdminAbuseQueueItem[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  counts: Record<AdminAbuseStatus, number>
+  by_severity: Record<AdminAbuseSeverity, number>
+  open_total: number
+  aggregation_unit: string
+  minimum_cohort_size: number
+  enforcement: {
+    automatic: boolean
+    sensitive_actions: AdminAbuseEnforcementAction[]
+    two_person_required: boolean
+    device_only: boolean
+  }
+  notes: string[]
+}
+
+export interface AdminAbuseDecisionResponse {
+  item: AdminAbuseQueueItem
+  approval_required: boolean
+  approval: AdminApproval | null
+  idempotent: boolean
+}
+
+export interface AdminAbuseScanResponse {
+  created: number
+  updated: number
+  candidates: number
+  window_days: number
+  bucket: string
+  generated_at: string
+  truncated: Record<string, boolean>
+  audit_id: string
+  summary: {
+    total: number
+    counts: Record<AdminAbuseStatus, number>
+    by_severity: Record<AdminAbuseSeverity, number>
+  }
 }
 
 export interface AdminBulkEntitlementChange {
@@ -11094,6 +11193,63 @@ class ApiClient {
     return this.request<AdminApproval>(
       `/admin/approvals/${encodeURIComponent(id)}/execute`,
       { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+    )
+  }
+
+  async getAdminAbuseQueue(params?: {
+    status?: AdminAbuseStatus | 'all'
+    severity?: AdminAbuseSeverity
+    signal_type?: AdminAbuseSignalType
+    assigned_to?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminAbuseQueueList> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.signal_type) qs.set('signal_type', params.signal_type)
+    if (params?.assigned_to) qs.set('assigned_to', params.assigned_to)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminAbuseQueueList>(`/admin/abuse/queue${suffix}`)
+  }
+
+  async scanAdminAbuseQueue(body: {
+    window_days?: 7 | 30 | 90
+    reason: string
+    confirm: boolean
+  }): Promise<AdminAbuseScanResponse> {
+    return this.request<AdminAbuseScanResponse>('/admin/abuse/queue/scan', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async assignAdminAbuseItem(
+    id: string,
+    body: { assignee_id: string | null; reason: string; confirm: boolean },
+  ): Promise<AdminAbuseQueueItem> {
+    return this.request<AdminAbuseQueueItem>(
+      `/admin/abuse/queue/${encodeURIComponent(id)}/assign`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  }
+
+  async decideAdminAbuseItem(
+    id: string,
+    body: {
+      decision: AdminAbuseDecision
+      action?: AdminAbuseEnforcementAction
+      reason: string
+      confirm: boolean
+      approval_id?: string
+      note?: string
+    },
+  ): Promise<AdminAbuseDecisionResponse> {
+    return this.request<AdminAbuseDecisionResponse>(
+      `/admin/abuse/queue/${encodeURIComponent(id)}/decision`,
+      { method: 'POST', body: JSON.stringify(body) },
     )
   }
 
