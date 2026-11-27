@@ -31,7 +31,7 @@
 - `pages/<slug>/report.json` - per-page metrics/console/network
 - `pages/<slug>/desktop.png`, `mobile.png` - screenshots
 - `pages/summary.json` - all page results
-- `defects-frontend.md` - 13 consolidated findings
+- `defects-frontend.md` - 14 consolidated findings
 - `journeys/builder.md` - interaction evidence
 - `AUDIT.md` - summary, coverage table, verdict
 

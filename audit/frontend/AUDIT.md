@@ -98,6 +98,7 @@
 | FE-11 | [#2334](https://github.com/sanskarpan/Latexy/issues/2334) |
 | FE-12 | [#2335](https://github.com/sanskarpan/Latexy/issues/2335) |
 | FE-13 | [#2339](https://github.com/sanskarpan/Latexy/issues/2339) |
+| FE-14 | [#2342](https://github.com/sanskarpan/Latexy/issues/2342) |
 | Tracking | [#2336](https://github.com/sanskarpan/Latexy/issues/2336) |
 
 ## Visual disposition by page

@@ -102,7 +102,7 @@ Compile stage baseline (warm single 1-page, n=5): queue/acquisition **1.35 s**, 
 
 All **44 App Router pages** were loaded in production at 1440x900 and 390x844 with anonymous/free/pro/admin/team roles. Evidence: `audit/frontend/AUDIT.md`, `page-inventory.csv`, 44 `report.json` files, desktop/mobile screenshots and the builder journey.
 
-**13 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2339. The critical ones:
+**14 front-end defects** are tracked in `audit/frontend/defects-frontend.md` and GitHub #2324-#2339. The critical ones:
 - **FE-01 P1:** Optimize page can sit on a blank "Checking feature availability" spinner for 25s+ with no error.
 - **FE-02 P1:** Imported/legacy LaTeX resumes have no coherent edit path (edit read-only, builder 404, variant 409, optimize spinner).
 - **FE-03 P2:** Consent banner overlays sign-in, pricing and admin controls.
