@@ -10,6 +10,7 @@ import AdminCompileErrors from '@/components/admin/AdminCompileErrors'
 import AdminOperations from '@/components/admin/AdminOperations'
 import AdminConsentAnalytics from '@/components/admin/AdminConsentAnalytics'
 import AdminPathAnalysis from '@/components/admin/AdminPathAnalysis'
+import AdminPostHogInsights from '@/components/admin/AdminPostHogInsights'
 import { analyticsDashboardLinks, analyticsReplayTriageLinks } from '@/lib/analytics/posthog'
 
 const RANGES = [
@@ -430,6 +431,8 @@ export default function AdminAnalytics({
       </div>
 
       <OperationsStrip data={operations} />
+
+      <AdminPostHogInsights days={days} />
 
       <AdminCompileLatency days={days} />
 
