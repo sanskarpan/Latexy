@@ -1429,6 +1429,75 @@ class AdminApproval(Base):
     )
 
 
+class AdminViewAsSession(Base):
+    """Short-lived, read-only view-as snapshot bound to one approval.
+
+    This is deliberately not a target-user session: no target credential,
+    cookie or token is created. The row holds the operator, explicit target,
+    hashed start token, fixed read-only scope and a hard 15-minute deadline.
+    The unique approval binding makes the two-person approval single-use.
+    """
+
+    __tablename__ = "admin_view_as_sessions"
+    __table_args__ = (
+        CheckConstraint("scope = 'read_only'", name="ck_admin_view_as_scope"),
+        CheckConstraint("expires_at > created_at", name="ck_admin_view_as_expiry"),
+        CheckConstraint(
+            "expires_at <= created_at + interval '15 minutes'",
+            name="ck_admin_view_as_max_expiry",
+        ),
+        CheckConstraint(
+            "ended_at IS NULL OR ended_at >= created_at",
+            name="ck_admin_view_as_ended_after_start",
+        ),
+        CheckConstraint(
+            "token_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_admin_view_as_token_hash",
+        ),
+        CheckConstraint(
+            "admin_user_id <> target_user_id",
+            name="ck_admin_view_as_distinct_target",
+        ),
+        Index("idx_admin_view_as_admin_created", "admin_user_id", "created_at"),
+        Index("idx_admin_view_as_target_created", "target_user_id", "created_at"),
+        Index("idx_admin_view_as_expires", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    approval_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("admin_approvals.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    admin_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="read_only", server_default="read_only"
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    end_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class GdprRequest(Base):
     """One data-subject export or erasure request.
 

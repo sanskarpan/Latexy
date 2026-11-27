@@ -420,7 +420,11 @@ async def execute_admin_approval(
         else:
             raise HTTPException(
                 status_code=409,
-                detail="No impersonation/view-as surface is enabled; this approval cannot execute",
+                detail=(
+                    "Impersonation/view-as approvals start a read-only preview "
+                    "through /admin/view-as/sessions; the generic execute route "
+                    "cannot mint a preview."
+                ),
             )
     except Exception as exc:
         await db.rollback()

@@ -67,6 +67,9 @@ function payloadSummary(approval: AdminApproval): string {
         const changes = Array.isArray(payload.changes) ? payload.changes.length : 0
         return `${changes} entitlement cell${changes === 1 ? '' : 's'} in one atomic change`
     }
+    if (approval.request_type === 'impersonation') {
+        return `Read-only view-as snapshot for ${String(payload.target_user_id || '')}`
+    }
     return 'Reserved request type'
 }
 
@@ -533,9 +536,9 @@ export default function AdminApprovals() {
                             )}
 
                             {selected.can_execute && selected.request_type === 'impersonation' && (
-                                <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-xs text-err">
-                                    No impersonation/view-as surface is enabled. The approval cannot
-                                    be executed.
+                                <p className="rounded-[var(--radius-md)] bg-surface-2 px-3 py-2 text-xs text-fg-2">
+                                    Approved. Start this read-only preview from the View-as panel at the top
+                                    of the admin page. The approval can start exactly one session.
                                 </p>
                             )}
 
