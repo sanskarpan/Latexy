@@ -1004,7 +1004,7 @@ def test_migration_0102_is_additive_reversible_and_rechained_from_0100():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert migration.revision == "0102_admin_user_notes"
-    assert migration.down_revision == "0100_daily_metrics"
+    assert migration.down_revision == "0101_view_as_user"
 
     calls: list[tuple[str, str]] = []
 

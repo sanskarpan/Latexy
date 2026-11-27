@@ -79,7 +79,7 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
     config = Config()
     config.set_main_option("script_location", str(backend / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0106_admin_experiments"]
+    assert scripts.get_heads() == ["0109_error_alerts"]
     expected = {
         "0069_capability_catalog": "0068",
         "0070_plan_catalog": "0069_capability_catalog",
@@ -111,7 +111,13 @@ def test_alembic_revision_chain_follows_main_and_has_one_head():
         "0097_two_person_approvals": "0096_retention_controls",
         "0099_tenant_domain_health": "0097_two_person_approvals",
         "0100_daily_metrics": "0099_tenant_domain_health",
-        "0106_admin_experiments": "0100_daily_metrics",
+        "0101_view_as_user": "0100_daily_metrics",
+        "0102_admin_user_notes": "0101_view_as_user",
+        "0103_abuse_review": "0102_admin_user_notes",
+        "0104_refund_requests": "0103_abuse_review",
+        "0106_admin_experiments": "0104_refund_requests",
+        "0108_cohort_sync": "0106_admin_experiments",
+        "0109_error_alerts": "0108_cohort_sync",
     }
     for revision, parent in expected.items():
         assert scripts.get_revision(revision).down_revision == parent

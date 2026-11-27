@@ -693,7 +693,7 @@ def test_migration_declares_reserved_revision_tables_and_constraints():
             calls.append(("drop_table", name))
 
     assert migration.revision == "0108_cohort_sync"
-    assert migration.down_revision == "0100_daily_metrics"
+    assert migration.down_revision == "0106_admin_experiments"
     migration.op = FakeOp()
     migration.upgrade()
 

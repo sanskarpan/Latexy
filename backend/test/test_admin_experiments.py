@@ -1194,7 +1194,7 @@ class TestPrivacyAndMigration:
         migration = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(migration)
         assert migration.revision == "0106_admin_experiments"
-        assert migration.down_revision == "0100_daily_metrics"
+        assert migration.down_revision == "0104_refund_requests"
 
     def test_models_expose_aggregate_safe_state(self) -> None:
         assert "ip_address" not in AdminExperimentExposure.__table__.c

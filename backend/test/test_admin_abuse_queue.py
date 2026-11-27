@@ -920,4 +920,4 @@ class TestDatabaseGuardAndMigration:
         )
         module = __import__("runpy").run_path(str(path))
         assert module["revision"] == "0103_abuse_review"
-        assert module["down_revision"] == "0100_daily_metrics"
+        assert module["down_revision"] == "0102_admin_user_notes"

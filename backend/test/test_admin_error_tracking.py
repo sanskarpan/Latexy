@@ -461,7 +461,7 @@ def test_error_alerts_migration_shape() -> None:
             calls.append(("drop_table", name))
 
     assert migration.revision == "0109_error_alerts"
-    assert migration.down_revision == "0100_daily_metrics"
+    assert migration.down_revision == "0108_cohort_sync"
     migration.op = FakeOp()
     migration.upgrade()
 
