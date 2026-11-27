@@ -1433,6 +1433,9 @@ class PaymentService:
         return None
 
     def _resolve_configured_plan_for_product(self, product_id: str) -> str | None:
+        legacy_plan = settings.legacy_dodo_product_plan(product_id)
+        if legacy_plan:
+            return legacy_plan
         candidates = [
             plan_id for plan_id in settings.SUBSCRIPTION_PLANS
             if get_dodo_product_id(plan_id) == product_id
