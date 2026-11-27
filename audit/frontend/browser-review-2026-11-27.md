@@ -51,7 +51,7 @@ Screenshots: `browser-review/` (workspace/new, templates-0, billing-loading, set
 - **Developer/BYOK:** `/developer` (1 H1, 1,325 chars) and `/byok` (1 H1) load cleanly, no unlabeled controls.
 - **Legacy/fixture routes:** `/workspace/{id}/batch-tailor` shows the "Checking feature availability..." shell (same class as FE-01); `/workspace/builder/{id}` shows "Checking guided builder compatibility..." for a non-builder resume (FE-02). Both are covered by the existing reports.
 
-Total: **38 of 44 routes** exercised in the in-app browser in this pass (plus the 44/44 Playwright sweep). The editor was deliberately not opened on the live account because auto-compile would create a real job; team/recruiter/portfolio routes need live fixtures. Their evidence remains in `pages/` from the controlled sweep.
+Total: **40 of 44 routes** exercised in the in-app browser (plus the 44/44 Playwright sweep): the editor was exercised through the synthetic LinkedIn import, and `/workspaces` empty state was reviewed. Remaining four are explicit fixture/safety blockers: `/workspaces/{id}` and `/workspaces/{id}/recruiter` need a live team workspace fixture; `/u/{username}` needs a public portfolio fixture; `/r/{token}` needs a live share token and is currently broken by FE-16/#2344. Their evidence remains in `pages/` from the controlled sweep.
 
 ## Billing boundary and admin read-only
 
