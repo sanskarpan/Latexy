@@ -1,0 +1,45 @@
+route,file,title,description,auth_hints
+/accessibility,accessibility/page.tsx,,,
+/admin,admin/page.tsx,,,role === 'admin';role !== 'admin'
+/admin/tenant,admin/tenant/page.tsx,,,role === 'admin'
+/billing,billing/page.tsx,,,useSession
+/byok,byok/page.tsx,Provider-Level Performance,,
+/dashboard,dashboard/page.tsx,,,
+/developer,developer/page.tsx,,,
+/faq,faq/page.tsx,"Resume Builder Questions, Answered | Latexy FAQ","Find out how to start a resume without code, try Latexy as a guest, review AI suggestions, understand resume scores, and save your work.",
+/forgot-password,forgot-password/page.tsx,,,
+/login,login/page.tsx,,,
+/,page.tsx,"Latexy | Resume Builder, ATS Feedback & LaTeX Studio",,
+/platform,platform/page.tsx,"How Latexy Works | Resumes, Cover Letters & Interview Practice","Write a resume visually, review AI suggestions, tailor it to a job, and prepare your next application with cover letters, interview practice, and tracking.",
+/pricing,pricing/page.tsx,Pricing | Latexy,"Start free, then pick the plan that fits — or bring your own key.",
+/privacy,privacy/page.tsx,,,
+/r/[token],r/[token]/page.tsx,,,
+/reset-password,reset-password/page.tsx,,,
+/resources,resources/page.tsx,Resume Writing Guide & Practical Resources | Latexy,"A practical guide to clearer resume bullets, tailoring to a job, and reviewing your final document. Find Latexy templates and answers before you start.",
+/settings,settings/page.tsx,,,
+/signup,signup/page.tsx,,,
+/templates,templates/page.tsx,,,useSession
+/tenant-invite,tenant-invite/page.tsx,,,
+/terms,terms/page.tsx,,,
+/tracker,tracker/page.tsx,,,
+/try,try/page.tsx,,Log in or upgrade to keep compiling.,useSession
+/two-factor,two-factor/page.tsx,,,
+/u/[username],u/[username]/page.tsx,,,
+/updates,updates/page.tsx,Product Updates and Release Notes | Latexy,,
+/verify-email,verify-email/page.tsx,,,useSession
+/workspace/[resumeId]/batch-tailor,workspace/[resumeId]/batch-tailor/page.tsx,,,
+/workspace/[resumeId]/career,workspace/[resumeId]/career/page.tsx,,,
+/workspace/[resumeId]/cover-letter,workspace/[resumeId]/cover-letter/page.tsx,,,
+/workspace/[resumeId]/edit,workspace/[resumeId]/edit/page.tsx,,,
+/workspace/[resumeId]/optimize,workspace/[resumeId]/optimize/page.tsx,,"Lean, impact-driven language — metrics, growth, and ownership.",
+/workspace/builder/[resumeId],workspace/builder/[resumeId]/page.tsx,Profile & Summary,"Lock the headline, contact details, and the first five seconds of the resume.",
+/workspace/builder/new,workspace/builder/new/page.tsx,1. Start,Start fresh or import a résumé to save time.,
+/workspace/cover-letters,workspace/cover-letters/page.tsx,,,
+/workspace/history,workspace/history/page.tsx,,,useSession
+/workspace/merge,workspace/merge/page.tsx,,,
+/workspace/new,workspace/new/page.tsx,,,
+/workspace,workspace/page.tsx,,Your portfolio page is ready.,
+/workspace/variant/[resumeId],workspace/variant/[resumeId]/page.tsx,,,
+/workspaces/[workspaceId],workspaces/[workspaceId]/page.tsx,,,
+/workspaces/[workspaceId]/recruiter,workspaces/[workspaceId]/recruiter/page.tsx,,,
+/workspaces,workspaces/page.tsx,,,

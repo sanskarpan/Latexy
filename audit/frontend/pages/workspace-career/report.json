@@ -1,0 +1,99 @@
+{
+  "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+  "role": "free",
+  "slug": "workspace-career",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+    "h1": [
+      "Career Path Visualization"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Career Path Visualization"
+      },
+      {
+        "tag": "H2",
+        "text": "Past Analyses"
+      }
+    ],
+    "bodyTextLength": 915,
+    "links": 9,
+    "buttons": 9,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 7,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 471,
+      "load": 877,
+      "ttfb": 102,
+      "transfer": 8410
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 228
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/career",
+    "h1": [
+      "Career Path Visualization"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Career Path Visualization"
+      },
+      {
+        "tag": "H2",
+        "text": "Past Analyses"
+      }
+    ],
+    "bodyTextLength": 867,
+    "links": 9,
+    "buttons": 9,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 6,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 531,
+      "load": 950,
+      "ttfb": 74,
+      "transfer": 8433
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 223
+  }
+}

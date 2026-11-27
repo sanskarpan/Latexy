@@ -1,0 +1,128 @@
+{
+  "route": "/try",
+  "role": "anon",
+  "slug": "try",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/try",
+  "redirected": false,
+  "metrics": {
+    "title": "Try the résumé builder | Latexy",
+    "url": "https://latexy.xyz/try",
+    "h1": [
+      "Résumé Studio"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Résumé Studio"
+      },
+      {
+        "tag": "H2",
+        "text": "Edit your resume"
+      }
+    ],
+    "bodyTextLength": 1972,
+    "links": 4,
+    "buttons": 46,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 33,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [
+      {
+        "tag": "DIV",
+        "cls": "hidden min-h-0 min-w-0 flex-col lg:flex lg:flex-none",
+        "text": "Your PDF will appear here\n\nCompile to render a live preview",
+        "right": 1448,
+        "left": 880
+      },
+      {
+        "tag": "SECTION",
+        "cls": "flex min-h-0 flex-1 flex-col bg-surface-2",
+        "text": "Your PDF will appear here\n\nCompile to render a live preview",
+        "right": 1448,
+        "left": 880
+      },
+      {
+        "tag": "DIV",
+        "cls": "ph-no-capture relative min-h-0 flex-1",
+        "text": "Your PDF will appear here\n\nCompile to render a live preview",
+        "right": 1448,
+        "left": 880
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex h-full flex-col items-center justify-center gap-5 bg-surface-2 px-6",
+        "text": "Your PDF will appear here\n\nCompile to render a live preview",
+        "right": 1448,
+        "left": 880
+      }
+    ],
+    "smallText": 14,
+    "unlabeledInteractive": 0,
+    "inputs": 0,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 530,
+      "load": 579,
+      "ttfb": 78,
+      "transfer": 10428
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 399
+  },
+  "mobile": {
+    "title": "Try the résumé builder | Latexy",
+    "url": "https://latexy.xyz/try",
+    "h1": [
+      "Résumé Studio"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Résumé Studio"
+      },
+      {
+        "tag": "H2",
+        "text": "Edit your resume"
+      }
+    ],
+    "bodyTextLength": 1787,
+    "links": 4,
+    "buttons": 46,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 33,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 14,
+    "unlabeledInteractive": 0,
+    "inputs": 0,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 521,
+      "load": 521,
+      "ttfb": 73,
+      "transfer": 10330
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 401
+  }
+}

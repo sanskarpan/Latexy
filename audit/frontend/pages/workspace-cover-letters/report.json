@@ -1,0 +1,99 @@
+{
+  "route": "/workspace/cover-letters",
+  "role": "free",
+  "slug": "workspace-cover-letters",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/cover-letters",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/cover-letters",
+    "h1": [
+      "Cover Letter Library"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Cover Letter Library"
+      },
+      {
+        "tag": "H2",
+        "text": "No cover letters yet"
+      }
+    ],
+    "bodyTextLength": 880,
+    "links": 10,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 500,
+      "load": 814,
+      "ttfb": 94,
+      "transfer": 8291
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 203
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/cover-letters",
+    "h1": [
+      "Cover Letter Library"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Cover Letter Library"
+      },
+      {
+        "tag": "H2",
+        "text": "No cover letters yet"
+      }
+    ],
+    "bodyTextLength": 832,
+    "links": 10,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 805,
+      "load": 1037,
+      "ttfb": 123,
+      "transfer": 8257
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 201
+  }
+}

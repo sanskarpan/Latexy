@@ -1,0 +1,171 @@
+{
+  "route": "/workspace/history",
+  "role": "free",
+  "slug": "workspace-history",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/resources?_rsc=mx_JsDsJ1hqLL4qd",
+      "err": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://latexy.xyz/privacy?_rsc=mx_JsDsJ1hqLL4qd",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/history",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/history",
+    "h1": [
+      "Run History"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Run History"
+      }
+    ],
+    "bodyTextLength": 1076,
+    "links": 10,
+    "buttons": 14,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 9,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 653,
+      "load": 839,
+      "ttfb": 92,
+      "transfer": 8283
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 250
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/history",
+    "h1": [
+      "Run History"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Run History"
+      }
+    ],
+    "bodyTextLength": 1028,
+    "links": 10,
+    "buttons": 14,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [
+      {
+        "tag": "TABLE",
+        "cls": "w-full min-w-[760px] text-left",
+        "text": "RUN ID\tSTATUS\tSTAGE\tPROGRESS\tUPDATED\nd1e092f4-0a9\tCompleted\twaiting\t\n\n100%\n\n\t27 ",
+        "right": 777,
+        "left": 17
+      },
+      {
+        "tag": "THEAD",
+        "cls": "",
+        "text": "RUN ID\tSTATUS\tSTAGE\tPROGRESS\tUPDATED",
+        "right": 777,
+        "left": 17
+      },
+      {
+        "tag": "TR",
+        "cls": "border-b border-line bg-surface-2 text-[11px] uppercase tracking-[0.14em] text-f",
+        "text": "RUN ID\tSTATUS\tSTAGE\tPROGRESS\tUPDATED",
+        "right": 777,
+        "left": 17
+      },
+      {
+        "tag": "TH",
+        "cls": "px-5 py-3 font-semibold",
+        "text": "STAGE",
+        "right": 429,
+        "left": 321
+      },
+      {
+        "tag": "TH",
+        "cls": "px-5 py-3 font-semibold",
+        "text": "PROGRESS",
+        "right": 568,
+        "left": 429
+      },
+      {
+        "tag": "TH",
+        "cls": "px-5 py-3 font-semibold",
+        "text": "UPDATED",
+        "right": 777,
+        "left": 568
+      },
+      {
+        "tag": "TBODY",
+        "cls": "divide-y divide-line",
+        "text": "d1e092f4-0a9\tCompleted\twaiting\t\n\n100%\n\n\t27 Nov 2026, 20:56\n3c4f66ea-b0f\tComplete",
+        "right": 777,
+        "left": 17
+      },
+      {
+        "tag": "TR",
+        "cls": "bg-bg/10",
+        "text": "d1e092f4-0a9\tCompleted\twaiting\t\n\n100%\n\n\t27 Nov 2026, 20:56",
+        "right": 777,
+        "left": 17
+      },
+      {
+        "tag": "TD",
+        "cls": "px-5 py-4 text-sm text-fg-2",
+        "text": "waiting",
+        "right": 429,
+        "left": 321
+      },
+      {
+        "tag": "TD",
+        "cls": "px-5 py-4",
+        "text": "100%",
+        "right": 568,
+        "left": 429
+      }
+    ],
+    "smallText": 8,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 787,
+      "load": 788,
+      "ttfb": 142,
+      "transfer": 8261
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 256
+  }
+}

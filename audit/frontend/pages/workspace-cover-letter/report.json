@@ -1,0 +1,169 @@
+{
+  "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+  "role": "free",
+  "slug": "workspace-cover-letter",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+    "h1": [
+      "AI Cover Letter Generator"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "AI Cover Letter Generator"
+      },
+      {
+        "tag": "H2",
+        "text": "JOB DESCRIPTION"
+      },
+      {
+        "tag": "H2",
+        "text": "DETAILS (OPTIONAL)"
+      },
+      {
+        "tag": "H2",
+        "text": "TONE"
+      },
+      {
+        "tag": "H2",
+        "text": "LENGTH"
+      },
+      {
+        "tag": "H2",
+        "text": "SIGNATURE"
+      },
+      {
+        "tag": "H2",
+        "text": "LIVE LOGS"
+      }
+    ],
+    "bodyTextLength": 1281,
+    "links": 3,
+    "buttons": 18,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 3,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [
+      {
+        "tag": "DIV",
+        "cls": "lines-content monaco-editor-background",
+        "text": "",
+        "right": 16777824,
+        "left": 608
+      },
+      {
+        "tag": "DIV",
+        "cls": "monaco-aria-container",
+        "text": "",
+        "right": -15984,
+        "left": -15985
+      }
+    ],
+    "smallText": 15,
+    "unlabeledInteractive": 2,
+    "inputs": 6,
+    "unlabelledInputs": 1,
+    "nav": {
+      "dcl": 570,
+      "load": 830,
+      "ttfb": 95,
+      "transfer": 7284
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 335
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/cover-letter",
+    "h1": [
+      "AI Cover Letter Generator"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "AI Cover Letter Generator"
+      },
+      {
+        "tag": "H2",
+        "text": "JOB DESCRIPTION"
+      },
+      {
+        "tag": "H2",
+        "text": "DETAILS (OPTIONAL)"
+      },
+      {
+        "tag": "H2",
+        "text": "TONE"
+      },
+      {
+        "tag": "H2",
+        "text": "LENGTH"
+      },
+      {
+        "tag": "H2",
+        "text": "SIGNATURE"
+      },
+      {
+        "tag": "H2",
+        "text": "LIVE LOGS"
+      }
+    ],
+    "bodyTextLength": 1242,
+    "links": 3,
+    "buttons": 18,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 3,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 394,
+    "viewportWidth": 394,
+    "offscreen": [
+      {
+        "tag": "DIV",
+        "cls": "lines-content monaco-editor-background",
+        "text": "",
+        "right": 16777316,
+        "left": 100
+      },
+      {
+        "tag": "DIV",
+        "cls": "monaco-aria-container",
+        "text": "",
+        "right": -15984,
+        "left": -15985
+      }
+    ],
+    "smallText": 14,
+    "unlabeledInteractive": 2,
+    "inputs": 6,
+    "unlabelledInputs": 1,
+    "nav": {
+      "dcl": 637,
+      "load": 637,
+      "ttfb": 130,
+      "transfer": 7284
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 343
+  }
+}

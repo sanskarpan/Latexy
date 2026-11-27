@@ -1,0 +1,163 @@
+{
+  "route": "/updates",
+  "role": "anon",
+  "slug": "updates",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/updates",
+  "redirected": false,
+  "metrics": {
+    "title": "Product Updates and Release Notes | Latexy",
+    "url": "https://latexy.xyz/updates",
+    "h1": [
+      "Shipping log and platform progress."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Shipping log and platform progress."
+      },
+      {
+        "tag": "H2",
+        "text": "ATS Score Card & Page-Count Guidance"
+      },
+      {
+        "tag": "H2",
+        "text": "Onboarding & Workspace Redesign"
+      },
+      {
+        "tag": "H2",
+        "text": "Overleaf-Style Studio Rebuild"
+      },
+      {
+        "tag": "H2",
+        "text": "Guided Optimization & Project Import"
+      },
+      {
+        "tag": "H2",
+        "text": "Admin Control Plane"
+      },
+      {
+        "tag": "H2",
+        "text": "Production Readiness Layer"
+      },
+      {
+        "tag": "H2",
+        "text": "New Premium Frontend System"
+      },
+      {
+        "tag": "H2",
+        "text": "Expanded Job Event Streaming"
+      },
+      {
+        "tag": "H2",
+        "text": "BYOK Provider Enhancements"
+      }
+    ],
+    "bodyTextLength": 2439,
+    "links": 19,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 983,
+      "load": 983,
+      "ttfb": 94,
+      "transfer": 11045
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 370
+  },
+  "mobile": {
+    "title": "Product Updates and Release Notes | Latexy",
+    "url": "https://latexy.xyz/updates",
+    "h1": [
+      "Shipping log and platform progress."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Shipping log and platform progress."
+      },
+      {
+        "tag": "H2",
+        "text": "ATS Score Card & Page-Count Guidance"
+      },
+      {
+        "tag": "H2",
+        "text": "Onboarding & Workspace Redesign"
+      },
+      {
+        "tag": "H2",
+        "text": "Overleaf-Style Studio Rebuild"
+      },
+      {
+        "tag": "H2",
+        "text": "Guided Optimization & Project Import"
+      },
+      {
+        "tag": "H2",
+        "text": "Admin Control Plane"
+      },
+      {
+        "tag": "H2",
+        "text": "Production Readiness Layer"
+      },
+      {
+        "tag": "H2",
+        "text": "New Premium Frontend System"
+      },
+      {
+        "tag": "H2",
+        "text": "Expanded Job Event Streaming"
+      },
+      {
+        "tag": "H2",
+        "text": "BYOK Provider Enhancements"
+      }
+    ],
+    "bodyTextLength": 2387,
+    "links": 19,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 959,
+      "load": 960,
+      "ttfb": 106,
+      "transfer": 11070
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 370
+  }
+}

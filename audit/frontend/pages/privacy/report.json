@@ -1,0 +1,203 @@
+{
+  "route": "/privacy",
+  "role": "anon",
+  "slug": "privacy",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/privacy",
+  "redirected": false,
+  "metrics": {
+    "title": "Privacy Policy — Latexy",
+    "url": "https://latexy.xyz/privacy",
+    "h1": [
+      "Privacy Policy"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Privacy Policy"
+      },
+      {
+        "tag": "H2",
+        "text": "1. Information we process"
+      },
+      {
+        "tag": "H3",
+        "text": "Account and billing data"
+      },
+      {
+        "tag": "H3",
+        "text": "Documents and feature data"
+      },
+      {
+        "tag": "H3",
+        "text": "Integrations and AI providers"
+      },
+      {
+        "tag": "H3",
+        "text": "Technical, security, and usage data"
+      },
+      {
+        "tag": "H2",
+        "text": "2. How we use information"
+      },
+      {
+        "tag": "H2",
+        "text": "3. Public sharing"
+      },
+      {
+        "tag": "H2",
+        "text": "4. Service providers and disclosures"
+      },
+      {
+        "tag": "H2",
+        "text": "5. Cookies and local browser storage"
+      },
+      {
+        "tag": "H2",
+        "text": "6. Retention and deletion"
+      },
+      {
+        "tag": "H2",
+        "text": "7. Security"
+      },
+      {
+        "tag": "H2",
+        "text": "8. Your choices and rights"
+      },
+      {
+        "tag": "H2",
+        "text": "9. Children"
+      },
+      {
+        "tag": "H2",
+        "text": "10. Changes and contact"
+      }
+    ],
+    "bodyTextLength": 11491,
+    "links": 19,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 683,
+      "load": 683,
+      "ttfb": 85,
+      "transfer": 14048
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 280
+  },
+  "mobile": {
+    "title": "Privacy Policy — Latexy",
+    "url": "https://latexy.xyz/privacy",
+    "h1": [
+      "Privacy Policy"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Privacy Policy"
+      },
+      {
+        "tag": "H2",
+        "text": "1. Information we process"
+      },
+      {
+        "tag": "H3",
+        "text": "Account and billing data"
+      },
+      {
+        "tag": "H3",
+        "text": "Documents and feature data"
+      },
+      {
+        "tag": "H3",
+        "text": "Integrations and AI providers"
+      },
+      {
+        "tag": "H3",
+        "text": "Technical, security, and usage data"
+      },
+      {
+        "tag": "H2",
+        "text": "2. How we use information"
+      },
+      {
+        "tag": "H2",
+        "text": "3. Public sharing"
+      },
+      {
+        "tag": "H2",
+        "text": "4. Service providers and disclosures"
+      },
+      {
+        "tag": "H2",
+        "text": "5. Cookies and local browser storage"
+      },
+      {
+        "tag": "H2",
+        "text": "6. Retention and deletion"
+      },
+      {
+        "tag": "H2",
+        "text": "7. Security"
+      },
+      {
+        "tag": "H2",
+        "text": "8. Your choices and rights"
+      },
+      {
+        "tag": "H2",
+        "text": "9. Children"
+      },
+      {
+        "tag": "H2",
+        "text": "10. Changes and contact"
+      }
+    ],
+    "bodyTextLength": 11439,
+    "links": 19,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 593,
+      "load": 594,
+      "ttfb": 80,
+      "transfer": 14048
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 280
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "cover": {
+    "clicked": true,
+    "state": {
+      "text": "Skip to content\n\nCOVER LETTER\n\nAI Cover Letter Generator\n\nGenerate a tailored cover letter for \"Audit UI Journey 1795793570144\" — matching your resume's style.\n\nBack to Editor\nCOVER LETTER\nJOB DESCRIPTION\nrequired\n\n159 chars\n\nDETAILS (OPTIONAL)\nTONE\nFormal\nConversational\nEnthusiastic\nLENGTH\n3 Paragraphs\n4 Paragraphs\nDetailed\nGenerating...\nSIGNATURE\n\nType, draw, or upload a signature. Review local conventions before using one.\n\nType\nDraw\nUpload\nPrinted name\nAdd signature\nLIVE LOGS\nNo log output yet\n\nCOVER LETTER LATEX\n\nAuto\nCompile PDF\nLaTeX Presets\n1\n\nEMPTY DOCUMENT\n\nContent will appear here once generated.\n\nLATEX EDITOR\nEditor keybindings\nStandard\nVim\nEmacs\nSTANDARD\n0 CHARS\n⌘↵ COMPILE · ⌘⇧H PRESETS\n\nOUTPUT PREVIEW\n\nYour PDF will appear here\n\nCompile to render a live preview",
+      "buttons": [
+        "Formal",
+        "Conversational",
+        "Enthusiastic",
+        "3 Paragraphs",
+        "4 Paragraphs",
+        "Detailed",
+        "Generating...",
+        "Type",
+        "Draw",
+        "Upload",
+        "Add signature",
+        "Auto",
+        "Compile PDF",
+        "LaTeX Presets"
+      ]
+    }
+  },
+  "tpl": {
+    "cards": 122,
+    "after": {
+      "text": "Skip to content\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nA\nAudit\n\nLIBRARY\n\nLaTeX templates, ready to use.\n\nBrowse professional résumé, academic, and presentation templates. Preview any template, then use it to start building.\n\nVerified PDF text contract. Every built-in template is compiled in CI and checked for embedded Unicode mapping and readable text extraction. Inspect your edited result in Studio's ATS Text View; employer parsers may differ.\n\nSearch templates\n\n61 TEMPLATES\n\nALL (61)\nSOFTWARE ENGINEERING (6)\nFINANCE (4)\nACADEMIC / RESEARCH (5)\nCREATIVE & DESIGN (4)\nMINIMAL / CLEAN (4)\nATS-SAFE (5)\nTWO-COLUMN (4)\nEXECUTIVE (4)\nMARKETING & SALES (4)\nMEDICAL / HEALTHCARE (4)\nLEGAL (4)\nGRADUATE / ENTRY-LEVEL (4)\nREGIONAL FORMATS (4)\nPRESENTATIONS (5)\nPreview\nPhd Applicant\nACADEMIC / RESEARCH\nUse Template\nPreview\nPostdoc\nACADEMIC / RESEARCH\nUse Template\nPreview\nProfessor\nACADEMIC / RESEARCH\nUse Template\nPreview\nResearch Cv\nACADEMIC / RESEARCH\nUse Template\nPreview\nStem Grad\nACADEMIC / RESEARCH\nUse Template\nPreview\nAts Clean\nATS-SAFE\nUse Template\nPreview\nAts Modern\nATS-SAFE\nUse Template\nPreview\nAts Plain\nATS-SAFE\nUse Templat",
+      "buttons": [
+        "A\nAudit",
+        "ALL (61)",
+        "SOFTWARE ENGINEERING (6)",
+        "FINANCE (4)",
+        "ACADEMIC / RESEARCH (5)",
+        "CREATIVE & DESIGN (4)",
+        "MINIMAL / CLEAN (4)",
+        "ATS-SAFE (5)",
+        "TWO-COLUMN (4)",
+        "EXECUTIVE (4)",
+        "MARKETING & SALES (4)",
+        "MEDICAL / HEALTHCARE (4)",
+        "LEGAL (4)",
+        "GRADUATE / ENTRY-LEVEL (4)",
+        "REGIONAL FORMATS (4)",
+        "PRESENTATIONS (5)",
+        "Preview",
+        "Phd Applicant",
+        "Use Template",
+        "Preview"
+      ]
+    }
+  },
+  "log": {
+    "console": [],
+    "http": []
+  }
+}

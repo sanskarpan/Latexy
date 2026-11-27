@@ -1,0 +1,191 @@
+{
+  "route": "/admin",
+  "role": "admin",
+  "slug": "admin",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/templates?_rsc=f6buO9EWxguZ60wc",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/admin",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/admin",
+    "h1": [
+      "Control Plane"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Control Plane"
+      },
+      {
+        "tag": "H2",
+        "text": "Capability inventory"
+      },
+      {
+        "tag": "H2",
+        "text": "Job Queue"
+      },
+      {
+        "tag": "H2",
+        "text": "Job Queue"
+      }
+    ],
+    "bodyTextLength": 89624,
+    "links": 8,
+    "buttons": 930,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 13,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 469,
+    "unlabeledInteractive": 1,
+    "inputs": 13,
+    "unlabelledInputs": 2,
+    "nav": {
+      "dcl": 772,
+      "load": 992,
+      "ttfb": 200,
+      "transfer": 8353
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 6135
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/admin",
+    "h1": [
+      "Control Plane"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Control Plane"
+      },
+      {
+        "tag": "H2",
+        "text": "Capability inventory"
+      },
+      {
+        "tag": "H2",
+        "text": "Job Queue"
+      },
+      {
+        "tag": "H2",
+        "text": "Job Queue"
+      }
+    ],
+    "bodyTextLength": 89576,
+    "links": 8,
+    "buttons": 930,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 13,
+    "horizontalOverflow": false,
+    "documentWidth": 798,
+    "viewportWidth": 798,
+    "offscreen": [
+      {
+        "tag": "TABLE",
+        "cls": "w-full min-w-[800px] border-collapse text-sm",
+        "text": "FEATURE\tGLOBAL\tFREE\tBASIC\tPRO\tBYOK\tTEAM\nCORE\n\nLaTeX Compilation\n\ncompile\n\nAdmiss",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "THEAD",
+        "cls": "",
+        "text": "FEATURE\tGLOBAL\tFREE\tBASIC\tPRO\tBYOK\tTEAM",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "TR",
+        "cls": "sticky top-0 z-20 bg-bg/95 backdrop-blur",
+        "text": "FEATURE\tGLOBAL\tFREE\tBASIC\tPRO\tBYOK\tTEAM",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "TH",
+        "cls": "min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-",
+        "text": "TEAM",
+        "right": 834,
+        "left": 758
+      },
+      {
+        "tag": "TBODY",
+        "cls": "",
+        "text": "CORE\n\nLaTeX Compilation\n\ncompile\n\nAdmission switch for new LaTeX compilation job",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "TR",
+        "cls": "",
+        "text": "CORE",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "TH",
+        "cls": "sticky left-0 bg-surface-2 px-4 py-2 text-left text-[10px] font-semibold upperca",
+        "text": "CORE",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "TR",
+        "cls": "group border-t border-line transition-colors hover:bg-surface-2  ",
+        "text": "LaTeX Compilation\n\ncompile\n\nAdmission switch for new LaTeX compilation jobs. Exi",
+        "right": 834,
+        "left": 17
+      },
+      {
+        "tag": "TD",
+        "cls": "px-3 py-3 text-center",
+        "text": "Allowed by this scope; other plan and role restrictions still apply",
+        "right": 834,
+        "left": 758
+      },
+      {
+        "tag": "DIV",
+        "cls": "inline-flex min-h-[40px] flex-col items-center justify-center gap-1 px-1",
+        "text": "Allowed by this scope; other plan and role restrictions still apply",
+        "right": 822,
+        "left": 770
+      }
+    ],
+    "smallText": 468,
+    "unlabeledInteractive": 1,
+    "inputs": 13,
+    "unlabelledInputs": 2,
+    "nav": {
+      "dcl": 426,
+      "load": 592,
+      "ttfb": 80,
+      "transfer": 8312
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 6125
+  }
+}

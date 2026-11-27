@@ -1,0 +1,203 @@
+{
+  "route": "/platform",
+  "role": "anon",
+  "slug": "platform",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/platform",
+  "redirected": false,
+  "metrics": {
+    "title": "How Latexy Works | Resumes, Cover Letters & Interview Practice",
+    "url": "https://latexy.xyz/platform",
+    "h1": [
+      "A calmer way to prepare your next application."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "A calmer way to prepare your next application."
+      },
+      {
+        "tag": "H2",
+        "text": "Your experience"
+      },
+      {
+        "tag": "H2",
+        "text": "A specific opportunity"
+      },
+      {
+        "tag": "H2",
+        "text": "Your decisions"
+      },
+      {
+        "tag": "H2",
+        "text": "Ready for the next step"
+      },
+      {
+        "tag": "H2",
+        "text": "Choose what helps you move forward."
+      },
+      {
+        "tag": "H3",
+        "text": "Build a résumé that reads well"
+      },
+      {
+        "tag": "H3",
+        "text": "Improve it with clear feedback"
+      },
+      {
+        "tag": "H3",
+        "text": "Keep a version for each opportunity"
+      },
+      {
+        "tag": "H3",
+        "text": "Write the letter that goes with it"
+      },
+      {
+        "tag": "H3",
+        "text": "Practise explaining your experience"
+      },
+      {
+        "tag": "H3",
+        "text": "Keep track of where you applied"
+      },
+      {
+        "tag": "H2",
+        "text": "Simple to start.\nRoom to go deeper."
+      },
+      {
+        "tag": "H3",
+        "text": "For people who like more control"
+      },
+      {
+        "tag": "H2",
+        "text": "Start with one good edit."
+      }
+    ],
+    "bodyTextLength": 3389,
+    "links": 24,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 21,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 403,
+      "load": 610,
+      "ttfb": 75,
+      "transfer": 12283
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 342
+  },
+  "mobile": {
+    "title": "How Latexy Works | Resumes, Cover Letters & Interview Practice",
+    "url": "https://latexy.xyz/platform",
+    "h1": [
+      "A calmer way to prepare your next application."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "A calmer way to prepare your next application."
+      },
+      {
+        "tag": "H2",
+        "text": "Your experience"
+      },
+      {
+        "tag": "H2",
+        "text": "A specific opportunity"
+      },
+      {
+        "tag": "H2",
+        "text": "Your decisions"
+      },
+      {
+        "tag": "H2",
+        "text": "Ready for the next step"
+      },
+      {
+        "tag": "H2",
+        "text": "Choose what helps you move forward."
+      },
+      {
+        "tag": "H3",
+        "text": "Build a résumé that reads well"
+      },
+      {
+        "tag": "H3",
+        "text": "Improve it with clear feedback"
+      },
+      {
+        "tag": "H3",
+        "text": "Keep a version for each opportunity"
+      },
+      {
+        "tag": "H3",
+        "text": "Write the letter that goes with it"
+      },
+      {
+        "tag": "H3",
+        "text": "Practise explaining your experience"
+      },
+      {
+        "tag": "H3",
+        "text": "Keep track of where you applied"
+      },
+      {
+        "tag": "H2",
+        "text": "Simple to start.\nRoom to go deeper."
+      },
+      {
+        "tag": "H3",
+        "text": "For people who like more control"
+      },
+      {
+        "tag": "H2",
+        "text": "Start with one good edit."
+      }
+    ],
+    "bodyTextLength": 3337,
+    "links": 24,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 21,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 654,
+      "load": 659,
+      "ttfb": 80,
+      "transfer": 12283
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 342
+  }
+}

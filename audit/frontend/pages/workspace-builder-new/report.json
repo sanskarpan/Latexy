@@ -1,0 +1,291 @@
+{
+  "route": "/workspace/builder/new",
+  "role": "free",
+  "slug": "workspace-builder-new",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/builder/new",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/builder/new",
+    "h1": [
+      "Create your résumé"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Create your résumé"
+      },
+      {
+        "tag": "H2",
+        "text": "Choose a layout"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Modern"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Plain"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Standard"
+      },
+      {
+        "tag": "H3",
+        "text": "Hindi Professional"
+      },
+      {
+        "tag": "H3",
+        "text": "Board Advisor"
+      },
+      {
+        "tag": "H3",
+        "text": "Cxo"
+      },
+      {
+        "tag": "H3",
+        "text": "Executive Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Vp Director"
+      },
+      {
+        "tag": "H3",
+        "text": "Bootcamp"
+      },
+      {
+        "tag": "H3",
+        "text": "Career Changer"
+      },
+      {
+        "tag": "H3",
+        "text": "Mba"
+      },
+      {
+        "tag": "H3",
+        "text": "New Grad"
+      },
+      {
+        "tag": "H3",
+        "text": "Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Clean Simple"
+      },
+      {
+        "tag": "H3",
+        "text": "Modern Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Ultra Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Data Scientist"
+      },
+      {
+        "tag": "H3",
+        "text": "Devops"
+      },
+      {
+        "tag": "H3",
+        "text": "Fullstack"
+      },
+      {
+        "tag": "H3",
+        "text": "Ml Engineer"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Technical"
+      },
+      {
+        "tag": "H2",
+        "text": "Ats Clean"
+      }
+    ],
+    "bodyTextLength": 3509,
+    "links": 9,
+    "buttons": 32,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 14,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 673,
+      "load": 676,
+      "ttfb": 77,
+      "transfer": 8389
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 404
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/builder/new",
+    "h1": [
+      "Create your résumé"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Create your résumé"
+      },
+      {
+        "tag": "H2",
+        "text": "Choose a layout"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Modern"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Plain"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Standard"
+      },
+      {
+        "tag": "H3",
+        "text": "Hindi Professional"
+      },
+      {
+        "tag": "H3",
+        "text": "Board Advisor"
+      },
+      {
+        "tag": "H3",
+        "text": "Cxo"
+      },
+      {
+        "tag": "H3",
+        "text": "Executive Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Vp Director"
+      },
+      {
+        "tag": "H3",
+        "text": "Bootcamp"
+      },
+      {
+        "tag": "H3",
+        "text": "Career Changer"
+      },
+      {
+        "tag": "H3",
+        "text": "Mba"
+      },
+      {
+        "tag": "H3",
+        "text": "New Grad"
+      },
+      {
+        "tag": "H3",
+        "text": "Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Clean Simple"
+      },
+      {
+        "tag": "H3",
+        "text": "Modern Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Ultra Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Data Scientist"
+      },
+      {
+        "tag": "H3",
+        "text": "Devops"
+      },
+      {
+        "tag": "H3",
+        "text": "Fullstack"
+      },
+      {
+        "tag": "H3",
+        "text": "Ml Engineer"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Technical"
+      },
+      {
+        "tag": "H2",
+        "text": "Ats Clean"
+      }
+    ],
+    "bodyTextLength": 3461,
+    "links": 9,
+    "buttons": 32,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 14,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 1145,
+      "load": 1341,
+      "ttfb": 74,
+      "transfer": 8407
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 404
+  }
+}

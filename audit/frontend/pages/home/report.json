@@ -1,0 +1,267 @@
+{
+  "route": "/",
+  "role": "anon",
+  "slug": "home",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Resume Builder, ATS Feedback & LaTeX Studio",
+    "url": "https://latexy.xyz/",
+    "h1": [
+      "A better résumé\nis a stronger you."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "A better résumé\nis a stronger you."
+      },
+      {
+        "tag": "H2",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H3",
+        "text": "EXPERIENCE"
+      },
+      {
+        "tag": "H3",
+        "text": "Make the contribution clear"
+      },
+      {
+        "tag": "H2",
+        "text": "From first draft\nto final PDF."
+      },
+      {
+        "tag": "H3",
+        "text": "1. Write"
+      },
+      {
+        "tag": "H3",
+        "text": "2. Review"
+      },
+      {
+        "tag": "H3",
+        "text": "3. Tailor"
+      },
+      {
+        "tag": "H3",
+        "text": "4. Export"
+      },
+      {
+        "tag": "H2",
+        "text": "Thoughtful feedback, right where you write."
+      },
+      {
+        "tag": "H3",
+        "text": "Line review"
+      },
+      {
+        "tag": "H4",
+        "text": "Suggested revision"
+      },
+      {
+        "tag": "H2",
+        "text": "Different roles. Sharper résumés."
+      },
+      {
+        "tag": "H3",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H3",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H2",
+        "text": "Real documents. Beautifully typeset."
+      },
+      {
+        "tag": "H3",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H2",
+        "text": "Before you start."
+      },
+      {
+        "tag": "H2",
+        "text": "Put your experience\non the page."
+      },
+      {
+        "tag": "H3",
+        "text": "The document studio"
+      },
+      {
+        "tag": "H3",
+        "text": "Product"
+      },
+      {
+        "tag": "H3",
+        "text": "Help"
+      },
+      {
+        "tag": "H3",
+        "text": "Company"
+      }
+    ],
+    "bodyTextLength": 5924,
+    "links": 31,
+    "buttons": 16,
+    "forms": 0,
+    "images": 1,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 28,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 43,
+    "unlabeledInteractive": 0,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 833,
+      "load": 873,
+      "ttfb": 110,
+      "transfer": 14797
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 612
+  },
+  "mobile": {
+    "title": "Latexy | Resume Builder, ATS Feedback & LaTeX Studio",
+    "url": "https://latexy.xyz/",
+    "h1": [
+      "A better résumé is a stronger you."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "A better résumé is a stronger you."
+      },
+      {
+        "tag": "H2",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H3",
+        "text": "EXPERIENCE"
+      },
+      {
+        "tag": "H3",
+        "text": "Make the contribution clear"
+      },
+      {
+        "tag": "H2",
+        "text": "From first draft\nto final PDF."
+      },
+      {
+        "tag": "H3",
+        "text": "1. Write"
+      },
+      {
+        "tag": "H3",
+        "text": "2. Review"
+      },
+      {
+        "tag": "H3",
+        "text": "3. Tailor"
+      },
+      {
+        "tag": "H3",
+        "text": "4. Export"
+      },
+      {
+        "tag": "H2",
+        "text": "Thoughtful feedback, right where you write."
+      },
+      {
+        "tag": "H3",
+        "text": "Line review"
+      },
+      {
+        "tag": "H4",
+        "text": "Suggested revision"
+      },
+      {
+        "tag": "H2",
+        "text": "Different roles. Sharper résumés."
+      },
+      {
+        "tag": "H3",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H3",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H2",
+        "text": "Real documents. Beautifully typeset."
+      },
+      {
+        "tag": "H3",
+        "text": "Alex Morgan"
+      },
+      {
+        "tag": "H2",
+        "text": "Before you start."
+      },
+      {
+        "tag": "H2",
+        "text": "Put your experience\non the page."
+      },
+      {
+        "tag": "H3",
+        "text": "The document studio"
+      },
+      {
+        "tag": "H3",
+        "text": "Product"
+      },
+      {
+        "tag": "H3",
+        "text": "Help"
+      },
+      {
+        "tag": "H3",
+        "text": "Company"
+      }
+    ],
+    "bodyTextLength": 5731,
+    "links": 31,
+    "buttons": 16,
+    "forms": 0,
+    "images": 1,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 28,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 42,
+    "unlabeledInteractive": 0,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 357,
+      "load": 628,
+      "ttfb": 79,
+      "transfer": 14797
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 611
+  }
+}

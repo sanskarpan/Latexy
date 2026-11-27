@@ -1,0 +1,132 @@
+{
+  "route": "/pricing",
+  "role": "anon",
+  "slug": "pricing",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/resources?_rsc=yrzGVZEURCHTUGxG",
+      "err": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://latexy.xyz/updates?_rsc=yrzGVZEURCHTUGxG",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/pricing",
+  "redirected": false,
+  "metrics": {
+    "title": "Pricing | Latexy",
+    "url": "https://latexy.xyz/pricing",
+    "h1": [
+      "Start free. Pay only when it's working for you."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Start free. Pay only when it's working for you."
+      },
+      {
+        "tag": "H2",
+        "text": "Free"
+      },
+      {
+        "tag": "H2",
+        "text": "Basic"
+      },
+      {
+        "tag": "H2",
+        "text": "Pro"
+      },
+      {
+        "tag": "H2",
+        "text": "Your AI key"
+      }
+    ],
+    "bodyTextLength": 1929,
+    "links": 24,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 25,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 488,
+      "load": 614,
+      "ttfb": 74,
+      "transfer": 10349
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 311
+  },
+  "mobile": {
+    "title": "Pricing | Latexy",
+    "url": "https://latexy.xyz/pricing",
+    "h1": [
+      "Start free. Pay only when it's working for you."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Start free. Pay only when it's working for you."
+      },
+      {
+        "tag": "H2",
+        "text": "Free"
+      },
+      {
+        "tag": "H2",
+        "text": "Basic"
+      },
+      {
+        "tag": "H2",
+        "text": "Pro"
+      },
+      {
+        "tag": "H2",
+        "text": "Your AI key"
+      }
+    ],
+    "bodyTextLength": 1877,
+    "links": 24,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 25,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 624,
+      "load": 815,
+      "ttfb": 87,
+      "transfer": 10364
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 314
+  }
+}

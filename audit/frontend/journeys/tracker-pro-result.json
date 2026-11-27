@@ -1,0 +1,108 @@
+{
+  "state": {
+    "text": "Skip to content\nPlease verify your email address to secure your account.\nResend verification\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nT\nTracker\n\nTRACKER\n\nJob Applications\n\nTrack every application across its full lifecycle.\n\nWorkspace\nReview forwarded email\nAdd Application\n1 total\nResponse rate: 0%\nOffer rate: 0%\nThis week: 1\nBoard\nSaved jobs\nAlerts\nContacts\nThis week\nMinimum ATS score\nAny ATS\nATS 55+\nATS 75+\nSort applications\nSort: Recent\nSort: ATS\nSort: Company\nSort: Manual\nApplied\n1\nTA\n\nTracker Audit Co\n\nStaff Engineer\n\ntoday\nMove Tracker Audit Co to status\nApplied\nPhone Screen\nTechnical\nOn-Site\nOffer\nRejected\nWithdrawn\nPhone Screen\n0\nDrop here\nTechnical\n0\nDrop here\nOn-Site\n0\nDrop here\nOffer\n0\nDrop here\nRejected\n0\nDrop here\nWithdrawn\n0\nDrop here",
+    "buttons": [
+      "Resend verification",
+      "T\nTracker",
+      "Review forwarded email",
+      "Add Application",
+      "Board",
+      "Saved jobs",
+      "Alerts",
+      "Contacts",
+      "This week"
+    ]
+  },
+  "net": [
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://latexy.xyz/tracker"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://latexy.xyz/tracker"
+    },
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://latexy.xyz/_next/static/chunks/app/tracker/page-4bd02cd075d3e0ce.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://latexy.xyz/_next/static/chunks/app/tracker/page-4bd02cd075d3e0ce.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "phase": "req",
+      "method": "POST",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Ftracker&device_fingerprint=fp_1795794705491_up4pokka"
+    },
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/applications"
+    },
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/applications"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "res",
+      "status": 201,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Ftracker&device_fingerprint=fp_1795794705491_up4pokka"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "req",
+      "method": "POST",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/applications"
+    },
+    {
+      "phase": "res",
+      "status": 201,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/applications"
+    },
+    {
+      "phase": "req",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    },
+    {
+      "phase": "res",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tracker/stale-applications?days=14"
+    }
+  ]
+}

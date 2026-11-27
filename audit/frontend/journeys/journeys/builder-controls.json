@@ -1,0 +1,55 @@
+{
+  "title": "Audit UI Journey 1795793531629",
+  "logs": {
+    "console": [],
+    "errors": [],
+    "requests": []
+  },
+  "controls": {
+    "url": "https://latexy.xyz/workspace/builder/new",
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "h1": [
+      "Create your résumé"
+    ],
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "type": "text",
+        "name": "",
+        "placeholder": "Senior Backend Engineer — Core Resume",
+        "aria": null,
+        "value": "Audit UI Journey 1795793531629"
+      }
+    ],
+    "buttons": [
+      "Turn on high contrast mode",
+      "Toggle light or dark mode",
+      "A\nAudit",
+      "ATS-SAFE\n\nAts Clean\n\nats builder layout\n\nSelected layout",
+      "ATS-SAFE\n\nAts Modern\n\nats builder layout\n\nChoose this layout",
+      "ATS-SAFE\n\nAts Plain\n\nats builder layout\n\nChoose this layout",
+      "ATS-SAFE\n\nAts Standard\n\nats builder layout\n\nChoose this layout",
+      "ATS-SAFE\n\nHindi Professional\n\nats builder layout\n\nChoose this layout",
+      "EXECUTIVE\n\nBoard Advisor\n\nexecutive builder layout\n\nChoose this layout",
+      "EXECUTIVE\n\nCxo\n\nexecutive builder layout\n\nChoose this layout",
+      "EXECUTIVE\n\nExecutive Classic\n\nexecutive builder layout\n\nChoose this layout",
+      "EXECUTIVE\n\nVp Director\n\nexecutive builder layout\n\nChoose this layout",
+      "GRADUATE / ENTRY-LEVEL\n\nBootcamp\n\nprofessional builder layout\n\nChoose this layout",
+      "GRADUATE / ENTRY-LEVEL\n\nCareer Changer\n\nprofessional builder layout\n\nChoose this layout",
+      "GRADUATE / ENTRY-LEVEL\n\nMba\n\nprofessional builder layout\n\nChoose this layout",
+      "GRADUATE / ENTRY-LEVEL\n\nNew Grad\n\nprofessional builder layout\n\nChoose this layout",
+      "MINIMAL / CLEAN\n\nClassic\n\nminimal builder layout\n\nChoose this layout",
+      "MINIMAL / CLEAN\n\nClean Simple\n\nminimal builder layout\n\nChoose this layout",
+      "MINIMAL / CLEAN\n\nModern Minimal\n\nminimal builder layout\n\nChoose this layout",
+      "MINIMAL / CLEAN\n\nUltra Minimal\n\nminimal builder layout\n\nChoose this layout",
+      "SOFTWARE ENGINEERING\n\nData Scientist\n\nprofessional builder layout\n\nChoose this layout",
+      "SOFTWARE ENGINEERING\n\nDevops\n\nprofessional builder layout\n\nChoose this layout",
+      "SOFTWARE ENGINEERING\n\nFullstack\n\nprofessional builder layout\n\nChoose this layout",
+      "SOFTWARE ENGINEERING\n\nMl Engineer\n\nprofessional builder layout\n\nChoose this layout",
+      "SOFTWARE ENGINEERING\n\nSwe Clean\n\nprofessional builder layout\n\nChoose this layout",
+      "SOFTWARE ENGINEERING\n\nSwe Technical\n\nprofessional builder layout\n\nChoose this layout",
+      "Creating your résumé…"
+    ],
+    "text": "Skip to content\nLatexy\nDashboard\nWorkspace\nTracker\nTemplates\nStudio\nLanguage\nEnglish\nहिन्दी\nमराठी\nతెలుగు\nਪੰਜਾਬੀ\nবাংলা\nA\nAudit\n\nGUIDED BUILDER\n\nCreate your résumé\n\nChoose a layout, then fill in your details. You can start with a blank résumé or import one you already have.\n\nBack to Create Resume\nRESUME TITLE\n\nHave a résumé already?\n\nUpload PDF, DOCX, JSON Resume, or LinkedIn export to prefill the builder.\n\nUpload\nA simple way to get started\nFill in familiar fields and see your résumé take shape.\nSwitch layouts without losing your details.\nYour changes save automatically as you work.\n1. Start\n\nStart fresh or import a résumé to save time.\n\n2. Add your details\n\nAdd your experience, education and skills in simple fields.\n\n3. Download\n\nReview the layout and download your résumé as a PDF.\n\nChoose a layout\n\nATS-SAFE\n\nAts Clean\n\nats builder layout\n\nSelected layout\n\nATS-SAFE\n\nAts Modern\n\nats builder layout\n\nChoose this layout\n\nATS-SAFE\n\nAts Plain\n\nats builder layout\n\nChoose this layout\n\nATS-SAFE\n\nAts Standard\n\nats builder layout\n\nChoose this layout\n\nATS-SAFE\n\nHindi Professional\n\nats builder layout\n\nChoose this layout\n\nEXECUTIVE\n\nBoard Advisor\n\nexecutive builder layout\n\nChoose this layout\n\nEXECUTIVE\n\nCxo\n\nexecutive builder layout\n\nChoose this layout\n\nEXECUTIVE\n\nExecutive Classic\n\nexecutive builder layout\n\nChoose this layout\n\nEXECUTIVE\n\nVp Director\n\nexecutive builder layout\n\nChoose this layout\n\nGRADUATE / ENTRY-LEVEL\n\nBootcamp\n\nprofessional builder layout\n\nChoose this layout\n\nGRADUATE / ENTRY-LEVEL\n\nCareer Changer\n\nprofessional builder layout\n\nChoose this layout\n\nGRADUATE / ENTRY-LEVEL\n\nMba\n\nprofessional builder layout\n\nChoose this layout\n\nGRADUATE / ENTRY-LEVEL\n\nNew Grad\n\nprofessional builder layout\n\nChoose this layout\n\nMINIMAL / CLEAN\n\nClassic\n\nminimal builder layout\n\nChoose this layout\n\nMINIMAL / CLEAN\n\nClean Simple\n\nminimal builder layout\n\nChoose this layout\n\nMINIMAL / CLEAN\n\nModern Minimal\n\nminimal builder layout\n\nChoose this layout\n\nMINIMAL / CLEAN\n\nUltra Minimal\n\nminimal builder layout\n\nChoose this layout\n\nSOFTWARE ENGINEERING\n\nData Scientist\n\nprofessional builder layout\n\nChoose this layout\n\nSOFTWARE ENGINEERING\n\nDevops\n\nprofessional builder layout\n\nChoose this layout\n\nSOFTWARE ENGINEERING\n\nFullstack\n\nprofessional builder layout\n\nChoose this layout\n\nSOFTWARE ENGINEERING\n\nMl Engineer\n\nprofessional builder layout\n\nChoose this layout\n\nSOFTWARE ENGINEERING\n\nSwe Clean\n\nprofessional builder layout\n\nChoose this layout\n\nSOFTWARE ENGINEERING\n\nSwe Technical\n\nprofessional builder layout\n\nChoose this layout\n\nIMPORTED DETAILS\n\nBASICS\n\nNo name imported yet\n\nAdd role headline later\n\nSECTIONS\n\nNo imported sections yet\n\nREADINESS\n\n0% complete\n\nMissing: name, email, summary, experience, education, skills\n\nAdd a headline to improve clarity at the top of the resume.\n\nREADY\n\nAts Clean\n\nNext, fill in the details you want to include. You can change this layout later.\n\nNo code needed\n\nAdd your information using familiar fields. Your résumé stays saved as you work.\n\nCreating "
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "route": "/billing",
+  "role": "pro",
+  "slug": "billing",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/login?_rsc=OyPRjfKnuJ5ZQayv",
+      "err": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://latexy.xyz/faq?_rsc=OyPRjfKnuJ5ZQayv",
+      "err": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://latexy.xyz/workspace?_rsc=OyPRjfKnuJ5ZQayv",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/billing",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/billing",
+    "h1": [
+      "Pricing & Billing"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Pricing & Billing"
+      },
+      {
+        "tag": "H2",
+        "text": "Choose a plan"
+      },
+      {
+        "tag": "H3",
+        "text": "Free"
+      },
+      {
+        "tag": "H3",
+        "text": "Basic"
+      },
+      {
+        "tag": "H3",
+        "text": "Pro"
+      },
+      {
+        "tag": "H3",
+        "text": "BYOK (Bring Your Own Key)"
+      },
+      {
+        "tag": "H3",
+        "text": "Student"
+      },
+      {
+        "tag": "H3",
+        "text": "Team"
+      },
+      {
+        "tag": "H2",
+        "text": "Current subscription"
+      },
+      {
+        "tag": "H3",
+        "text": "Pro"
+      }
+    ],
+    "bodyTextLength": 2968,
+    "links": 8,
+    "buttons": 19,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 6,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 2160,
+      "load": 2370,
+      "ttfb": 72,
+      "transfer": 8817
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 1328
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/billing",
+    "h1": [
+      "Pricing & Billing"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Pricing & Billing"
+      },
+      {
+        "tag": "H2",
+        "text": "Choose a plan"
+      },
+      {
+        "tag": "H3",
+        "text": "Free"
+      },
+      {
+        "tag": "H3",
+        "text": "Basic"
+      },
+      {
+        "tag": "H3",
+        "text": "Pro"
+      },
+      {
+        "tag": "H3",
+        "text": "BYOK (Bring Your Own Key)"
+      },
+      {
+        "tag": "H3",
+        "text": "Student"
+      },
+      {
+        "tag": "H3",
+        "text": "Team"
+      },
+      {
+        "tag": "H2",
+        "text": "Current subscription"
+      },
+      {
+        "tag": "H3",
+        "text": "Pro"
+      }
+    ],
+    "bodyTextLength": 2920,
+    "links": 8,
+    "buttons": 19,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 7,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 5,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 543,
+      "load": 623,
+      "ttfb": 72,
+      "transfer": 8812
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 1338
+  }
+}

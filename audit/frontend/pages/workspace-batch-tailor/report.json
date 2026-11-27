@@ -1,0 +1,96 @@
+{
+  "route": "/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+  "role": "free",
+  "slug": "workspace-batch-tailor",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/privacy?_rsc=6bi2sS--aBUg0wws",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+    "h1": [
+      "Batch Tailor"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Batch Tailor"
+      }
+    ],
+    "bodyTextLength": 829,
+    "links": 9,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 11,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 1,
+    "inputs": 5,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 662,
+      "load": 949,
+      "ttfb": 75,
+      "transfer": 8420
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 230
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace/70e3fa53-0f92-4b64-8a0d-8ce256639f32/batch-tailor",
+    "h1": [
+      "Batch Tailor"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Batch Tailor"
+      }
+    ],
+    "bodyTextLength": 781,
+    "links": 9,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 11,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 1,
+    "inputs": 5,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 450,
+      "load": 850,
+      "ttfb": 82,
+      "transfer": 8420
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 216
+  }
+}

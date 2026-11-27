@@ -1,0 +1,144 @@
+{
+  "route": "/workspace",
+  "role": "free",
+  "slug": "workspace",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/resources?_rsc=yWidoI1wYTauRU_O",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/workspace",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace",
+    "h1": [
+      "Resume Library"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Resume Library"
+      },
+      {
+        "tag": "H3",
+        "text": "Audit Free Resume"
+      },
+      {
+        "tag": "H2",
+        "text": "ORGANIZE"
+      },
+      {
+        "tag": "H2",
+        "text": "RECENT ACTIVITY"
+      },
+      {
+        "tag": "H3",
+        "text": "WORKFLOW TIP"
+      },
+      {
+        "tag": "H2",
+        "text": "Welcome to Latexy"
+      },
+      {
+        "tag": "H3",
+        "text": "Résumés, typeset."
+      }
+    ],
+    "bodyTextLength": 1690,
+    "links": 14,
+    "buttons": 26,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 27,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 5,
+    "unlabeledInteractive": 0,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 470,
+      "load": 584,
+      "ttfb": 85,
+      "transfer": 8458
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 403
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/workspace",
+    "h1": [
+      "Resume Library"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Resume Library"
+      },
+      {
+        "tag": "H3",
+        "text": "Audit Free Resume"
+      },
+      {
+        "tag": "H2",
+        "text": "ORGANIZE"
+      },
+      {
+        "tag": "H2",
+        "text": "RECENT ACTIVITY"
+      },
+      {
+        "tag": "H3",
+        "text": "WORKFLOW TIP"
+      },
+      {
+        "tag": "H2",
+        "text": "Welcome to Latexy"
+      },
+      {
+        "tag": "H3",
+        "text": "Résumés, typeset."
+      }
+    ],
+    "bodyTextLength": 1610,
+    "links": 14,
+    "buttons": 26,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 27,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 4,
+    "unlabeledInteractive": 0,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 568,
+      "load": 568,
+      "ttfb": 72,
+      "transfer": 8480
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 403
+  }
+}

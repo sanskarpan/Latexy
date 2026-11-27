@@ -1,0 +1,211 @@
+{
+  "route": "/settings",
+  "role": "free",
+  "slug": "settings",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/settings",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/settings",
+    "h1": [
+      "Settings"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Settings"
+      },
+      {
+        "tag": "H2",
+        "text": "Personal Dictionary"
+      },
+      {
+        "tag": "H2",
+        "text": "Account security"
+      },
+      {
+        "tag": "H3",
+        "text": "Authenticator app"
+      },
+      {
+        "tag": "H3",
+        "text": "Passkeys"
+      },
+      {
+        "tag": "H2",
+        "text": "Export your data"
+      },
+      {
+        "tag": "H2",
+        "text": "Delete your account"
+      },
+      {
+        "tag": "H2",
+        "text": "User referrals"
+      },
+      {
+        "tag": "H2",
+        "text": "GitHub Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Zotero Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Mendeley Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Dropbox Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Google Drive export"
+      },
+      {
+        "tag": "H2",
+        "text": "Email Notifications"
+      },
+      {
+        "tag": "H2",
+        "text": "Desktop Notifications"
+      },
+      {
+        "tag": "H2",
+        "text": "Getting Started"
+      }
+    ],
+    "bodyTextLength": 4889,
+    "links": 8,
+    "buttons": 26,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 36,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 23,
+    "unlabeledInteractive": 1,
+    "inputs": 6,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 530,
+      "load": 530,
+      "ttfb": 83,
+      "transfer": 8376
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 490
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/settings",
+    "h1": [
+      "Settings"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Settings"
+      },
+      {
+        "tag": "H2",
+        "text": "Personal Dictionary"
+      },
+      {
+        "tag": "H2",
+        "text": "Account security"
+      },
+      {
+        "tag": "H3",
+        "text": "Authenticator app"
+      },
+      {
+        "tag": "H3",
+        "text": "Passkeys"
+      },
+      {
+        "tag": "H2",
+        "text": "Export your data"
+      },
+      {
+        "tag": "H2",
+        "text": "Delete your account"
+      },
+      {
+        "tag": "H2",
+        "text": "User referrals"
+      },
+      {
+        "tag": "H2",
+        "text": "GitHub Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Zotero Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Mendeley Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Dropbox Integration"
+      },
+      {
+        "tag": "H2",
+        "text": "Google Drive export"
+      },
+      {
+        "tag": "H2",
+        "text": "Email Notifications"
+      },
+      {
+        "tag": "H2",
+        "text": "Desktop Notifications"
+      },
+      {
+        "tag": "H2",
+        "text": "Getting Started"
+      }
+    ],
+    "bodyTextLength": 4841,
+    "links": 8,
+    "buttons": 26,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 36,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 22,
+    "unlabeledInteractive": 1,
+    "inputs": 6,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 652,
+      "load": 652,
+      "ttfb": 83,
+      "transfer": 8390
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 490
+  }
+}

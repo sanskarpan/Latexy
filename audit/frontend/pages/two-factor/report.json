@@ -1,0 +1,96 @@
+{
+  "route": "/two-factor",
+  "role": "anon",
+  "slug": "two-factor",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/updates?_rsc=RgEMkYz2rsDaYZ6O",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/two-factor",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/two-factor",
+    "h1": [
+      "Verify your sign-in"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Verify your sign-in"
+      }
+    ],
+    "bodyTextLength": 1045,
+    "links": 19,
+    "buttons": 11,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 1,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 476,
+      "load": 640,
+      "ttfb": 102,
+      "transfer": 9398
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 238
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/two-factor",
+    "h1": [
+      "Verify your sign-in"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Verify your sign-in"
+      }
+    ],
+    "bodyTextLength": 993,
+    "links": 19,
+    "buttons": 11,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 1,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 606,
+      "load": 607,
+      "ttfb": 74,
+      "transfer": 9398
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 238
+  }
+}

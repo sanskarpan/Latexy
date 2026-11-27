@@ -1,0 +1,155 @@
+{
+  "route": "/resources",
+  "role": "anon",
+  "slug": "resources",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/resources",
+  "redirected": false,
+  "metrics": {
+    "title": "Resume Writing Guide & Practical Resources | Latexy",
+    "url": "https://latexy.xyz/resources",
+    "h1": [
+      "Make your next draft a little easier."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Make your next draft a little easier."
+      },
+      {
+        "tag": "H2",
+        "text": "Turn responsibilities into contributions"
+      },
+      {
+        "tag": "H2",
+        "text": "Tailor the emphasis, keep the facts"
+      },
+      {
+        "tag": "H2",
+        "text": "Read it once as a stranger"
+      },
+      {
+        "tag": "H2",
+        "text": "The right next step."
+      },
+      {
+        "tag": "H3",
+        "text": "Find a starting layout"
+      },
+      {
+        "tag": "H3",
+        "text": "Understand the tools"
+      },
+      {
+        "tag": "H3",
+        "text": "Get an answer"
+      },
+      {
+        "tag": "H2",
+        "text": "Try it on a real document."
+      }
+    ],
+    "bodyTextLength": 3023,
+    "links": 27,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 13,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 453,
+      "load": 694,
+      "ttfb": 72,
+      "transfer": 11405
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 301
+  },
+  "mobile": {
+    "title": "Resume Writing Guide & Practical Resources | Latexy",
+    "url": "https://latexy.xyz/resources",
+    "h1": [
+      "Make your next draft a little easier."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Make your next draft a little easier."
+      },
+      {
+        "tag": "H2",
+        "text": "Turn responsibilities into contributions"
+      },
+      {
+        "tag": "H2",
+        "text": "Tailor the emphasis, keep the facts"
+      },
+      {
+        "tag": "H2",
+        "text": "Read it once as a stranger"
+      },
+      {
+        "tag": "H2",
+        "text": "The right next step."
+      },
+      {
+        "tag": "H3",
+        "text": "Find a starting layout"
+      },
+      {
+        "tag": "H3",
+        "text": "Understand the tools"
+      },
+      {
+        "tag": "H3",
+        "text": "Get an answer"
+      },
+      {
+        "tag": "H2",
+        "text": "Try it on a real document."
+      }
+    ],
+    "bodyTextLength": 2971,
+    "links": 27,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 13,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 556,
+      "load": 556,
+      "ttfb": 84,
+      "transfer": 11398
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 303
+  }
+}

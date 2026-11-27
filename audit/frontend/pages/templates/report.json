@@ -1,0 +1,584 @@
+{
+  "route": "/templates",
+  "role": "anon",
+  "slug": "templates",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/updates?_rsc=hychSX8B7PZPqPM2",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/templates",
+  "redirected": false,
+  "metrics": {
+    "title": "LaTeX Templates for Resumes and Documents | Latexy",
+    "url": "https://latexy.xyz/templates",
+    "h1": [
+      "LaTeX templates, ready to use."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "LaTeX templates, ready to use."
+      },
+      {
+        "tag": "H3",
+        "text": "Phd Applicant"
+      },
+      {
+        "tag": "H3",
+        "text": "Postdoc"
+      },
+      {
+        "tag": "H3",
+        "text": "Professor"
+      },
+      {
+        "tag": "H3",
+        "text": "Research Cv"
+      },
+      {
+        "tag": "H3",
+        "text": "Stem Grad"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Modern"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Plain"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Standard"
+      },
+      {
+        "tag": "H3",
+        "text": "Hindi Professional"
+      },
+      {
+        "tag": "H3",
+        "text": "Art Director"
+      },
+      {
+        "tag": "H3",
+        "text": "Copywriter"
+      },
+      {
+        "tag": "H3",
+        "text": "Product Designer"
+      },
+      {
+        "tag": "H3",
+        "text": "Ux Designer"
+      },
+      {
+        "tag": "H3",
+        "text": "Board Advisor"
+      },
+      {
+        "tag": "H3",
+        "text": "Cxo"
+      },
+      {
+        "tag": "H3",
+        "text": "Executive Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Vp Director"
+      },
+      {
+        "tag": "H3",
+        "text": "Accounting"
+      },
+      {
+        "tag": "H3",
+        "text": "Fintech"
+      },
+      {
+        "tag": "H3",
+        "text": "Investment Banking"
+      },
+      {
+        "tag": "H3",
+        "text": "Quant"
+      },
+      {
+        "tag": "H3",
+        "text": "Bootcamp"
+      },
+      {
+        "tag": "H3",
+        "text": "Career Changer"
+      },
+      {
+        "tag": "H3",
+        "text": "Mba"
+      },
+      {
+        "tag": "H3",
+        "text": "New Grad"
+      },
+      {
+        "tag": "H3",
+        "text": "Attorney"
+      },
+      {
+        "tag": "H3",
+        "text": "Corporate Counsel"
+      },
+      {
+        "tag": "H3",
+        "text": "Law Clerk"
+      },
+      {
+        "tag": "H3",
+        "text": "Paralegal"
+      },
+      {
+        "tag": "H3",
+        "text": "Brand Manager"
+      },
+      {
+        "tag": "H3",
+        "text": "Content Strategist"
+      },
+      {
+        "tag": "H3",
+        "text": "Growth Marketer"
+      },
+      {
+        "tag": "H3",
+        "text": "Pmm"
+      },
+      {
+        "tag": "H3",
+        "text": "Biotech"
+      },
+      {
+        "tag": "H3",
+        "text": "Clinical Research"
+      },
+      {
+        "tag": "H3",
+        "text": "Nursing"
+      },
+      {
+        "tag": "H3",
+        "text": "Physician"
+      },
+      {
+        "tag": "H3",
+        "text": "Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Clean Simple"
+      },
+      {
+        "tag": "H3",
+        "text": "Modern Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Ultra Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Madrid"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Metropolis"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Pitch"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Research"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Warsaw"
+      },
+      {
+        "tag": "H3",
+        "text": "Europecv"
+      },
+      {
+        "tag": "H3",
+        "text": "India Government Psu Application"
+      },
+      {
+        "tag": "H3",
+        "text": "India Professional Biodata"
+      },
+      {
+        "tag": "H3",
+        "text": "Polish Cv Rodo"
+      },
+      {
+        "tag": "H3",
+        "text": "Data Scientist"
+      },
+      {
+        "tag": "H3",
+        "text": "Devops"
+      },
+      {
+        "tag": "H3",
+        "text": "Fullstack"
+      },
+      {
+        "tag": "H3",
+        "text": "Ml Engineer"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Technical"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Creative"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Modern"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Sidebar"
+      }
+    ],
+    "bodyTextLength": 4567,
+    "links": 19,
+    "buttons": 206,
+    "forms": 0,
+    "images": 61,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 72,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 63,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 660,
+      "load": 660,
+      "ttfb": 85,
+      "transfer": 8747
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 1170
+  },
+  "mobile": {
+    "title": "LaTeX Templates for Resumes and Documents | Latexy",
+    "url": "https://latexy.xyz/templates",
+    "h1": [
+      "LaTeX templates, ready to use."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "LaTeX templates, ready to use."
+      },
+      {
+        "tag": "H3",
+        "text": "Phd Applicant"
+      },
+      {
+        "tag": "H3",
+        "text": "Postdoc"
+      },
+      {
+        "tag": "H3",
+        "text": "Professor"
+      },
+      {
+        "tag": "H3",
+        "text": "Research Cv"
+      },
+      {
+        "tag": "H3",
+        "text": "Stem Grad"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Modern"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Plain"
+      },
+      {
+        "tag": "H3",
+        "text": "Ats Standard"
+      },
+      {
+        "tag": "H3",
+        "text": "Hindi Professional"
+      },
+      {
+        "tag": "H3",
+        "text": "Art Director"
+      },
+      {
+        "tag": "H3",
+        "text": "Copywriter"
+      },
+      {
+        "tag": "H3",
+        "text": "Product Designer"
+      },
+      {
+        "tag": "H3",
+        "text": "Ux Designer"
+      },
+      {
+        "tag": "H3",
+        "text": "Board Advisor"
+      },
+      {
+        "tag": "H3",
+        "text": "Cxo"
+      },
+      {
+        "tag": "H3",
+        "text": "Executive Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Vp Director"
+      },
+      {
+        "tag": "H3",
+        "text": "Accounting"
+      },
+      {
+        "tag": "H3",
+        "text": "Fintech"
+      },
+      {
+        "tag": "H3",
+        "text": "Investment Banking"
+      },
+      {
+        "tag": "H3",
+        "text": "Quant"
+      },
+      {
+        "tag": "H3",
+        "text": "Bootcamp"
+      },
+      {
+        "tag": "H3",
+        "text": "Career Changer"
+      },
+      {
+        "tag": "H3",
+        "text": "Mba"
+      },
+      {
+        "tag": "H3",
+        "text": "New Grad"
+      },
+      {
+        "tag": "H3",
+        "text": "Attorney"
+      },
+      {
+        "tag": "H3",
+        "text": "Corporate Counsel"
+      },
+      {
+        "tag": "H3",
+        "text": "Law Clerk"
+      },
+      {
+        "tag": "H3",
+        "text": "Paralegal"
+      },
+      {
+        "tag": "H3",
+        "text": "Brand Manager"
+      },
+      {
+        "tag": "H3",
+        "text": "Content Strategist"
+      },
+      {
+        "tag": "H3",
+        "text": "Growth Marketer"
+      },
+      {
+        "tag": "H3",
+        "text": "Pmm"
+      },
+      {
+        "tag": "H3",
+        "text": "Biotech"
+      },
+      {
+        "tag": "H3",
+        "text": "Clinical Research"
+      },
+      {
+        "tag": "H3",
+        "text": "Nursing"
+      },
+      {
+        "tag": "H3",
+        "text": "Physician"
+      },
+      {
+        "tag": "H3",
+        "text": "Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Clean Simple"
+      },
+      {
+        "tag": "H3",
+        "text": "Modern Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Ultra Minimal"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Madrid"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Metropolis"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Pitch"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Research"
+      },
+      {
+        "tag": "H3",
+        "text": "Beamer Warsaw"
+      },
+      {
+        "tag": "H3",
+        "text": "Europecv"
+      },
+      {
+        "tag": "H3",
+        "text": "India Government Psu Application"
+      },
+      {
+        "tag": "H3",
+        "text": "India Professional Biodata"
+      },
+      {
+        "tag": "H3",
+        "text": "Polish Cv Rodo"
+      },
+      {
+        "tag": "H3",
+        "text": "Data Scientist"
+      },
+      {
+        "tag": "H3",
+        "text": "Devops"
+      },
+      {
+        "tag": "H3",
+        "text": "Fullstack"
+      },
+      {
+        "tag": "H3",
+        "text": "Ml Engineer"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Clean"
+      },
+      {
+        "tag": "H3",
+        "text": "Swe Technical"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Classic"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Creative"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Modern"
+      },
+      {
+        "tag": "H3",
+        "text": "Two Col Sidebar"
+      }
+    ],
+    "bodyTextLength": 4527,
+    "links": 19,
+    "buttons": 206,
+    "forms": 0,
+    "images": 59,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 74,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 65,
+    "unlabeledInteractive": 0,
+    "inputs": 2,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 583,
+      "load": 583,
+      "ttfb": 78,
+      "transfer": 8747
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 1184
+  }
+}

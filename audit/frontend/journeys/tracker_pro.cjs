@@ -1,0 +1,34 @@
+const fs = require('fs');
+const path = require('path');
+const { chromium } = require('C:/Users/Sansk/Projects/Latexy/frontend/node_modules/@playwright/test');
+const BASE = 'https://latexy.xyz';
+const IDS = JSON.parse(fs.readFileSync('C:/Users/Sansk/AppData/Local/Temp/opencode/tracker_identity.json', 'utf8'));
+const OUT = path.resolve(__dirname);
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await ctx.addCookies([{ name: '__Secure-better-auth.session_token', value: IDS.cookie, domain: 'latexy.xyz', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+  const page = await ctx.newPage();
+  const net = [];
+  page.on('request', r => { if (/tracker|jobs|ats/i.test(r.url())) net.push({ phase: 'req', method: r.method(), url: r.url().slice(0, 200) }); });
+  page.on('response', r => { if (/tracker|jobs|ats/i.test(r.url())) net.push({ phase: 'res', status: r.status(), url: r.url().slice(0, 200) }); });
+  await page.goto(`${BASE}/tracker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  for (const label of ['Essential only', 'Allow analytics']) { try { await page.getByRole('button', { name: label }).click({ timeout: 1000 }); break; } catch {} }
+  await page.getByRole('button', { name: /Add (your first )?application/i }).first().click();
+  await page.waitForTimeout(600);
+  await page.locator('input[placeholder="e.g. Google"]').fill('Tracker Audit Co');
+  await page.locator('input[placeholder="e.g. Software Engineer"]').fill('Staff Engineer');
+  await page.locator('input[type="date"]').fill(new Date().toISOString().slice(0, 10)).catch(() => {});
+  await page.locator('input[type="url"]').fill('https://example.com/job').catch(() => {});
+  const addButtons = page.getByRole('button', { name: /^Add Application$/ });
+  const n = await addButtons.count();
+  if (n) await addButtons.nth(n - 1).click();
+  await page.waitForTimeout(12000);
+  const state = await page.evaluate(() => ({ text: document.body.innerText.slice(0, 1800), buttons: Array.from(document.querySelectorAll('button')).filter(b => b.offsetParent !== null).map(b => (b.innerText || '').trim()).filter(Boolean).slice(-15) }));
+  await page.screenshot({ path: path.join(OUT, 'tracker-pro-after.png'), fullPage: false });
+  fs.writeFileSync(path.join(OUT, 'tracker-pro-result.json'), JSON.stringify({ state, net }, null, 2));
+  console.log(JSON.stringify({ text: state.text.slice(0, 1200), buttons: state.buttons, net }, null, 2));
+  await browser.close();
+})();

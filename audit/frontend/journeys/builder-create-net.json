@@ -1,0 +1,187 @@
+{
+  "title": "Audit UI Journey 1795793570144",
+  "elapsed": 30171,
+  "state": {
+    "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e",
+    "text": "n signal.\n\nAdd education\n\nSkills\n\nGroup related skills and separate each skill with a comma.\n\nAdd skill group\nADD ENGINEERING GROUPS\n\nProjects\n\nUse projects to surface work that sharpens the candidate’s story, not to pad the page.\n\nAdd project\n\nCertifications\n\nOnly keep credentials that materially support the target role or domain trust.\n\nAdd certification\n\nAwards\n\nRecognition should add proof, not noise.\n\nAdd award\n\nLanguages\n\nState the language and actual proficiency rather than broad claims.\n\nAdd language\n\nInterests\n\nKeep this optional and only use it when it sharpens memorability or fit.\n\nAdd interest\n\nLIVE PREVIEW\n\nYour content as you edit. Choose Preview PDF to check the final layout before downloading.\n\n0% FILLED\n\nTEMPLATE\n\nats\n\nESTIMATED LENGTH\n\n1 page\n\nSECTIONS INCLUDED\n\n0\n\nPREVIEW WARNINGS\n\n• Add a headline to improve clarity at the top of the resume.\nAudit UI Journey 1795793570144\n\nContact details will appear here\n\nStart filling the builder to generate a live preview.\nElement history\n\nSave immutable snapshots of a bullet or other builder element. Restore creates a new snapshot; it never erases history.\n\nAdd an experience or project bullet to start tracking versions.\n\nBuilder Notes\n\nSection order and visibility update both the preview and the generated LaTeX.\n\nChanging the template keeps your content.\n\nEditing the code in the advanced editor pauses guided editing. You can return here and choose whether to replace those code changes.\n\nGuided editing active · ATS-Safe",
+    "buttons": [
+      "INSERT LEADERSHIP PROFILE",
+      "Add experience",
+      "Add education",
+      "Add skill group",
+      "ADD ENGINEERING GROUPS",
+      "Add project",
+      "Add certification",
+      "Add award",
+      "Add language",
+      "Add interest"
+    ]
+  },
+  "net": [
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://latexy.xyz/workspace/builder/new"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://latexy.xyz/workspace/builder/new"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://latexy.xyz/_next/static/chunks/app/workspace/builder/new/page-1c948a9c5616adaa.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://latexy.xyz/_next/static/chunks/app/workspace/builder/new/page-1c948a9c5616adaa.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "phase": "request",
+      "method": "POST",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Fworkspace%2Fbuilder%2Fnew&device_fingerprint=fp_1795793559484_8j43pyiv"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/config/entitlements?include_quotas=false"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tenants/resolve-host?host=latexy.xyz"
+    },
+    {
+      "phase": "response",
+      "status": 429,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Fworkspace%2Fbuilder%2Fnew&device_fingerprint=fp_1795793559484_8j43pyiv"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tenants/resolve-host?host=latexy.xyz"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/config/entitlements?include_quotas=false"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/templates"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/templates"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "phase": "request",
+      "method": "POST",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/v1"
+    },
+    {
+      "phase": "response",
+      "status": 201,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/v1"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e?_rsc=P2JcTobzSYcz0k5D"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e?_rsc=P2JcTobzSYcz0k5D"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://latexy.xyz/_next/static/chunks/app/workspace/builder/%5BresumeId%5D/page-8b09f31c7c6f7958.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "phase": "failed",
+      "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e?_rsc=P2JcTobzSYcz0k5D",
+      "err": "net::ERR_ABORTED"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://latexy.xyz/_next/static/chunks/app/workspace/builder/%5BresumeId%5D/page-8b09f31c7c6f7958.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "phase": "request",
+      "method": "POST",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Fworkspace%2Fbuilder%2F%3AresumeId&device_fingerprint=fp_1795793559484_8j43pyiv"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/e4672413-b158-447e-86ed-d0d31c3d912e/builder/v1"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/templates"
+    },
+    {
+      "phase": "response",
+      "status": 201,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Fworkspace%2Fbuilder%2F%3AresumeId&device_fingerprint=fp_1795793559484_8j43pyiv"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/e4672413-b158-447e-86ed-d0d31c3d912e/builder/v1"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/templates"
+    },
+    {
+      "phase": "request",
+      "method": "GET",
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/config/entitlements?include_quotas=false"
+    },
+    {
+      "phase": "response",
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/config/entitlements?include_quotas=false"
+    }
+  ]
+}

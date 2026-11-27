@@ -1,0 +1,147 @@
+{
+  "route": "/dashboard",
+  "role": "free",
+  "slug": "dashboard",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/dashboard",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/dashboard",
+    "h1": [
+      "Usage Intelligence"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Usage Intelligence"
+      },
+      {
+        "tag": "H2",
+        "text": "Activity Trend"
+      },
+      {
+        "tag": "H2",
+        "text": "Feature Usage Mix"
+      },
+      {
+        "tag": "H2",
+        "text": "Job Queue"
+      },
+      {
+        "tag": "H2",
+        "text": "RUN STATUS DISTRIBUTION"
+      },
+      {
+        "tag": "H2",
+        "text": "RECENT RUNS"
+      }
+    ],
+    "bodyTextLength": 1843,
+    "links": 10,
+    "buttons": 12,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 24,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [
+      {
+        "tag": "text",
+        "cls": "[object SVGAnimatedString]",
+        "text": "11/22",
+        "right": -1402,
+        "left": -1440
+      }
+    ],
+    "smallText": 45,
+    "unlabeledInteractive": 1,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 529,
+      "load": 670,
+      "ttfb": 78,
+      "transfer": 8352
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 490
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/dashboard",
+    "h1": [
+      "Usage Intelligence"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Usage Intelligence"
+      },
+      {
+        "tag": "H2",
+        "text": "Activity Trend"
+      },
+      {
+        "tag": "H2",
+        "text": "Feature Usage Mix"
+      },
+      {
+        "tag": "H2",
+        "text": "Job Queue"
+      },
+      {
+        "tag": "H2",
+        "text": "RUN STATUS DISTRIBUTION"
+      },
+      {
+        "tag": "H2",
+        "text": "RECENT RUNS"
+      }
+    ],
+    "bodyTextLength": 1795,
+    "links": 10,
+    "buttons": 12,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 24,
+    "horizontalOverflow": false,
+    "documentWidth": 647,
+    "viewportWidth": 647,
+    "offscreen": [
+      {
+        "tag": "text",
+        "cls": "[object SVGAnimatedString]",
+        "text": "11/22",
+        "right": -352,
+        "left": -390
+      }
+    ],
+    "smallText": 44,
+    "unlabeledInteractive": 1,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 629,
+      "load": 629,
+      "ttfb": 73,
+      "transfer": 8333
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 491
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "route": "/tenant-invite",
+  "role": "anon",
+  "slug": "tenant-invite",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 429 ()"
+  ],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [
+    {
+      "status": 429,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/tenants/resolve-host?host=latexy.xyz",
+      "type": "fetch"
+    }
+  ],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/login?redirect=%2Ftenant-invite",
+  "redirected": true,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/login?redirect=%2Ftenant-invite",
+    "h1": [
+      "Welcome back"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Welcome back"
+      }
+    ],
+    "bodyTextLength": 1147,
+    "links": 21,
+    "buttons": 12,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 2,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 435,
+      "load": 570,
+      "ttfb": 73,
+      "transfer": 8742
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 260
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/login?redirect=%2Ftenant-invite",
+    "h1": [
+      "Welcome back"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Welcome back"
+      }
+    ],
+    "bodyTextLength": 1095,
+    "links": 21,
+    "buttons": 12,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 2,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 636,
+      "load": 636,
+      "ttfb": 77,
+      "transfer": 8719
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 260
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "route": "/faq",
+  "role": "anon",
+  "slug": "faq",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/faq",
+  "redirected": false,
+  "metrics": {
+    "title": "Resume Builder Questions, Answered | Latexy FAQ",
+    "url": "https://latexy.xyz/faq",
+    "h1": [
+      "A few answers before your first edit."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "A few answers before your first edit."
+      },
+      {
+        "tag": "H2",
+        "text": "Do I need to know LaTeX or write code?"
+      },
+      {
+        "tag": "H2",
+        "text": "What can I try without an account?"
+      },
+      {
+        "tag": "H2",
+        "text": "Can I start with a template?"
+      },
+      {
+        "tag": "H2",
+        "text": "Will AI change my resume automatically?"
+      },
+      {
+        "tag": "H2",
+        "text": "How do I tailor my resume to a job?"
+      },
+      {
+        "tag": "H2",
+        "text": "What does the resume score mean?"
+      },
+      {
+        "tag": "H2",
+        "text": "Can I keep different resumes for different roles?"
+      },
+      {
+        "tag": "H2",
+        "text": "Can I use my own AI provider key?"
+      },
+      {
+        "tag": "H2",
+        "text": "See how it feels."
+      }
+    ],
+    "bodyTextLength": 3274,
+    "links": 23,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 427,
+      "load": 658,
+      "ttfb": 76,
+      "transfer": 11118
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 253
+  },
+  "mobile": {
+    "title": "Resume Builder Questions, Answered | Latexy FAQ",
+    "url": "https://latexy.xyz/faq",
+    "h1": [
+      "A few answers before your first edit."
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "A few answers before your first edit."
+      },
+      {
+        "tag": "H2",
+        "text": "Do I need to know LaTeX or write code?"
+      },
+      {
+        "tag": "H2",
+        "text": "What can I try without an account?"
+      },
+      {
+        "tag": "H2",
+        "text": "Can I start with a template?"
+      },
+      {
+        "tag": "H2",
+        "text": "Will AI change my resume automatically?"
+      },
+      {
+        "tag": "H2",
+        "text": "How do I tailor my resume to a job?"
+      },
+      {
+        "tag": "H2",
+        "text": "What does the resume score mean?"
+      },
+      {
+        "tag": "H2",
+        "text": "Can I keep different resumes for different roles?"
+      },
+      {
+        "tag": "H2",
+        "text": "Can I use my own AI provider key?"
+      },
+      {
+        "tag": "H2",
+        "text": "See how it feels."
+      }
+    ],
+    "bodyTextLength": 3222,
+    "links": 23,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 456,
+      "load": 665,
+      "ttfb": 77,
+      "transfer": 11091
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 262
+  }
+}

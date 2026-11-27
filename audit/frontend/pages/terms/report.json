@@ -1,0 +1,400 @@
+{
+  "route": "/terms",
+  "role": "anon",
+  "slug": "terms",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/resources?_rsc=DNFl5fs2IjKQRqXM",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/terms",
+  "redirected": false,
+  "metrics": {
+    "title": "Terms of Service — Latexy",
+    "url": "https://latexy.xyz/terms",
+    "h1": [
+      "Terms of Service"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Terms of Service"
+      },
+      {
+        "tag": "H2",
+        "text": "1. Acceptance of Terms"
+      },
+      {
+        "tag": "H2",
+        "text": "2. Description of Service"
+      },
+      {
+        "tag": "H3",
+        "text": "2.1 Service Features"
+      },
+      {
+        "tag": "H2",
+        "text": "3. User Accounts and Registration"
+      },
+      {
+        "tag": "H3",
+        "text": "3.1 Account Creation"
+      },
+      {
+        "tag": "H3",
+        "text": "3.2 Account Eligibility"
+      },
+      {
+        "tag": "H2",
+        "text": "4. Subscription Plans and Billing"
+      },
+      {
+        "tag": "H3",
+        "text": "4.1 Plan Types"
+      },
+      {
+        "tag": "H3",
+        "text": "4.2 Billing Terms"
+      },
+      {
+        "tag": "H3",
+        "text": "4.3 Free Trial Terms"
+      },
+      {
+        "tag": "H2",
+        "text": "5. Acceptable Use Policy"
+      },
+      {
+        "tag": "H3",
+        "text": "5.1 Permitted Uses"
+      },
+      {
+        "tag": "H3",
+        "text": "5.2 Prohibited Uses"
+      },
+      {
+        "tag": "H2",
+        "text": "6. Intellectual Property Rights"
+      },
+      {
+        "tag": "H3",
+        "text": "6.1 Service Content"
+      },
+      {
+        "tag": "H3",
+        "text": "6.2 User Content"
+      },
+      {
+        "tag": "H2",
+        "text": "7. Privacy and Data Protection"
+      },
+      {
+        "tag": "H3",
+        "text": "7.1 Data Collection"
+      },
+      {
+        "tag": "H3",
+        "text": "7.2 Data Security"
+      },
+      {
+        "tag": "H2",
+        "text": "8. API Key Management (BYOK)"
+      },
+      {
+        "tag": "H3",
+        "text": "8.1 User Responsibilities"
+      },
+      {
+        "tag": "H3",
+        "text": "8.2 Supported Providers"
+      },
+      {
+        "tag": "H2",
+        "text": "9. Service Availability and Performance"
+      },
+      {
+        "tag": "H3",
+        "text": "9.1 Availability"
+      },
+      {
+        "tag": "H3",
+        "text": "9.2 Performance Standards"
+      },
+      {
+        "tag": "H2",
+        "text": "10. Limitation of Liability"
+      },
+      {
+        "tag": "H3",
+        "text": "10.1 Service Disclaimer"
+      },
+      {
+        "tag": "H3",
+        "text": "10.2 Liability Limits"
+      },
+      {
+        "tag": "H2",
+        "text": "11. Termination"
+      },
+      {
+        "tag": "H3",
+        "text": "11.1 Termination by User"
+      },
+      {
+        "tag": "H3",
+        "text": "11.2 Termination by Latexy"
+      },
+      {
+        "tag": "H2",
+        "text": "12. Dispute Resolution"
+      },
+      {
+        "tag": "H3",
+        "text": "12.1 Governing Law"
+      },
+      {
+        "tag": "H3",
+        "text": "12.2 Contact for Disputes"
+      },
+      {
+        "tag": "H2",
+        "text": "13. Changes to Terms"
+      },
+      {
+        "tag": "H3",
+        "text": "13.1 Modification Rights"
+      },
+      {
+        "tag": "H3",
+        "text": "13.2 Notification Methods"
+      },
+      {
+        "tag": "H2",
+        "text": "14. Contact Information"
+      }
+    ],
+    "bodyTextLength": 8768,
+    "links": 19,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 807,
+      "load": 814,
+      "ttfb": 80,
+      "transfer": 14721
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 405
+  },
+  "mobile": {
+    "title": "Terms of Service — Latexy",
+    "url": "https://latexy.xyz/terms",
+    "h1": [
+      "Terms of Service"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Terms of Service"
+      },
+      {
+        "tag": "H2",
+        "text": "1. Acceptance of Terms"
+      },
+      {
+        "tag": "H2",
+        "text": "2. Description of Service"
+      },
+      {
+        "tag": "H3",
+        "text": "2.1 Service Features"
+      },
+      {
+        "tag": "H2",
+        "text": "3. User Accounts and Registration"
+      },
+      {
+        "tag": "H3",
+        "text": "3.1 Account Creation"
+      },
+      {
+        "tag": "H3",
+        "text": "3.2 Account Eligibility"
+      },
+      {
+        "tag": "H2",
+        "text": "4. Subscription Plans and Billing"
+      },
+      {
+        "tag": "H3",
+        "text": "4.1 Plan Types"
+      },
+      {
+        "tag": "H3",
+        "text": "4.2 Billing Terms"
+      },
+      {
+        "tag": "H3",
+        "text": "4.3 Free Trial Terms"
+      },
+      {
+        "tag": "H2",
+        "text": "5. Acceptable Use Policy"
+      },
+      {
+        "tag": "H3",
+        "text": "5.1 Permitted Uses"
+      },
+      {
+        "tag": "H3",
+        "text": "5.2 Prohibited Uses"
+      },
+      {
+        "tag": "H2",
+        "text": "6. Intellectual Property Rights"
+      },
+      {
+        "tag": "H3",
+        "text": "6.1 Service Content"
+      },
+      {
+        "tag": "H3",
+        "text": "6.2 User Content"
+      },
+      {
+        "tag": "H2",
+        "text": "7. Privacy and Data Protection"
+      },
+      {
+        "tag": "H3",
+        "text": "7.1 Data Collection"
+      },
+      {
+        "tag": "H3",
+        "text": "7.2 Data Security"
+      },
+      {
+        "tag": "H2",
+        "text": "8. API Key Management (BYOK)"
+      },
+      {
+        "tag": "H3",
+        "text": "8.1 User Responsibilities"
+      },
+      {
+        "tag": "H3",
+        "text": "8.2 Supported Providers"
+      },
+      {
+        "tag": "H2",
+        "text": "9. Service Availability and Performance"
+      },
+      {
+        "tag": "H3",
+        "text": "9.1 Availability"
+      },
+      {
+        "tag": "H3",
+        "text": "9.2 Performance Standards"
+      },
+      {
+        "tag": "H2",
+        "text": "10. Limitation of Liability"
+      },
+      {
+        "tag": "H3",
+        "text": "10.1 Service Disclaimer"
+      },
+      {
+        "tag": "H3",
+        "text": "10.2 Liability Limits"
+      },
+      {
+        "tag": "H2",
+        "text": "11. Termination"
+      },
+      {
+        "tag": "H3",
+        "text": "11.1 Termination by User"
+      },
+      {
+        "tag": "H3",
+        "text": "11.2 Termination by Latexy"
+      },
+      {
+        "tag": "H2",
+        "text": "12. Dispute Resolution"
+      },
+      {
+        "tag": "H3",
+        "text": "12.1 Governing Law"
+      },
+      {
+        "tag": "H3",
+        "text": "12.2 Contact for Disputes"
+      },
+      {
+        "tag": "H2",
+        "text": "13. Changes to Terms"
+      },
+      {
+        "tag": "H3",
+        "text": "13.1 Modification Rights"
+      },
+      {
+        "tag": "H3",
+        "text": "13.2 Notification Methods"
+      },
+      {
+        "tag": "H2",
+        "text": "14. Contact Information"
+      }
+    ],
+    "bodyTextLength": 8716,
+    "links": 19,
+    "buttons": 8,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 580,
+      "load": 580,
+      "ttfb": 83,
+      "transfer": 14677
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 408
+  }
+}

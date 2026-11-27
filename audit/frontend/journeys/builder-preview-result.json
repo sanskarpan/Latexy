@@ -1,0 +1,68 @@
+{
+  "elapsed": 60453,
+  "state": {
+    "text": "ate\n\nProduct Engineer\n\naudit@example.test • +91 90000 00000 • Bengaluru, India • linkedin.com/in/audit • github.com/audit • audit.example\n\nSUMMARY\n\nProduct engineer with experience shipping fast, accessible web applications and distributed systems. Strong focus on measurable customer impact.\n\nElement history\n\nSave immutable snapshots of a bullet or other builder element. Restore creates a new snapshot; it never erases history.\n\nAdd an experience or project bullet to start tracking versions.\n\nBuilder Notes\n\nSection order and visibility update both the preview and the generated LaTeX.\n\nChanging the template keeps your content.\n\nEditing the code in the advanced editor pauses guided editing. You can return here and choose whether to replace those code changes.\n\nGuided editing active · ATS-Safe",
+    "iframes": [],
+    "imgs": [],
+    "buttons": [
+      {
+        "text": "Preview PDF",
+        "disabled": false
+      },
+      {
+        "text": "Download PDF",
+        "disabled": false
+      },
+      {
+        "text": "PDF",
+        "disabled": false
+      }
+    ]
+  },
+  "http": [
+    {
+      "status": 200,
+      "url": "https://latexy.xyz/workspace/builder/e4672413-b158-447e-86ed-d0d31c3d912e"
+    },
+    {
+      "status": 200,
+      "url": "https://latexy.xyz/_next/static/chunks/app/workspace/builder/%5BresumeId%5D/page-8b09f31c7c6f7958.js?dpl=dpl_4C9XMwT3d9azKnZz1PzUpDuiHXgU"
+    },
+    {
+      "status": 201,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/analytics/track/page-view?page=app&device_class=desktop&route=%2Fworkspace%2Fbuilder%2F%3AresumeId&device_fingerprint=fp_1795793780619_p"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/e4672413-b158-447e-86ed-d0d31c3d912e/builder/v1"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/templates"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/resumes/builder/capabilities"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/submit"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/a5a5ade3-19e5-4044-96a1-97a729a1187c/state"
+    },
+    {
+      "status": 200,
+      "url": "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/jobs/a5a5ade3-19e5-4044-96a1-97a729a1187c/result"
+    },
+    {
+      "status": 200,
+      "url": "https://latexy.xyz/_next/static/media/pdf.worker.min.b67f3282.mjs"
+    }
+  ]
+}

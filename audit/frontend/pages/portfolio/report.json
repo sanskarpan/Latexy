@@ -1,0 +1,112 @@
+{
+  "route": "/u/auditfe20261127",
+  "role": "anon",
+  "slug": "portfolio",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/updates?_rsc=EnY9O8NhWvDVSjt4",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/u/auditfe20261127",
+  "redirected": false,
+  "metrics": {
+    "title": "auditfe20261127 — Portfolio",
+    "url": "https://latexy.xyz/u/auditfe20261127",
+    "h1": [
+      "Audit FE pro"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Audit FE pro"
+      },
+      {
+        "tag": "H2",
+        "text": "Resumes"
+      },
+      {
+        "tag": "H2",
+        "text": "Contact"
+      }
+    ],
+    "bodyTextLength": 1016,
+    "links": 22,
+    "buttons": 9,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 4,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 3255,
+      "load": 3281,
+      "ttfb": 77,
+      "transfer": 9845
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 238
+  },
+  "mobile": {
+    "title": "auditfe20261127 — Portfolio",
+    "url": "https://latexy.xyz/u/auditfe20261127",
+    "h1": [
+      "Audit FE pro"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Audit FE pro"
+      },
+      {
+        "tag": "H2",
+        "text": "Resumes"
+      },
+      {
+        "tag": "H2",
+        "text": "Contact"
+      }
+    ],
+    "bodyTextLength": 964,
+    "links": 22,
+    "buttons": 9,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 4,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 3232,
+      "load": 3280,
+      "ttfb": 77,
+      "transfer": 9885
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 243
+  }
+}

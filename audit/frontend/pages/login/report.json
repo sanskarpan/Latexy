@@ -1,0 +1,96 @@
+{
+  "route": "/login",
+  "role": "anon",
+  "slug": "login",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/updates?_rsc=j7s84HGI7papZ6oY",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/login",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/login",
+    "h1": [
+      "Welcome back"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Welcome back"
+      }
+    ],
+    "bodyTextLength": 1147,
+    "links": 21,
+    "buttons": 12,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 2,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 436,
+      "load": 547,
+      "ttfb": 77,
+      "transfer": 9552
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 263
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/login",
+    "h1": [
+      "Welcome back"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Welcome back"
+      }
+    ],
+    "bodyTextLength": 1095,
+    "links": 21,
+    "buttons": 12,
+    "forms": 1,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 12,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 2,
+    "inputs": 3,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 530,
+      "load": 629,
+      "ttfb": 81,
+      "transfer": 9536
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 263
+  }
+}

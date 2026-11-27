@@ -1,0 +1,96 @@
+{
+  "route": "/verify-email",
+  "role": "free",
+  "slug": "verify-email",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [
+    {
+      "url": "https://latexy.xyz/updates?_rsc=wu5Fv9n2fvgjs8RZ",
+      "err": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "redirects": [],
+  "status": 200,
+  "finalUrl": "https://latexy.xyz/verify-email",
+  "redirected": false,
+  "metrics": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/verify-email",
+    "h1": [
+      "Verification failed"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Verification failed"
+      }
+    ],
+    "bodyTextLength": 1028,
+    "links": 18,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 10,
+    "horizontalOverflow": false,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "offscreen": [],
+    "smallText": 3,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 816,
+      "load": 1153,
+      "ttfb": 221,
+      "transfer": 8954
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 231
+  },
+  "mobile": {
+    "title": "Latexy | Build a résumé for your next opportunity",
+    "url": "https://latexy.xyz/verify-email",
+    "h1": [
+      "Verification failed"
+    ],
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Verification failed"
+      }
+    ],
+    "bodyTextLength": 994,
+    "links": 14,
+    "buttons": 10,
+    "forms": 0,
+    "images": 0,
+    "imagesMissingAlt": 0,
+    "iframes": 0,
+    "canvases": 0,
+    "svgs": 9,
+    "horizontalOverflow": false,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "offscreen": [],
+    "smallText": 2,
+    "unlabeledInteractive": 0,
+    "inputs": 1,
+    "unlabelledInputs": 0,
+    "nav": {
+      "dcl": 885,
+      "load": 1054,
+      "ttfb": 78,
+      "transfer": 8961
+    },
+    "lcp": null,
+    "cls": 0,
+    "domNodes": 226
+  }
+}
