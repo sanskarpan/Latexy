@@ -25,6 +25,7 @@ from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddle
 from .middleware.request_context import RequestContextMiddleware
 from .middleware.security_headers import SecurityHeadersMiddleware
 from .middleware.tenant_middleware import TenantMiddleware, VerifiedTenantCORSMiddleware
+from .middleware.view_as_guard import ViewAsReadOnlyMiddleware
 from .services.latex_compiler import latex_compiler
 from .services.latex_service import latex_service
 
@@ -232,6 +233,10 @@ app.add_middleware(RequestContextMiddleware)
 # outermost middleware and exposes this 403 to browser clients.
 app.add_middleware(SessionCookieCSRFMiddleware)
 
+# A view-as preview token is read-only. Reject any non-read request that
+# presents it before authentication or route handling can act on it.
+app.add_middleware(ViewAsReadOnlyMiddleware)
+
 # Short-circuit held traffic before request-context, rate-limit, and route
 # dependency middleware. CORS is registered below and remains outside this
 # middleware so browser clients can read 503s.
@@ -250,7 +255,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=_allow_credentials,
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "X-GDPR-Export-Token", "traceparent", "tracestate"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "X-GDPR-Export-Token", "X-View-As-Token", "traceparent", "tracestate"],
     # Without expose_headers the browser hides every non-CORS-safelisted response
     # header from JS, so the Retry-After on a 429 would be unreadable and the
     # header-carrying fix above pointless. X-Request-ID (set by

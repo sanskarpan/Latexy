@@ -3848,6 +3848,110 @@ export interface AdminApprovalList {
   pending_by_type: Record<string, number>
 }
 
+export interface AdminViewAsTarget {
+  id: string
+  email: string | null
+  name: string | null
+  pii_masked: true
+  role: string
+  subscription_plan: string
+  subscription_status: string
+  trial_used: boolean
+  created_at: string | null
+}
+
+export interface AdminViewAsSession {
+  id: string
+  approval_id: string
+  target: AdminViewAsTarget
+  scope: 'read_only'
+  status: 'active' | 'ended' | 'expired'
+  reason: string
+  read_only: true
+  banner: string
+  created_at: string | null
+  expires_at: string
+  ended_at: string | null
+  end_reason: string | null
+  seconds_remaining: number
+}
+
+export interface AdminViewAsRequestResult {
+  approval: AdminApproval
+  target: AdminViewAsTarget
+  expires_in_minutes: number
+}
+
+export interface AdminViewAsStartResult {
+  session: AdminViewAsSession
+  token: string
+  approval: AdminApproval
+}
+
+export interface AdminViewAsDashboard {
+  resumes: number
+  compilations: number
+  successful_compilations: number
+  failed_compilations: number
+  last_compilation_at: string | null
+  optimizations: number
+  last_optimization_at: string | null
+  usage_events_30d: number
+  last_activity_at: string | null
+  has_export: boolean
+  has_active_subscription: boolean
+}
+
+export interface AdminViewAsResume {
+  id: string
+  title: string | null
+  document_type: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdminViewAsPlan {
+  subscription_plan: string
+  subscription_status: string
+  trial_used: boolean
+  subscriptions: Array<{
+    id: string
+    plan_id: string
+    status: string
+    provider: string | null
+    current_period_start: string | null
+    current_period_end: string | null
+    cancelled_at: string | null
+    created_at: string | null
+  }>
+  entitlements: {
+    features: Record<string, boolean>
+    available: boolean
+  }
+  quota: AdminUser360['quota']
+}
+
+export interface AdminViewAsUsage {
+  actions: Array<{ action: string; count: number; last_at: string | null }>
+  recent_events: Array<{ action: string; resource_type: string | null; created_at: string | null }>
+}
+
+export interface AdminViewAsSnapshot {
+  session: AdminViewAsSession
+  dashboard: AdminViewAsDashboard
+  resumes: AdminViewAsResume[]
+  plan: AdminViewAsPlan
+  usage: AdminViewAsUsage
+  support_timeline: AdminUserTimeline
+  limitations: string
+}
+
+export interface AdminViewAsSessionList {
+  items: AdminViewAsSession[]
+  total: number
+  limit: number
+}
+
 export interface AdminBulkEntitlementChange {
   scope: 'plan' | 'role' | 'kill_switch'
   plan_family?: string
@@ -11095,6 +11199,53 @@ class ApiClient {
       `/admin/approvals/${encodeURIComponent(id)}/execute`,
       { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
     )
+  }
+
+  async requestAdminViewAs(body: {
+    target_user_id: string
+    reason: string
+    expires_in_minutes?: number
+  }): Promise<AdminViewAsRequestResult> {
+    return this.request<AdminViewAsRequestResult>('/admin/view-as/requests', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async startAdminViewAsSession(body: {
+    approval_id: string
+    note?: string
+  }): Promise<AdminViewAsStartResult> {
+    return this.request<AdminViewAsStartResult>('/admin/view-as/sessions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getAdminViewAsSnapshot(
+    sessionId: string,
+    token: string,
+    params?: { timelineLimit?: number; timelineOffset?: number },
+  ): Promise<AdminViewAsSnapshot> {
+    const query = new URLSearchParams()
+    if (params?.timelineLimit != null) query.set('timeline_limit', String(params.timelineLimit))
+    if (params?.timelineOffset != null) query.set('timeline_offset', String(params.timelineOffset))
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return this.request<AdminViewAsSnapshot>(
+      `/admin/view-as/sessions/${encodeURIComponent(sessionId)}${suffix}`,
+      { headers: { 'X-View-As-Token': token } },
+    )
+  }
+
+  async endAdminViewAsSession(sessionId: string, reason: string): Promise<AdminViewAsSession> {
+    return this.request<AdminViewAsSession>(
+      `/admin/view-as/sessions/${encodeURIComponent(sessionId)}/end`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    )
+  }
+
+  async getAdminViewAsSessions(): Promise<AdminViewAsSessionList> {
+    return this.request<AdminViewAsSessionList>('/admin/view-as/sessions')
   }
 
   async bulkUpdateAdminEntitlements(body: {

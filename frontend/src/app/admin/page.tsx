@@ -44,6 +44,7 @@ import AdminArtifactLifecycle from '@/components/admin/AdminArtifactLifecycle'
 import AdminReceiptLookup from '@/components/admin/AdminReceiptLookup'
 import AdminRetentionControls from '@/components/admin/AdminRetentionControls'
 import AdminUserDetail from '@/components/admin/AdminUserDetail'
+import AdminViewAs from '@/components/admin/AdminViewAs'
 import AdminSavedViews, { AdminSavedViewsBar } from '@/components/admin/AdminSavedViews'
 import { entitlementBlocker, matchesFeatureSearch, patchEntitlementCell, createEntitlementWriteLock, matchesFeatureKind, registryControlCounts, entitlementAncestryLabels, entitlementControlKind } from '@/lib/admin-entitlements'
 
@@ -1070,6 +1071,8 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
           onManage={() => setTab('views')}
         />
       )}
+
+      <AdminViewAs canAdmin={canAdmin} />
 
       <div
         role="tabpanel"
