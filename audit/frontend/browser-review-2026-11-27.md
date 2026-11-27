@@ -53,6 +53,12 @@ Screenshots: `browser-review/` (workspace/new, templates-0, billing-loading, set
 
 Total: **38 of 44 routes** exercised in the in-app browser in this pass (plus the 44/44 Playwright sweep). The editor was deliberately not opened on the live account because auto-compile would create a real job; team/recruiter/portfolio routes need live fixtures. Their evidence remains in `pages/` from the controlled sweep.
 
+## Billing boundary and admin read-only
+
+- **Billing:** with the real account on Free, the page shows monthly prices (₹299/₹599/₹199/₹2,499) and annual prices after toggling **Annual** (₹2,871 Basic, ₹5,750 Pro, ₹1,910 BYOK). Plan actions are "Select Plan"; the current subscription is Free. **No plan was selected and no checkout was created** (no live-charge policy). Screenshot: `browser-review/billing-boundary.png`.
+- **Admin read-only:** `/admin?tab=analytics` loads after ~16s (bare "Loading analytics…" first) and renders a 17,198px operational page. It shows **1 active critical alert: unacknowledged billing webhook failures, 1,213 occurrences, last 3m ago** (owner/ack/snooze are mutating and were not touched). Screenshot: `browser-review/admin-analytics-loading.png`. This alert is a production operator item, not a front-end defect; it is recorded here as a blocker observation.
+- **Admin mutations** remain intentionally unexercised (global flags/plans/entitlements); read-only tabs are covered.
+
 ## Verdict on this pass
 
 The page shells are visually strong and consistent; the problems are **time-to-content and missing loading states**, not layout collapse. The live browser confirmed the existing P1/P2 findings and added one revenue-page performance/polish issue: billing refetches plans three times and shows bare loading text for ~12s, while the dashboard's KPI cards render as empty boxes first.

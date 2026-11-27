@@ -118,7 +118,7 @@ All **44 App Router pages** were loaded in production at 1440x900 and 390x844 wi
 - **FE-17 P3:** Billing/dashboard/settings show bare loading text or empty cards for 3-12s; billing refetches plans three times (#2345).
 - **FE-18 P2:** Workspace invite succeeds but the owner's member list/count stays stale until reload; invite button is icon-only (#2347).
 
-The page-load and visual coverage is complete. Interaction coverage now includes the full builder, PDF import (end-to-end), ATS simulator (PASS), tracker add, team invite (PASS with FE-18), cover-letter attempt and share/review (blocked by FE-16). Still partial: LinkedIn import (no real export fixture; shares the PDF path), billing checkout (no live charges), admin mutations (safety).
+The page-load and visual coverage is complete. Interaction coverage now includes the full builder, PDF import (end-to-end), ATS simulator (PASS), tracker add, team invite (PASS with FE-18), LinkedIn import (PASS with a synthetic fixture, source-only FE-02), cover-letter attempt and share/review (blocked by FE-16). Still partial: billing checkout (no live charges), admin mutations (safety).
 
 ## Architecture review
 
