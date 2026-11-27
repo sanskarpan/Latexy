@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import (
+    admin_abuse_routes,
     admin_alert_routes,
     admin_billing_reconciliation_routes,
     admin_control_routes,
@@ -41,6 +42,7 @@ REASON = "Disable during incident 2135"
 AUDITED_SERVICE_CALLS = (
     "admin_user_service.",
     "admin_billing_service.",
+    "admin_abuse_service.",
     "admin_alert_service.",
     "admin_incident_service.",
     "admin_stuck_jobs_service.",
@@ -73,6 +75,7 @@ AUDITED_HELPERS = {
 
 ADMIN_ROUTERS = (
     admin_routes.router,
+    admin_abuse_routes.router,
     admin_control_routes.router,
     admin_alert_routes.router,
     admin_billing_reconciliation_routes.router,

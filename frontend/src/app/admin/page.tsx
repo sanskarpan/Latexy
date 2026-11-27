@@ -36,6 +36,7 @@ import AdminDocumentComplexity from '@/components/admin/AdminDocumentComplexity'
 import AdminFlagExposure from '@/components/admin/AdminFlagExposure'
 import AdminCohorts from '@/components/admin/AdminCohorts'
 import AdminAudit from '@/components/admin/AdminAudit'
+import AdminAbuseQueue from '@/components/admin/AdminAbuseQueue'
 import AdminApprovals from '@/components/admin/AdminApprovals'
 import AdminChangeHistory from '@/components/admin/AdminChangeHistory'
 import AdminEmailHealth from '@/components/admin/AdminEmailHealth'
@@ -58,7 +59,7 @@ interface FlagDetail {
   updated_at: string | null
 }
 
-type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'approvals' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
+type TabId = 'analytics' | 'operations' | 'product' | 'replays' | 'quality' | 'billing' | 'subscriptions' | 'receipts' | 'email' | 'exports' | 'growth' | 'customers' | 'audit' | 'abuse' | 'approvals' | 'privacy' | 'flags' | 'matrix' | 'plans' | 'views'
 
 const SAVED_VIEW_SCOPES = new Set<AdminSavedViewScope>([
   'analytics',
@@ -91,6 +92,7 @@ const ADMIN_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'growth', label: 'Growth & Cost' },
   { id: 'customers', label: 'Customers' },
   { id: 'audit', label: 'Audit' },
+  { id: 'abuse', label: 'Abuse' },
   { id: 'approvals', label: 'Approvals' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'flags', label: 'Feature Flags' },
@@ -1154,6 +1156,7 @@ function AuthorizedAdminPage({ role }: { role: 'support' | 'admin' }) {
             <AdminChangeHistory />
           </div>
         )}
+        {tab === 'abuse' && <AdminAbuseQueue />}
         {tab === 'approvals' && <AdminApprovals />}
         {tab === 'privacy' && <AdminGdpr />}
         {tab === 'flags' && <FeatureFlagsTab />}

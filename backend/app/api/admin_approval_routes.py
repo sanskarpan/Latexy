@@ -19,6 +19,7 @@ from ..database.connection import get_db
 from ..database.models import User
 from ..middleware.auth_middleware import require_admin_actor
 from ..services import admin_approval_service, gdpr_service
+from ..services.admin_abuse_service import AbuseReviewError
 from ..services.admin_approval_service import (
     ApprovalError,
     approval_summary,
@@ -92,6 +93,11 @@ def _http_error(exc: Exception) -> HTTPException:
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},
         )
+    if isinstance(exc, AbuseReviewError):
+        detail: dict[str, Any] = {"code": exc.code, "message": exc.message}
+        if exc.details:
+            detail.update(exc.details)
+        return HTTPException(status_code=exc.status_code, detail=detail)
     if isinstance(exc, KeyError):
         message = str(exc.args[0]) if exc.args else "Not found"
         return HTTPException(status_code=404, detail=message)
@@ -417,6 +423,18 @@ async def execute_admin_approval(
                 note=note,
                 request=request,
             )
+        elif row.request_type == "abuse_review_action":
+            from ..services import admin_abuse_service
+
+            await admin_abuse_service.execute_approved_action(
+                db,
+                approval_id=approval_id,
+                actor=actor,
+                note=note,
+                request=request,
+            )
+            refreshed = await admin_approval_service.get_request(db, approval_id)
+            return approval_summary(refreshed or row)
         else:
             raise HTTPException(
                 status_code=409,
