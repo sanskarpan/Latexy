@@ -34,6 +34,7 @@ from ..middleware.auth_middleware import (
 from ..services.admin_approval_service import ApprovalError, execute_role_escalation
 from ..services.admin_audit_service import AdminActor, record_admin_audit
 from ..services.admin_user_service import mask_email, mask_name
+from ..services.cohort_sync_service import cohort_sync_service
 from ..services.entitlement_service import entitlement_service
 from ..services.feature_flag_service import feature_flag_service
 from ..services.posthog_service import posthog_service
@@ -82,10 +83,18 @@ async def get_public_feature_flags(db: AsyncSession = Depends(get_db)):
     """Return a flat {key: bool} map of client-facing feature flags. No auth required.
 
     Only flags in PUBLIC_FLAG_KEYS are exposed; internal/unreleased flags stay
-    admin-only to avoid leaking their names and rollout state.
+    admin-only to avoid leaking their names and rollout state. A flag that a
+    cohort gates is reported ``False`` here: this unauthenticated surface cannot
+    prove membership, so cohort-mapped treatment is resolved only by the
+    authenticated, consent-gated evaluation route.
     """
     flags = await feature_flag_service.get_all_flags(db)
-    return {f.key: f.enabled for f in flags if f.key in PUBLIC_FLAG_KEYS}
+    cohort_mapped = await cohort_sync_service.mapped_flag_keys(db)
+    return {
+        f.key: bool(f.enabled and f.key not in cohort_mapped)
+        for f in flags
+        if f.key in PUBLIC_FLAG_KEYS
+    }
 
 
 # ------------------------------------------------------------------ #

@@ -4919,6 +4919,110 @@ export interface AdminFlagExposureResponse {
   generated_at: string
 }
 
+export type AdminCohortStatus =
+  | 'never_synced'
+  | 'synced'
+  | 'stale'
+  | 'error'
+  | 'below_minimum'
+
+export interface AdminCohortFlag {
+  key: string
+  label: string
+  enabled: boolean
+}
+
+export interface AdminCohort {
+  id: string
+  key: string
+  name: string
+  description: string | null
+  tenant_id: string | null
+  tenant_slug: string | null
+  posthog_cohort_id: string | null
+  minimum_size: number
+  stale_after_seconds: number
+  status: AdminCohortStatus
+  is_stale: boolean
+  size: number | null
+  size_suppressed: boolean
+  suppression_note: string | null
+  last_sync_attempt_at: string | null
+  last_synced_at: string | null
+  last_sync_error: string | null
+  created_at: string | null
+  updated_at: string | null
+  flags: AdminCohortFlag[]
+  evaluation_allowed: boolean
+  exposures_30d: number | null
+  exposures_30d_suppressed: boolean
+  consent_basis: string
+}
+
+export interface AdminCohortSummary {
+  total: number
+  synced: number
+  stale: number
+  error: number
+  never_synced: number
+  below_minimum: number
+  with_flag_mappings: number
+  without_flag_mappings: number
+  evaluation_allowed: number
+}
+
+export interface AdminCohortListResponse {
+  cohorts: AdminCohort[]
+  summary: AdminCohortSummary
+  minimum_size: number
+  exposure_lookback_days: number
+  consent_basis: string
+  aggregate_only: boolean
+  member_identifiers_returned: boolean
+}
+
+export interface AdminCohortCreatePayload {
+  key: string
+  name: string
+  description?: string | null
+  tenant_id?: string | null
+  posthog_cohort_id?: string | null
+  minimum_size?: number
+  stale_after_seconds?: number
+  reason: string
+  confirm: true
+}
+
+export interface AdminCohortSyncPayload {
+  members: string[]
+  error_code?: string | null
+  posthog_cohort_id?: string | null
+  reason: string
+  confirm: true
+}
+
+export interface AdminCohortEvaluationResult {
+  key: string
+  enabled: boolean
+  reason:
+    | 'cohort_match'
+    | 'not_in_cohort'
+    | 'flag_disabled'
+    | 'no_cohort_mapping'
+    | 'sync_not_current'
+    | 'consent_required'
+    | 'unknown_flag'
+  exposure_recorded: boolean
+}
+
+export interface AdminCohortEvaluationResponse {
+  evaluated_at: string
+  window: string
+  consent_required: boolean
+  exposure_recorded: number
+  results: AdminCohortEvaluationResult[]
+}
+
 export interface AdminLinterRuleRoute {
   route: string
   issues_detected: number
@@ -9986,6 +10090,69 @@ class ApiClient {
 
   async getAdminFlagExposure(): Promise<AdminFlagExposureResponse> {
     return this.request<AdminFlagExposureResponse>('/admin/analytics/flag-exposure')
+  }
+
+  async getAdminCohorts(tenantId?: string): Promise<AdminCohortListResponse> {
+    const qs = new URLSearchParams()
+    if (tenantId) qs.set('tenant_id', tenantId)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminCohortListResponse>(`/admin/cohorts${suffix}`)
+  }
+
+  async createAdminCohort(payload: AdminCohortCreatePayload): Promise<AdminCohort> {
+    return this.request<AdminCohort>('/admin/cohorts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async mapAdminCohortFlag(
+    cohortId: string,
+    flagKey: string,
+    reason: string,
+  ): Promise<AdminCohort> {
+    return this.request<AdminCohort>(
+      `/admin/cohorts/${encodeURIComponent(cohortId)}/mappings`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ flag_key: flagKey, reason, confirm: true }),
+      },
+    )
+  }
+
+  async unmapAdminCohortFlag(
+    cohortId: string,
+    flagKey: string,
+    reason: string,
+  ): Promise<AdminCohort> {
+    const qs = new URLSearchParams({ reason, confirm: 'true' })
+    return this.request<AdminCohort>(
+      `/admin/cohorts/${encodeURIComponent(cohortId)}/mappings/${encodeURIComponent(flagKey)}?${qs}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  async syncAdminCohort(
+    cohortId: string,
+    payload: AdminCohortSyncPayload,
+  ): Promise<AdminCohort> {
+    return this.request<AdminCohort>(
+      `/admin/cohorts/${encodeURIComponent(cohortId)}/sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+  }
+
+  async evaluateCohortFlags(
+    anonymousId: string,
+    flagKeys: string[],
+  ): Promise<AdminCohortEvaluationResponse> {
+    return this.request<AdminCohortEvaluationResponse>('/analytics/cohorts/evaluate', {
+      method: 'POST',
+      body: JSON.stringify({ anonymous_id: anonymousId, flag_keys: flagKeys }),
+    })
   }
 
   async getAdminLinterRules(days = 30): Promise<AdminLinterRulesResponse> {

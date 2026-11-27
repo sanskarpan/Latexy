@@ -2295,6 +2295,123 @@ class FeatureFlag(Base):
     )
 
 
+class FeatureCohort(Base):
+    """PostHog cohort definition mapped to first-party feature flags.
+
+    The row stores only bounded configuration: a human key/name, an optional
+    opaque PostHog cohort id, an optional tenant scope, the sync freshness
+    budget and aggregate sync state. Individual members live in
+    :class:`FeatureCohortMember` and are never returned to an admin surface.
+    """
+
+    __tablename__ = "feature_cohorts"
+    __table_args__ = (
+        CheckConstraint("minimum_size >= 5", name="ck_feature_cohorts_minimum_size"),
+        CheckConstraint(
+            "stale_after_seconds >= 300 AND stale_after_seconds <= 604800",
+            name="ck_feature_cohorts_stale_window",
+        ),
+        CheckConstraint("synced_size >= 0", name="ck_feature_cohorts_synced_size"),
+        CheckConstraint(
+            "sync_state IN ('never_synced', 'synced', 'error', 'below_minimum')",
+            name="ck_feature_cohorts_sync_state",
+        ),
+        CheckConstraint(
+            "posthog_cohort_id IS NULL OR length(posthog_cohort_id) BETWEEN 1 AND 64",
+            name="ck_feature_cohorts_posthog_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tenant_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    posthog_cohort_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    minimum_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
+    stale_after_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="86400"
+    )
+    sync_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default="never_synced"
+    )
+    synced_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_sync_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # A bounded machine code, never an exception message or provider payload.
+    last_sync_error: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FeatureCohortMember(Base):
+    """Opaque account membership for one synced PostHog cohort.
+
+    Only the account UUID is stored. Email, name, document content, prompts,
+    tokens, IP addresses, user agents and provider payloads are never copied
+    into this table. Rows are replaced atomically by a successful sync.
+    """
+
+    __tablename__ = "feature_cohort_members"
+    __table_args__ = (
+        PrimaryKeyConstraint("cohort_id", "user_id"),
+        Index("ix_feature_cohort_members_user", "user_id"),
+    )
+
+    cohort_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("feature_cohorts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class FeatureCohortFlagMapping(Base):
+    """Which first-party feature flags are gated by a synced cohort."""
+
+    __tablename__ = "feature_cohort_flag_mappings"
+    __table_args__ = (
+        PrimaryKeyConstraint("cohort_id", "flag_key"),
+        Index("ix_feature_cohort_flag_mappings_flag", "flag_key"),
+    )
+
+    cohort_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("feature_cohorts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    flag_key: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("feature_flags.key", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PlanFeature(Base):
     """Per-plan feature matrix (Admin Control Plane) — feature access on/off per pricing plan."""
 

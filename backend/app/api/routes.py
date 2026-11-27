@@ -208,6 +208,8 @@ from .admin_ats_score_routes import router as admin_ats_score_router
 from .admin_billing_reconciliation_routes import router as admin_billing_reconciliation_router
 from .admin_career_adoption_routes import router as admin_career_adoption_router
 from .admin_checkout_funnel_routes import router as admin_checkout_funnel_router
+from .admin_cohort_routes import admin_router as admin_cohort_router
+from .admin_cohort_routes import router as cohort_evaluation_router
 from .admin_collaboration_routes import router as admin_collaboration_router
 from .admin_compile_error_routes import router as admin_compile_error_router
 from .admin_content_library_routes import router as admin_content_library_router
@@ -244,6 +246,8 @@ from .landing_conversion_routes import router as landing_conversion_router
 
 router.include_router(admin_router)
 router.include_router(admin_control_router)
+router.include_router(admin_cohort_router)
+router.include_router(cohort_evaluation_router)
 router.include_router(admin_approval_router)
 router.include_router(admin_activity_router)
 router.include_router(admin_ai_latency_retry_router)
