@@ -348,8 +348,19 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
         "real-compile-preview": "Isolated Real Compile and Preview",
         "observability-smoke": "Observability Smoke",
         "modal-harness-synthetic": "Modal Harness Synthetic Tests",
+        "required-gate": "Required Gate",
     }
     assert {name: jobs[name]["name"] for name in jobs} == expected_job_names
+
+    # One always-running gate must cover the path-filtered required contexts.
+    gate = jobs["required-gate"]
+    assert gate["if"] == "always()"
+    assert set(gate["needs"]) >= {
+        "backend-test", "backend-lint", "frontend-lint", "frontend-build",
+        "tui-test", "deployment-parity", "observability-smoke",
+        "full-stack-smoke", "cross-browser-quality", "privacy-guard",
+    }
+    assert "required-gate" not in gate["needs"]
 
     # The private harness suite is source-only and unconditional: it must stay
     # a required CI context even when the component classifier skips work.
